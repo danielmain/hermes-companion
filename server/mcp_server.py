@@ -20,6 +20,7 @@ import os
 import json
 import urllib.request
 import urllib.error
+from pathlib import Path
 
 RELAY_URL = os.getenv("HERMES_RELAY_URL", "http://localhost:8080").rstrip("/")
 RELAY_TOKEN = os.getenv("HERMES_RELAY_TOKEN", "")
