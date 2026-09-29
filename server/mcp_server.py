@@ -113,19 +113,25 @@ TOOLS_DEFINITION = [
 def handle_call_tool(name, arguments):
     if name == "get_user_location":
         max_age = arguments.get("max_age_minutes", 60)
-        data = fetch_json("/api/location/latest")
-        if "error" in data:
-            try:
-                from client import get_user_location_from_icloud
-                icloud_loc = get_user_location_from_icloud()
-                if icloud_loc:
-                    data = icloud_loc
-            except Exception:
-                pass
+        data = None
+        try:
+            here = Path(__file__).resolve().parent
+            if str(here) not in sys.path:
+                sys.path.insert(0, str(here))
+            from client import get_user_location as client_get_location
+            data = client_get_location()
+        except Exception:
+            pass
 
-        if "error" in data:
+        if not data or "error" in data:
+            relay_data = fetch_json("/api/location/latest")
+            if not ("error" in relay_data and data):
+                data = relay_data
+
+        if not data or "error" in data:
+            err_msg = data.get("error") if data else "No location records available from Hermes Companion yet."
             return {
-                "content": [{"type": "text", "text": f"Unable to fetch user location: {data['error']}"}],
+                "content": [{"type": "text", "text": f"Unable to fetch user location: {err_msg}"}],
                 "isError": True
             }
 
