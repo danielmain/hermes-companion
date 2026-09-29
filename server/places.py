@@ -19,7 +19,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 DB_PATH = Path(__file__).resolve().parent / "locations.sqlite3"
-PLACES_JSON_PATH = Path(__file__).resolve().parent / "places.json"
+LOVE_PROFILE_PLACES = Path.home() / ".hermes/profiles/love/state/places.json"
+PLACES_JSON_PATH = LOVE_PROFILE_PLACES if LOVE_PROFILE_PLACES.parent.is_dir() else Path(__file__).resolve().parent / "places.json"
 
 
 def haversine_distance_meters(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
