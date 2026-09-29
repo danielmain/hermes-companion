@@ -89,10 +89,11 @@ hermes-companion-ios/
     ├── bridge/
     │   └── HermesCloudKitBridge.swift      # Native macOS CloudKit CLI bridge (status, latest, history, daemon)
     ├── places.py                           # Semantic place & activity recognition engine (known places, geocoding)
-    ├── places.json                         # Known places registry (Gym, Home, Work, etc.) with geofence radii
     ├── relay.py                            # Zero-dependency Python HTTP relay with SQLite persistence & places API
     ├── mcp_server.py                       # Model Context Protocol (MCP) server for Hermes Agent (stdio)
     ├── client.py                           # Python client module (iCloud, SQLite, & HTTP relay fallbacks + context)
+    ├── scripts/
+    │   └── rukara_location.py              # CLI helper installed into love profile (scripts/rukara_location.py)
     ├── skills/
     │   └── user-location/
     │       └── SKILL.md                    # Hermes agent skill for location awareness & conversational context
@@ -122,8 +123,8 @@ hermes-companion-ios/
 - [HermesCompanion/Resources/HermesCompanion.entitlements](file:///Users/daniel/Workspace/hermes-companion-ios/HermesCompanion/Resources/HermesCompanion.entitlements): Declares iCloud container `iCloud.com.hermes.HermesCompanion` for `CloudKit` and `CloudDocuments`.
 
 #### Server & Agent Integration
-- [server/places.py](file:///Users/daniel/Workspace/hermes-companion-ios/server/places.py): Semantic place & activity recognition engine. Resolves Daniel's physical context (e.g. at the gym, at home, at work, in transit) using radius geofencing over known places (`places.json`) and cached reverse geocoding with natural conversational greeting generation.
-- [server/places.json](file:///Users/daniel/Workspace/hermes-companion-ios/server/places.json): User-editable places registry defining locations, categories (`gym`, `home`, `work`), expected activities, and geofence radii.
+- [server/places.py](file:///Users/daniel/Workspace/hermes-companion-ios/server/places.py): Semantic place & activity recognition engine. Resolves Daniel's physical context (e.g. at the gym, at home, at work, in transit) using radius geofencing over known places stored in `~/.hermes/profiles/love/state/places.json` and cached reverse geocoding with natural conversational greeting generation.
+- [server/scripts/rukara_location.py](file:///Users/daniel/Workspace/hermes-companion-ios/server/scripts/rukara_location.py): CLI tool installed in `~/.hermes/profiles/love/scripts/rukara_location.py` to inspect live physical context and manage places in `~/.hermes/profiles/love/state/places.json`.
 - [server/skills/user-location/SKILL.md](file:///Users/daniel/Workspace/hermes-companion-ios/server/skills/user-location/SKILL.md): Official Hermes Agent skill installed into `~/.hermes/profiles/love/skills/user-location` enabling natural conversation regarding where Daniel is and what he is doing.
 - [server/bridge/HermesCloudKitBridge.swift](file:///Users/daniel/Workspace/hermes-companion-ios/server/bridge/HermesCloudKitBridge.swift): Native macOS Swift CLI tool. Directly queries the user's private CloudKit database for `latest_user_location` or location history and supports daemon mode.
 - [server/relay.py](file:///Users/daniel/Workspace/hermes-companion-ios/server/relay.py): Standalone Python HTTP relay server. Runs on port 8080. Ingests location payloads via `POST /api/location`, persists to SQLite (`locations.sqlite3`), serves `GET /api/location/latest` (enriched with semantic context), `GET /api/location/history`, and `GET/POST /api/places`.
