@@ -184,6 +184,21 @@ def handle_call_tool(name, arguments):
         limit = min(int(arguments.get("limit", 20)), 100)
         data = fetch_json(f"/api/location/history?limit={limit}")
         if "error" in data:
+            try:
+                import sqlite3
+                db_path = Path(__file__).resolve().parent / "locations.sqlite3"
+                if db_path.is_file():
+                    conn = sqlite3.connect(db_path)
+                    conn.row_factory = sqlite3.Row
+                    cur = conn.cursor()
+                    cur.execute("SELECT * FROM locations ORDER BY recorded_at DESC LIMIT ?", (limit,))
+                    rows = cur.fetchall()
+                    conn.close()
+                    data = {"count": len(rows), "locations": [dict(r) for r in rows]}
+            except Exception:
+                pass
+
+        if "error" in data:
             return {
                 "content": [{"type": "text", "text": f"Unable to fetch location history: {data['error']}"}],
                 "isError": True
