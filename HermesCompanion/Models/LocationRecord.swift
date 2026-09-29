@@ -30,6 +30,46 @@ public enum LocationTriggerSource: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+public enum MotionActivity: String, Codable, CaseIterable, Identifiable {
+    case stationary
+    case walking
+    case running
+    case cycling
+    case automotive
+    case unknown
+
+    public var id: String { rawValue }
+
+    public var isMoving: Bool {
+        switch self {
+        case .walking, .running, .cycling, .automotive: return true
+        case .stationary, .unknown: return false
+        }
+    }
+
+    public var label: String {
+        switch self {
+        case .stationary: return "stationary"
+        case .walking: return "walking"
+        case .running: return "running"
+        case .cycling: return "cycling"
+        case .automotive: return "driving"
+        case .unknown: return "unknown"
+        }
+    }
+
+    public var systemIcon: String {
+        switch self {
+        case .stationary: return "figure.stand"
+        case .walking: return "figure.walk"
+        case .running: return "figure.run"
+        case .cycling: return "bicycle"
+        case .automotive: return "car.fill"
+        case .unknown: return "questionmark.circle"
+        }
+    }
+}
+
 public struct LocationRecord: Identifiable, Codable, Equatable {
     public let id: UUID
     public let timestamp: Date
@@ -44,6 +84,10 @@ public struct LocationRecord: Identifiable, Codable, Equatable {
     public let batteryLevel: Float
     public let batteryState: String
     public let appState: String
+    // Real motion state from CoreMotion (CMMotionActivity), independent of the GPS fix age.
+    public let motionActivity: MotionActivity?
+    public let motionTimestamp: Date?
+    public let motionConfidence: String?
     public var synced: Bool
 
     public var coordinate: CLLocationCoordinate2D {
@@ -77,6 +121,9 @@ public struct LocationRecord: Identifiable, Codable, Equatable {
         batteryLevel: Float = -1,
         batteryState: String = "unknown",
         appState: String = "active",
+        motionActivity: MotionActivity? = nil,
+        motionTimestamp: Date? = nil,
+        motionConfidence: String? = nil,
         synced: Bool = false
     ) {
         self.id = id
@@ -92,10 +139,22 @@ public struct LocationRecord: Identifiable, Codable, Equatable {
         self.batteryLevel = batteryLevel
         self.batteryState = batteryState
         self.appState = appState
+        self.motionActivity = motionActivity
+        self.motionTimestamp = motionTimestamp
+        self.motionConfidence = motionConfidence
         self.synced = synced
     }
 
-    public init(location: CLLocation, source: LocationTriggerSource, appState: String, batteryLevel: Float, batteryState: String) {
+    public init(
+        location: CLLocation,
+        source: LocationTriggerSource,
+        appState: String,
+        batteryLevel: Float,
+        batteryState: String,
+        motionActivity: MotionActivity? = nil,
+        motionTimestamp: Date? = nil,
+        motionConfidence: String? = nil
+    ) {
         self.id = UUID()
         self.timestamp = location.timestamp
         self.latitude = location.coordinate.latitude
@@ -109,6 +168,9 @@ public struct LocationRecord: Identifiable, Codable, Equatable {
         self.batteryLevel = batteryLevel
         self.batteryState = batteryState
         self.appState = appState
+        self.motionActivity = motionActivity
+        self.motionTimestamp = motionTimestamp
+        self.motionConfidence = motionConfidence
         self.synced = false
     }
 
@@ -129,6 +191,13 @@ public struct LocationRecord: Identifiable, Codable, Equatable {
         record["appState"] = appState as NSString
         record["timestamp"] = timestamp as NSDate
         record["deviceName"] = deviceName as NSString
+        record["motionActivity"] = (motionActivity?.rawValue ?? MotionActivity.unknown.rawValue) as NSString
+        if let motionConfidence = motionConfidence {
+            record["motionConfidence"] = motionConfidence as NSString
+        }
+        if let motionTimestamp = motionTimestamp {
+            record["motionTimestamp"] = motionTimestamp as NSDate
+        }
         return record
     }
 
@@ -157,6 +226,9 @@ public struct LocationRecord: Identifiable, Codable, Equatable {
         let batteryLevel = Float((record["batteryLevel"] as? NSNumber)?.doubleValue ?? -1.0)
         let batteryState = (record["batteryState"] as? String) ?? "unknown"
         let appState = (record["appState"] as? String) ?? "unknown"
+        let motionActivity = (record["motionActivity"] as? String).flatMap { MotionActivity(rawValue: $0) }
+        let motionTimestamp = record["motionTimestamp"] as? Date
+        let motionConfidence = record["motionConfidence"] as? String
 
         return LocationRecord(
             id: id,
@@ -172,6 +244,9 @@ public struct LocationRecord: Identifiable, Codable, Equatable {
             batteryLevel: batteryLevel,
             batteryState: batteryState,
             appState: appState,
+            motionActivity: motionActivity,
+            motionTimestamp: motionTimestamp,
+            motionConfidence: motionConfidence,
             synced: true
         )
     }

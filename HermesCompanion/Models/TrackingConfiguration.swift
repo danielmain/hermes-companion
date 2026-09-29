@@ -20,29 +20,14 @@ public enum TrackingMode: String, Codable, CaseIterable, Identifiable {
 }
 
 public enum SyncDestination: String, Codable, CaseIterable, Identifiable {
-    case cloudKit = "CloudKit Private DB (Same Apple ID)"
-    case httpWebhook = "HTTP Webhook Relay"
-    case dual = "Dual Sync (CloudKit + Webhook)"
+    case cloudKit = "Apple iCloud / CloudKit (Zero Network)"
 
     public var id: String { rawValue }
 
-    public var isCloudKitEnabled: Bool {
-        self == .cloudKit || self == .dual
-    }
-
-    public var isWebhookEnabled: Bool {
-        self == .httpWebhook || self == .dual
-    }
+    public var isCloudKitEnabled: Bool { true }
 
     public var subtitle: String {
-        switch self {
-        case .cloudKit:
-            return "Zero servers or open ports. Syncs securely via your Apple ID to macOS Hermes."
-        case .httpWebhook:
-            return "Transmits coordinates directly to an HTTP relay or Cloudflare tunnel endpoint."
-        case .dual:
-            return "Syncs to both CloudKit Private Database and HTTP Webhook simultaneously."
-        }
+        "Zero servers, zero open ports, zero TCP. Syncs securely via Apple iCloud across NAT and cellular networks directly to macOS Hermes."
     }
 }
 
@@ -50,8 +35,6 @@ public struct TrackingConfiguration: Codable, Equatable {
     public var trackingMode: TrackingMode
     public var syncDestination: SyncDestination
     public var cloudKitContainerIdentifier: String
-    public var serverURL: String
-    public var apiKey: String
     public var deviceName: String
     public var autoSyncEnabled: Bool
     public var dynamicGeofenceEnabled: Bool
@@ -65,8 +48,6 @@ public struct TrackingConfiguration: Codable, Equatable {
         trackingMode: .smartAlways,
         syncDestination: .cloudKit,
         cloudKitContainerIdentifier: defaultContainerIdentifier,
-        serverURL: "http://127.0.0.1:8080/api/location",
-        apiKey: "",
         deviceName: "iPhone Companion",
         autoSyncEnabled: true,
         dynamicGeofenceEnabled: true,
@@ -79,8 +60,6 @@ public struct TrackingConfiguration: Codable, Equatable {
         trackingMode: TrackingMode = .smartAlways,
         syncDestination: SyncDestination = .cloudKit,
         cloudKitContainerIdentifier: String = defaultContainerIdentifier,
-        serverURL: String = "http://127.0.0.1:8080/api/location",
-        apiKey: String = "",
         deviceName: String = "iPhone Companion",
         autoSyncEnabled: Bool = true,
         dynamicGeofenceEnabled: Bool = true,
@@ -91,8 +70,6 @@ public struct TrackingConfiguration: Codable, Equatable {
         self.trackingMode = trackingMode
         self.syncDestination = syncDestination
         self.cloudKitContainerIdentifier = cloudKitContainerIdentifier
-        self.serverURL = serverURL
-        self.apiKey = apiKey
         self.deviceName = deviceName
         self.autoSyncEnabled = autoSyncEnabled
         self.dynamicGeofenceEnabled = dynamicGeofenceEnabled
@@ -105,10 +82,8 @@ public struct TrackingConfiguration: Codable, Equatable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.trackingMode = try container.decodeIfPresent(TrackingMode.self, forKey: .trackingMode) ?? .smartAlways
-        self.syncDestination = try container.decodeIfPresent(SyncDestination.self, forKey: .syncDestination) ?? .cloudKit
+        self.syncDestination = .cloudKit
         self.cloudKitContainerIdentifier = try container.decodeIfPresent(String.self, forKey: .cloudKitContainerIdentifier) ?? Self.defaultContainerIdentifier
-        self.serverURL = try container.decodeIfPresent(String.self, forKey: .serverURL) ?? "http://127.0.0.1:8080/api/location"
-        self.apiKey = try container.decodeIfPresent(String.self, forKey: .apiKey) ?? ""
         self.deviceName = try container.decodeIfPresent(String.self, forKey: .deviceName) ?? "iPhone Companion"
         self.autoSyncEnabled = try container.decodeIfPresent(Bool.self, forKey: .autoSyncEnabled) ?? true
         self.dynamicGeofenceEnabled = try container.decodeIfPresent(Bool.self, forKey: .dynamicGeofenceEnabled) ?? true

@@ -15,6 +15,14 @@ public final class AppDelegate: NSObject, UIApplicationDelegate {
         let locationManager = LocationManager.shared
         locationManager.handleAppLaunch(with: launchOptions)
 
+        // Initialize HealthKitManager
+        let healthKitManager = HealthKitManager.shared
+        healthKitManager.checkCurrentAuthorization()
+        if healthKitManager.authorizationStatus == .authorized {
+            healthKitManager.setupBackgroundObservers()
+            healthKitManager.refreshHealthSnapshot { _ in }
+        }
+
         return true
     }
 

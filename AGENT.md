@@ -14,18 +14,18 @@
 **Hermes Companion iOS** is an iOS application whose sole purpose is to **reliably transmit the user's live physical location to the Hermes AI Agent framework**, even when the app is in the background, suspended, or **completely closed/terminated by iOS or device reboot**.
 
 The project consists of two tightly coupled components:
-1. **iOS Native Client (`HermesCompanion/`)**: A Swift/SwiftUI application configured with CoreLocation background modes, significant location change monitoring, stationary perimeter geofencing, and automatic HTTP telemetry syncing.
-2. **Hermes Ingestion & Agent Bridge (`server/`)**: A zero-dependency Python relay server with SQLite persistence, a native Model Context Protocol (MCP) server, and integration tests.
+1. **iOS Native Client (`HermesCompanion/`)**: A Swift/SwiftUI application configured with CoreLocation background modes, significant location change monitoring, stationary perimeter geofencing, and automatic **iCloud/CloudKit sync** of location and Apple Health telemetry.
+2. **Hermes Agent Bridge (`server/`)**: Zero-dependency Python MCP server and helpers that read the synced iCloud/CloudKit files on the Mac, plus integration tests.
 
 ---
 
 ## 🏗️ Core Architecture & iOS Lifecycle Engineering
 
 ### Why Inbound Calls to iPhone Don't Work
-iOS aggressively suspends and terminates apps in the background. An external agent cannot send an inbound HTTP request to an iPhone in a pocket (especially across cellular networks, NAT, and carrier CGNAT).
+iOS aggressively suspends and terminates apps in the background. An external agent cannot send an inbound HTTP request to an iPhone in a pocket (especially across cellular networks, NAT, and carrier CGNAT). The Mac may be behind NAT too, so there is **no relay server and no direct TCP** path.
 
-### The Push-and-Query Solution
-Instead, the iOS app acts as an autonomous background transmitter. Whenever movement occurs, it wakes up and pushes coordinates to a local or remote relay. When Hermes Agent needs the user's location, it queries the relay instantly (<2ms) via MCP or REST.
+### The iCloud/CloudKit Sync Solution
+The iOS app writes location and health JSON into its **iCloud/CloudKit ubiquity container**. Apple's iCloud Drive syncs those files down to the Mac, where macOS materialises them on disk (`~/Library/Mobile Documents/iCloud~com~hermes~HermesCompanion/Documents/`). When Hermes Agent needs the user's location, it reads that local file instantly via MCP — **no relay, no open ports, no NAT traversal**.
 
 ### Tri-Layer "Always-On Even When Closed" Engine
 1. **Significant Location Change Service (`startMonitoringSignificantLocationChanges`)**:
@@ -39,6 +39,20 @@ Instead, the iOS app acts as an autonomous background transmitter. Whenever move
    - Uses Apple's CoreLocation Visit Detection to wake up and record arrival and departure times at frequent destinations.
 4. **Continuous Standard GPS (`allowsBackgroundLocationUpdates = true`)**:
    - High-precision tracking while moving or while active in foreground/background.
+
+### Timestamps, UTC Standard & Timezone Handling
+- **Zulu Time (UTC) Canonical Format:** All timestamps written by the iOS app into `latest_location.json` and `latest_health.json` (as well as CloudKit records) use ISO 8601 with the **`Z`** (Zulu) suffix (e.g. `2026-09-29T09:53:05Z`).
+- **Timezone Independence:** Timestamps are recorded in UTC, not the user's local timezone. For instance, in Germany (CEST / UTC+2), `09:53:05Z` corresponds to `11:53:05` local wall-clock time.
+- **Age Calculations:** Server and agent readers (such as `server/client.py` and `server/places.py`) must always calculate fix age by comparing the UTC timestamp directly against `datetime.now(timezone.utc)`. This ensures that relative age (`age_seconds`, `age_human`) is strictly accurate regardless of local daylight savings time, traveler location, or server timezone.
+
+### Apple Health & Sleep Telemetry Engine (Zero Double-Counting Architecture)
+Apple HealthKit stores category samples from **all devices and applications** (e.g., Apple Watch hardware sensors, iPhone accelerometer/Bedtime schedule, and third-party sleep trackers). Querying `HKCategoryTypeIdentifier.sleepAnalysis` without deduplication returns all concurrent samples, causing raw sums to double or triple sleep hours (e.g., reporting 14h instead of 7h).
+
+To guarantee clinical precision matching Apple Health's official displays, [HealthKitManager.swift](file:///Users/daniel/Workspace/hermes-companion-ios/HermesCompanion/Services/HealthKitManager.swift) executes a 4-step pipeline:
+1. **Sleep Session Clustering:** Looks back 36 hours, sorts samples by `endDate` descending, and clusters backward from the latest wake-up time. A gap of > 4 hours between contiguous sleep stages defines a boundary, cleanly isolating last night's session from prior naps or previous nights.
+2. **Hardware Source Prioritization:** Detects whether sources provide granular hypnogram stages (`asleepDeep`, `asleepREM`, `asleepCore`). Prioritizes Apple Watch first-party sensors (`com.apple.health`) over coarse iPhone estimates (`asleepUnspecified`).
+3. **Disjoint Interval Merging (`mergeIntervals`):** Merges all overlapping or duplicate time intervals for each stage (`Deep`, `REM`, `Core`, `Awake`), ensuring no timestamp is ever counted twice.
+4. **Union-Based Total Sleep Duration:** Total sleep duration is computed as the duration of the union of all sleep intervals ($\text{Deep} \cup \text{REM} \cup \text{Core}$). This makes it mathematically impossible for sleep time to exceed the physical elapsed time between `bedtime` and `wakeTime`.
 
 ---
 
@@ -59,20 +73,22 @@ hermes-companion-ios/
 │   │   └── HermesCompanionApp.swift        # SwiftUI App root with @UIApplicationDelegateAdaptor
 │   ├── Models/
 │   │   ├── AppDiagnosticEvent.swift        # Diagnostic log model (severity, timestamp, message)
+│   │   ├── HealthSnapshot.swift            # Apple Health metrics snapshot (workouts, heart rate, sleep, steps)
 │   │   ├── LocationRecord.swift            # Core location model (coords, accuracy, speed, battery, triggers)
 │   │   └── TrackingConfiguration.swift     # Profiles (Smart, Ultra, Battery) and server sync parameters
 │   ├── Services/
 │   │   ├── BackgroundTaskManager.swift     # BGTaskScheduler registration for refresh & processing
 │   │   ├── CloudKitSyncManager.swift       # Apple CloudKit Private DB & Ubiquity container synchronizer
+│   │   ├── HealthKitManager.swift          # HealthKit manager querying workouts, sleep, resting HR, and steps
 │   │   ├── LocationManager.swift           # CoreLocation manager (significant, geofence, visits, wakeups)
-│   │   ├── LocationStore.swift             # Thread-safe persistent JSON store with GPX/GeoJSON/CSV export
-│   │   └── SyncManager.swift               # HTTP transmission engine, batch uploader, test ping runner
+│   │   └── LocationStore.swift             # Thread-safe persistent JSON store with GPX/GeoJSON/CSV export
 │   ├── Views/
 │   │   ├── MainTabView.swift               # 3-tab layout (Transmitter, Transmissions, Hermes Config)
 │   │   ├── DashboardView.swift             # Primary transmitter telemetry UI and architecture guides
 │   │   ├── HistoryLogView.swift            # Historical transmission stream and diagnostic event logs
-│   │   ├── SettingsView.swift              # Pipeline selector (CloudKit / Webhook), container ID, iOS settings link
+│   │   ├── SettingsView.swift              # Pipeline selector (CloudKit), container ID, iOS settings link
 │   │   └── Components/
+│   │       ├── HealthOverviewCard.swift    # Visual card displaying Apple Health telemetry and permissions
 │   │       ├── LocationRowView.swift       # Visual row for individual location fixes with trigger badges
 │   │       ├── MetricTileView.swift        # Telemetry stat cards (Accuracy, Battery, Wakes, Sync count)
 │   │       ├── PermissionBannerView.swift  # Dynamic alert guiding user to grant "Always Allow" in Settings
@@ -85,20 +101,17 @@ hermes-companion-ios/
 │           ├── Contents.json
 │           ├── AccentColor.colorset/Contents.json
 │           └── AppIcon.appiconset/Contents.json
-└── server/                                 # Hermes backend relay, MCP tools, and integration tests
-    ├── bridge/
-    │   └── HermesCloudKitBridge.swift      # Native macOS CloudKit CLI bridge (status, latest, history, daemon)
+└── server/                                 # Hermes macOS integration: MCP tools & tests
     ├── places.py                           # Semantic place & activity recognition engine (known places, geocoding)
-    ├── relay.py                            # Zero-dependency Python HTTP relay with SQLite persistence & places API
     ├── mcp_server.py                       # Model Context Protocol (MCP) server for Hermes Agent (stdio)
-    ├── client.py                           # Python client module (iCloud, SQLite, & HTTP relay fallbacks + context)
+    ├── client.py                           # Python client module (reads synced iCloud file + local SQLite cache)
     ├── scripts/
     │   └── rukara_location.py              # CLI helper installed into love profile (scripts/rukara_location.py)
     ├── skills/
     │   └── user-location/
     │       └── SKILL.md                    # Hermes agent skill for location awareness & conversational context
     ├── HERMES_AGENT_PROMPT.md              # System prompt and Heartbeat protocol specification for Hermes Agent
-    └── test_integration.py                 # End-to-end integration test (ping, upload, REST fetch, MCP, iCloud)
+    └── test_integration.py                 # Integration test (iCloud parsing + MCP tools, no network)
 ```
 
 ### Detailed File Descriptions
@@ -106,32 +119,34 @@ hermes-companion-ios/
 #### iOS Application
 - [HermesCompanion/App/AppDelegate.swift](file:///Users/daniel/Workspace/hermes-companion-ios/HermesCompanion/App/AppDelegate.swift): Crucial entry point. Checks `launchOptions?[.location]` when iOS relaunches the app after termination, immediately binds `LocationManager.shared`, and registers background tasks.
 - [HermesCompanion/App/HermesCompanionApp.swift](file:///Users/daniel/Workspace/hermes-companion-ios/HermesCompanion/App/HermesCompanionApp.swift): Initializes SwiftUI environment objects and mounts `AppDelegate`.
-- [HermesCompanion/Services/LocationManager.swift](file:///Users/daniel/Workspace/hermes-companion-ios/HermesCompanion/Services/LocationManager.swift): Central CoreLocation orchestrator. Implements `CLLocationManagerDelegate`. Manages permission state, significant location change monitoring, stationary perimeter geofencing, visit callbacks, battery monitoring, and triggers auto-sync.
+- [HermesCompanion/Services/LocationManager.swift](file:///Users/daniel/Workspace/hermes-companion-ios/HermesCompanion/Services/LocationManager.swift): Central CoreLocation orchestrator. Implements `CLLocationManagerDelegate`. Manages permission state, significant location change monitoring, stationary perimeter geofencing, visit callbacks, battery monitoring, and triggers auto-sync. Also runs a `CMMotionActivityManager` for real motion state (stationary/walking/running/cycling/automotive), refreshed independently of the GPS fix.
 - [HermesCompanion/Services/LocationStore.swift](file:///Users/daniel/Workspace/hermes-companion-ios/HermesCompanion/Services/LocationStore.swift): Serializes location records and diagnostic events to JSON files in `Application Support`. Supports exporting to GPX, GeoJSON, and CSV.
-- [HermesCompanion/Services/SyncManager.swift](file:///Users/daniel/Workspace/hermes-companion-ios/HermesCompanion/Services/SyncManager.swift): Handles HTTP POST communication with the relay server. Batches unsynced records, manages Bearer authentication, and handles ping tests.
+- [HermesCompanion/Services/HealthKitManager.swift](file:///Users/daniel/Workspace/hermes-companion-ios/HermesCompanion/Services/HealthKitManager.swift): Apple Health orchestrator. Queries workouts, sleep analysis, heart rate, resting heart rate, HRV, active energy, and daily steps. Implements background delivery (`enableBackgroundDelivery`) and `HKObserverQuery`. Features intelligent sleep deduplication: merges overlapping time intervals (`mergeIntervals`), prioritizes Apple Watch hardware stage sources over coarse phone estimates, clusters backward from latest wake time with a 4-hour session gap cutoff, and calculates total sleep as the mathematical union of all sleep stages ($\text{Deep} \cup \text{REM} \cup \text{Core}$) to guarantee zero double-counting across sources.
+- [HermesCompanion/Models/HealthSnapshot.swift](file:///Users/daniel/Workspace/hermes-companion-ios/HermesCompanion/Models/HealthSnapshot.swift): Codable and CloudKit-compatible model representing Daniel's wellness state: `SleepRecord` (duration, stages, quality rating), `WorkoutRecord` (type, phase: `active`/`justFinished`/`recent`/`past`, duration, calories), `VitalsRecord` (resting HR, current HR, HRV SDNN, recovery status: `recovered`/`moderate`/`fatigued`), and `HealthConversationalContext` (suggested openers, protein & nutrition reminders).
+- [HermesCompanion/Views/Components/HealthOverviewCard.swift](file:///Users/daniel/Workspace/hermes-companion-ios/HermesCompanion/Views/Components/HealthOverviewCard.swift): Visual SwiftUI card mounted on `DashboardView` displaying live sleep hours, workout status, heart rate, recovery pills, HealthKit authorization triggers, and manual refresh sync.
 - [HermesCompanion/Services/CloudKitSyncManager.swift](file:///Users/daniel/Workspace/hermes-companion-ios/HermesCompanion/Services/CloudKitSyncManager.swift): Manages CloudKit Private Database uploads (`CKModifyRecordsOperation`), diagnostic test pings, and mirrors coordinates into the ubiquitous iCloud container for zero-network macOS file sync.
 - [HermesCompanion/Services/BackgroundTaskManager.swift](file:///Users/daniel/Workspace/hermes-companion-ios/HermesCompanion/Services/BackgroundTaskManager.swift): Registers `BGAppRefreshTask` and `BGProcessingTask` with `BGTaskScheduler`.
-- [HermesCompanion/Models/LocationRecord.swift](file:///Users/daniel/Workspace/hermes-companion-ios/HermesCompanion/Models/LocationRecord.swift): Codable model capturing coordinates, horizontal/vertical accuracy, speed, course, battery level/state, app lifecycle state, trigger source, and CloudKit `CKRecord` conversions.
-- [HermesCompanion/Models/TrackingConfiguration.swift](file:///Users/daniel/Workspace/hermes-companion-ios/HermesCompanion/Models/TrackingConfiguration.swift): Stores user preferences (tracking mode, server URL, auth token, geofence radius, distance filter).
+- [HermesCompanion/Models/LocationRecord.swift](file:///Users/daniel/Workspace/hermes-companion-ios/HermesCompanion/Models/LocationRecord.swift): Codable model capturing coordinates, horizontal/vertical accuracy, speed, course, battery level/state, app lifecycle state, trigger source, CoreMotion activity (`motionActivity`/`motionTimestamp`/`motionConfidence`), and CloudKit `CKRecord` conversions.
+- [HermesCompanion/Models/TrackingConfiguration.swift](file:///Users/daniel/Workspace/hermes-companion-ios/HermesCompanion/Models/TrackingConfiguration.swift): Stores user preferences (tracking mode, CloudKit container identifier, geofence radius, distance filter).
 - [HermesCompanion/Models/AppDiagnosticEvent.swift](file:///Users/daniel/Workspace/hermes-companion-ios/HermesCompanion/Models/AppDiagnosticEvent.swift): Represents system lifecycle logs with severity (`INFO`, `SUCCESS`, `WARN`, `ERROR`).
 - [HermesCompanion/Views/MainTabView.swift](file:///Users/daniel/Workspace/hermes-companion-ios/HermesCompanion/Views/MainTabView.swift): Root tab view hosting `Transmitter`, `Transmissions`, and `Hermes Config`.
 - [HermesCompanion/Views/DashboardView.swift](file:///Users/daniel/Workspace/hermes-companion-ios/HermesCompanion/Views/DashboardView.swift): Real-time transmitter dashboard displaying connection state, telemetry tiles, tracking mode selector, recent fixes, and explainer sheets.
 - [HermesCompanion/Views/HistoryLogView.swift](file:///Users/daniel/Workspace/hermes-companion-ios/HermesCompanion/Views/HistoryLogView.swift): Segmented view for transmission history and diagnostic logs with source filtering and file export.
-- [HermesCompanion/Views/SettingsView.swift](file:///Users/daniel/Workspace/hermes-companion-ios/HermesCompanion/Views/SettingsView.swift): Configuration screen for transmission destination (CloudKit Private DB / HTTP Webhook / Dual), CloudKit container ID, Bearer API key, geofence radius slider, and iOS settings shortcut.
+- [HermesCompanion/Views/SettingsView.swift](file:///Users/daniel/Workspace/hermes-companion-ios/HermesCompanion/Views/SettingsView.swift): Configuration screen for the CloudKit sync container ID, geofence radius slider, and iOS settings shortcut.
 - [HermesCompanion/Views/Components/ICloudAccountBannerView.swift](file:///Users/daniel/Workspace/hermes-companion-ios/HermesCompanion/Views/Components/ICloudAccountBannerView.swift): Banner alerting the user when an iCloud / Apple Account sign-in is required with a direct button redirecting to iOS Settings.
-- [HermesCompanion/Resources/Info.plist](file:///Users/daniel/Workspace/hermes-companion-ios/HermesCompanion/Resources/Info.plist): Contains Apple background modes (`location`, `fetch`, `processing`, `remote-notification`), background task identifiers, `NSUbiquitousContainers`, and required location usage descriptions.
-- [HermesCompanion/Resources/HermesCompanion.entitlements](file:///Users/daniel/Workspace/hermes-companion-ios/HermesCompanion/Resources/HermesCompanion.entitlements): Declares iCloud container `iCloud.com.hermes.HermesCompanion` for `CloudKit` and `CloudDocuments`.
+- [HermesCompanion/Resources/Info.plist](file:///Users/daniel/Workspace/hermes-companion-ios/HermesCompanion/Resources/Info.plist): Contains Apple background modes (`location`, `fetch`, `processing`, `remote-notification`), background task identifiers, `NSUbiquitousContainers`, required location usage descriptions, `NSMotionUsageDescription` (CoreMotion activity), `NSHealthShareUsageDescription`, and `NSHealthUpdateUsageDescription`.
+- [HermesCompanion/Resources/HermesCompanion.entitlements](file:///Users/daniel/Workspace/hermes-companion-ios/HermesCompanion/Resources/HermesCompanion.entitlements): Declares iCloud container `iCloud.com.hermes.HermesCompanion` for `CloudKit` and `CloudDocuments`, and `com.apple.developer.healthkit` capability.
 
 #### Server & Agent Integration
 - [server/places.py](file:///Users/daniel/Workspace/hermes-companion-ios/server/places.py): Semantic place & activity recognition engine. Resolves Daniel's physical context (e.g. at the gym, at home, at work, in transit) using radius geofencing over known places stored in `~/.hermes/profiles/love/state/places.json` and cached reverse geocoding with natural conversational greeting generation.
 - [server/scripts/rukara_location.py](file:///Users/daniel/Workspace/hermes-companion-ios/server/scripts/rukara_location.py): CLI tool installed in `~/.hermes/profiles/love/scripts/rukara_location.py` to inspect live physical context and manage places in `~/.hermes/profiles/love/state/places.json`.
+- [server/scripts/rukara_health.py](file:///Users/daniel/Workspace/hermes-companion-ios/server/scripts/rukara_health.py): CLI tool installed in `~/.hermes/profiles/love/scripts/rukara_health.py` to inspect live Apple Health metrics (sleep, workouts, post-workout protein reminders, recovery).
 - [server/skills/user-location/SKILL.md](file:///Users/daniel/Workspace/hermes-companion-ios/server/skills/user-location/SKILL.md): Official Hermes Agent skill installed into `~/.hermes/profiles/love/skills/user-location` enabling natural conversation regarding where Daniel is and what he is doing.
-- [server/bridge/HermesCloudKitBridge.swift](file:///Users/daniel/Workspace/hermes-companion-ios/server/bridge/HermesCloudKitBridge.swift): Native macOS Swift CLI tool. Directly queries the user's private CloudKit database for `latest_user_location` or location history and supports daemon mode.
-- [server/relay.py](file:///Users/daniel/Workspace/hermes-companion-ios/server/relay.py): Standalone Python HTTP relay server. Runs on port 8080. Ingests location payloads via `POST /api/location`, persists to SQLite (`locations.sqlite3`), serves `GET /api/location/latest` (enriched with semantic context), `GET /api/location/history`, and `GET/POST /api/places`.
-- [server/mcp_server.py](file:///Users/daniel/Workspace/hermes-companion-ios/server/mcp_server.py): Model Context Protocol (MCP) server communicating over stdio (JSON-RPC). Exposes `get_user_location` (enriched with place name, activity, context summary, and suggested opener), `get_location_history`, `add_known_place`, and `list_known_places` tools directly to Hermes Agent.
-- [server/client.py](file:///Users/daniel/Workspace/hermes-companion-ios/server/client.py): Python helper function supporting direct zero-network reading from local iCloud ubiquitous synced files, falling back to local SQLite and HTTP relay with automatic semantic context enrichment.
-- [server/HERMES_AGENT_PROMPT.md](file:///Users/daniel/Workspace/hermes-companion-ios/server/HERMES_AGENT_PROMPT.md): Production-ready system prompt, activity awareness guidelines, and autonomous 5-step Heartbeat protocol specification for Hermes Agent (configured for profile `/Users/daniel/.hermes/profiles/love`).
-- [server/test_integration.py](file:///Users/daniel/Workspace/hermes-companion-ios/server/test_integration.py): End-to-end integration test verifying the relay server, iOS ping, payload ingestion, REST querying, MCP tool execution with place resolution, and iCloud file parsing.
+- [server/skills/user-health/SKILL.md](file:///Users/daniel/Workspace/hermes-companion-ios/server/skills/user-health/SKILL.md): Official Hermes Agent skill installed into `~/.hermes/profiles/love/skills/user-health` enabling natural conversation regarding Daniel's sleep quality, active/recent workouts, tiredness, and post-workout protein reminders.
+- [server/mcp_server.py](file:///Users/daniel/Workspace/hermes-companion-ios/server/mcp_server.py): Model Context Protocol (MCP) server communicating over stdio (JSON-RPC). Exposes `get_user_location`, `get_user_health`, `get_user_physical_context`, `get_location_history`, `add_known_place`, and `list_known_places` tools directly to Hermes Agent.
+- [server/client.py](file:///Users/daniel/Workspace/hermes-companion-ios/server/client.py): Python helper for direct zero-network reading of location and Apple Health telemetry from the locally synced iCloud/CloudKit files, falling back to the local SQLite cache.
+- [server/HERMES_AGENT_PROMPT.md](file:///Users/daniel/Workspace/hermes-companion-ios/server/HERMES_AGENT_PROMPT.md): Production-ready system prompt, activity awareness guidelines, Apple Health biometrics integration, and autonomous 6-step Heartbeat protocol specification for Hermes Agent (configured for profile `/Users/daniel/.hermes/profiles/love`).
+- [server/test_integration.py](file:///Users/daniel/Workspace/hermes-companion-ios/server/test_integration.py): Integration test verifying iCloud/CloudKit file parsing (location + health) and MCP tool execution with place resolution, with no relay or network.
 
 ---
 
@@ -142,19 +157,23 @@ hermes-companion-ios/
 xcodegen generate
 ```
 
-### Build iOS App with xcodebuild
+### Build and Sign for Physical Device (Apple Developer Team)
+- Team ID: `7H7P2FNJK6` (Reinhold Daniel Main)
+- Signing Identity: `Apple Development: Reinhold Main (592FM5BC5U)`
+- Provisioning Profile: `iOS Team Provisioning Profile: com.hermes.HermesCompanion`
+
+```bash
+xcodebuild -project HermesCompanion.xcodeproj -scheme HermesCompanion -destination "id=00008150-000E41E12E62401C" build
+```
+
+### Build for iOS Simulator (CI / Verification)
 ```bash
 xcodebuild -project HermesCompanion.xcodeproj -scheme HermesCompanion -sdk iphonesimulator -destination "generic/platform=iOS Simulator" CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY="" clean build
 ```
 
-### Run Python Integration Tests
+### Run Python Integration Tests (Uses isolated temporary DB)
 ```bash
 python3 server/test_integration.py
-```
-
-### Start the Location Relay Server
-```bash
-python3 server/relay.py --port 8080
 ```
 
 ---
@@ -167,7 +186,7 @@ To ensure the codebase is robust, easily testable, and catches bugs at compile-t
 - **Immutability First:** Prefer immutable structures (`let`) by default. Avoid mutable shared state unless explicitly required by framework lifecycle constraints.
 - **Pure Functions & Determinism:** Separate business logic and calculations (e.g., distance calculations, age formatting, payload transformations, filtering) into pure, side-effect-free functions that are trivial to unit test.
 - **Declarative Composition:** Utilize functional pipelines (`map`, `flatMap`, `compactMap`, `filter`, `reduce`) over imperative loops and mutating state accumulators.
-- **Isolate Side Effects:** Keep side-effects (CoreLocation delegate callbacks, disk I/O, network requests, `BGTaskScheduler`) strictly isolated to service boundaries (`LocationManager`, `LocationStore`, `SyncManager`).
+- **Isolate Side Effects:** Keep side-effects (CoreLocation delegate callbacks, disk I/O, iCloud sync, `BGTaskScheduler`) strictly isolated to service boundaries (`LocationManager`, `LocationStore`, `CloudKitSyncManager`).
 
 ### 2. Rich, Expressive Type-Driven Design
 - **Make Illegal States Unrepresentable:** Use the type system as the first line of defense. The compiler must catch structural errors before code ever runs.

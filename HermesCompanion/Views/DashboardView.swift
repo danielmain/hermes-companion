@@ -4,7 +4,6 @@ import CoreLocation
 struct DashboardView: View {
     @EnvironmentObject private var locationManager: LocationManager
     @EnvironmentObject private var locationStore: LocationStore
-    @EnvironmentObject private var syncManager: SyncManager
 
     @State private var showingInfoModal: Bool = false
     @State private var showingApiGuide: Bool = false
@@ -24,6 +23,9 @@ struct DashboardView: View {
 
                     // Main Telemetry & Location Card
                     StatusCardView()
+
+                    // Apple Health & Telemetry Card (Sleep, Workouts, Protein / Recovery)
+                    HealthOverviewCard()
 
                     // Key Metric Tiles
                     LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 14) {
@@ -228,7 +230,6 @@ struct DashboardView: View {
 // MARK: - Hermes Connection Status Card
 struct HermesConnectionStatusCard: View {
     @EnvironmentObject private var locationManager: LocationManager
-    @EnvironmentObject private var syncManager: SyncManager
     @EnvironmentObject private var cloudKitSyncManager: CloudKitSyncManager
 
     var body: some View {
@@ -256,24 +257,16 @@ struct HermesConnectionStatusCard: View {
 
             Spacer()
 
-            if syncManager.isSyncing || cloudKitSyncManager.isSyncing {
+            if cloudKitSyncManager.isSyncing {
                 ProgressView()
                     .scaleEffect(0.85)
-            } else if locationManager.configuration.syncDestination.isCloudKitEnabled && cloudKitSyncManager.accountStatus == .available {
+            } else if cloudKitSyncManager.accountStatus == .available {
                 Text("iCloud")
                     .font(.system(size: 11, weight: .bold))
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
                     .background(Color.blue.opacity(0.12))
                     .foregroundColor(.blue)
-                    .clipShape(Capsule())
-            } else if let code = syncManager.lastHttpCode, (200...299).contains(code) {
-                Text("HTTP \(code)")
-                    .font(.system(size: 11, weight: .bold, design: .monospaced))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Color.green.opacity(0.12))
-                    .foregroundColor(.green)
                     .clipShape(Capsule())
             }
         }
@@ -286,46 +279,25 @@ struct HermesConnectionStatusCard: View {
 
     private var connectionColor: Color {
         guard locationManager.configuration.autoSyncEnabled else { return .secondary }
-        let dest = locationManager.configuration.syncDestination
-        if dest.isCloudKitEnabled && cloudKitSyncManager.accountStatus == .available {
+        if cloudKitSyncManager.accountStatus == .available {
             return .blue
         }
-        if let code = syncManager.lastHttpCode, (200...299).contains(code) {
-            return .green
-        }
-        return .indigo
+        return .orange
     }
 
     private var connectionIcon: String {
         guard locationManager.configuration.autoSyncEnabled else { return "wifi.slash" }
-        let dest = locationManager.configuration.syncDestination
-        if dest.isCloudKitEnabled {
-            return "icloud.fill"
-        }
-        if let code = syncManager.lastHttpCode, (200...299).contains(code) {
-            return "checkmark.icloud.fill"
-        }
-        return "arrow.triangle.2.circlepath.circle.fill"
+        return "icloud.fill"
     }
 
     private var connectionTitle: String {
         if !locationManager.configuration.autoSyncEnabled {
             return "Hermes Sync Disabled"
         }
-        if syncManager.isSyncing || cloudKitSyncManager.isSyncing {
-            return "Transmitting to Hermes..."
+        if cloudKitSyncManager.isSyncing {
+            return "Syncing with iCloud..."
         }
-        switch locationManager.configuration.syncDestination {
-        case .cloudKit:
-            return cloudKitSyncManager.accountStatus == .available ? "CloudKit Private DB Ready" : "iCloud Setup Needed"
-        case .httpWebhook:
-            if let code = syncManager.lastHttpCode, (200...299).contains(code) {
-                return "Hermes Relay Connected"
-            }
-            return "HTTP Webhook Ready"
-        case .dual:
-            return "Dual Pipeline Active"
-        }
+        return cloudKitSyncManager.accountStatus == .available ? "Apple iCloud Ready" : "iCloud Setup Needed"
     }
 
     private var connectionSubtitle: String {
@@ -333,21 +305,13 @@ struct HermesConnectionStatusCard: View {
             return "Enable in Hermes Config to upload locations"
         }
 
-        let newestSync = [cloudKitSyncManager.lastSyncDate, syncManager.lastSyncDate].compactMap { $0 }.max()
-        if let lastSync = newestSync {
+        if let lastSync = cloudKitSyncManager.lastSyncDate {
             let formatter = RelativeDateTimeFormatter()
             formatter.unitsStyle = .abbreviated
             return "Last sync " + formatter.localizedString(for: lastSync, relativeTo: Date())
         }
 
-        switch locationManager.configuration.syncDestination {
-        case .cloudKit:
-            return cloudKitSyncManager.accountStatusDescription
-        case .httpWebhook:
-            return locationManager.configuration.serverURL
-        case .dual:
-            return "CloudKit + Webhook"
-        }
+        return cloudKitSyncManager.accountStatusDescription
     }
 }
 
@@ -360,11 +324,11 @@ struct HermesAgentGuideSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("How Hermes Agent Fetches Location")
+                        Text("Apple iCloud Zero-Network Pipeline")
                             .font(.title2)
                             .fontWeight(.bold)
 
-                        Text("Because iOS puts apps to sleep when closed, Hermes Agent reads your location through a high-speed relay endpoint or MCP tool:")
+                        Text("Hermes Agent and your iPhone can both be behind router NAT or cellular CGNAT. The app communicates strictly via Apple iCloud with zero open ports and zero direct TCP connections:")
                             .font(.subheadline)
                             .foregroundColor(.secondary)
                     }
@@ -372,48 +336,47 @@ struct HermesAgentGuideSheet: View {
                     VStack(alignment: .leading, spacing: 14) {
                         GuideStep(
                             number: "1",
-                            title: "iOS App Transmits Coordinates",
-                            desc: "Whenever you move, step out of a geofence, or trigger significant cell changes (even when closed), the app wakes up and POSTs your coordinates to the Hermes relay."
+                            title: "iOS Writes to iCloud Container",
+                            desc: "Whenever you move, exit a geofence, or record an Apple Health workout, the app updates its private CloudKit DB and writes JSON into its iCloud Drive container."
                         )
 
                         GuideStep(
                             number: "2",
-                            title: "Relay Stores Latest Position in Cache/DB",
-                            desc: "The relay immediately records the location, timestamp, speed, battery, and motion state in SQLite / memory."
+                            title: "macOS Native Daemon Syncs Files",
+                            desc: "Apple's system daemon syncs the files directly to your Mac at ~/Library/Mobile Documents/iCloud~com~hermes~HermesCompanion/Documents/."
                         )
 
                         GuideStep(
                             number: "3",
-                            title: "Hermes Agent Calls `get_user_location`",
-                            desc: "When Hermes needs your location (e.g. for travel advice, weather, scheduling, or presence), Hermes queries `GET /api/location/latest` or calls the bundled MCP tool."
+                            title: "Hermes Reads Locally via MCP",
+                            desc: "When Hermes needs your location or wellness telemetry, it calls get_user_location or get_user_health over MCP to read the local copy in milliseconds."
                         )
                     }
 
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("API Endpoint (for Hermes Agent)")
+                        Text("Local Storage Path on Mac")
                             .font(.headline)
 
-                        Text("GET /api/location/latest")
-                            .font(.system(size: 13, weight: .bold, design: .monospaced))
+                        Text("~/Library/Mobile Documents/iCloud~com~hermes~HermesCompanion/Documents/latest_location.json")
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
                             .padding(10)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .background(Color(UIColor.secondarySystemGroupedBackground))
                             .clipShape(RoundedRectangle(cornerRadius: 8))
 
-                        Text("Response JSON:")
+                        Text("Live Synced Schema:")
                             .font(.caption)
                             .foregroundColor(.secondary)
 
                         Text("""
                         {
-                          "latitude": 52.5200,
-                          "longitude": 13.4050,
-                          "accuracy_meters": 4.5,
-                          "recorded_at": "2026-09-28T21:40:00Z",
-                          "age_seconds": 15,
-                          "battery_percent": 88,
-                          "trigger": "Significant Change",
-                          "app_state": "resumed_terminated"
+                          "latitude": 48.8149,
+                          "longitude": 9.2325,
+                          "horizontal_accuracy": 3.3,
+                          "timestamp": "2026-09-29T09:44:26Z",
+                          "battery_level": 1.0,
+                          "source": "Significant Location Change",
+                          "app_state": "background"
                         }
                         """)
                         .font(.system(size: 11, design: .monospaced))

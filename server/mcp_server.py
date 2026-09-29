@@ -10,35 +10,16 @@ Tools Exposed:
   2. get_location_history(limit=20)
      Returns recent trajectory and movement history.
 
-Configuration:
-  Set HERMES_RELAY_URL environment variable (default: http://localhost:8080)
-  Set HERMES_RELAY_TOKEN environment variable if Bearer auth is enabled.
+Data source: the Hermes Companion iOS app writes JSON into its iCloud/CloudKit
+ubiquity container, which macOS syncs down to
+~/Library/Mobile Documents/iCloud~com~hermes~HermesCompanion/Documents/.
+This server reads that local synced copy (no relay, no TCP, no inbound
+connection to the phone).
 """
 
 import sys
-import os
 import json
-import urllib.request
-import urllib.error
 from pathlib import Path
-
-RELAY_URL = os.getenv("HERMES_RELAY_URL", "http://localhost:8080").rstrip("/")
-RELAY_TOKEN = os.getenv("HERMES_RELAY_TOKEN", "")
-
-def fetch_json(endpoint):
-    url = f"{RELAY_URL}{endpoint}"
-    req = urllib.request.Request(url)
-    if RELAY_TOKEN:
-        req.add_header("Authorization", f"Bearer {RELAY_TOKEN}")
-    try:
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            return json.loads(resp.read().decode("utf-8"))
-    except urllib.error.HTTPError as e:
-        if e.code == 404:
-            return {"error": "No location records available from Hermes Companion yet."}
-        return {"error": f"HTTP Error {e.code}: {e.reason}"}
-    except Exception as e:
-        return {"error": f"Connection error to Hermes Relay at {url}: {str(e)}"}
 
 TOOLS_DEFINITION = [
     {
@@ -108,6 +89,22 @@ TOOLS_DEFINITION = [
             "type": "object",
             "properties": {}
         }
+    },
+    {
+        "name": "get_user_health",
+        "description": "Fetch Daniel's Apple Health telemetry from Hermes Companion iOS: sleep quality & duration, active or recent workouts, post-workout fatigue, protein/nutrition recommendations, and daily vitals (heart rate, HRV, steps).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {}
+        }
+    },
+    {
+        "name": "get_user_physical_context",
+        "description": "Fetch Daniel's comprehensive physical context combining live GPS location, place category (e.g. gym, home), with Apple Health telemetry (sleep quality, workout in progress or completed, recovery).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {}
+        }
     }
 ]
 
@@ -123,11 +120,6 @@ def handle_call_tool(name, arguments):
             data = client_get_location()
         except Exception:
             pass
-
-        if not data or "error" in data:
-            relay_data = fetch_json("/api/location/latest")
-            if not ("error" in relay_data and data):
-                data = relay_data
 
         if not data or "error" in data:
             err_msg = data.get("error") if data else "No location records available from Hermes Companion yet."
@@ -163,19 +155,40 @@ def handle_call_tool(name, arguments):
         context_summary = data.get("context_summary", f"{place_name} ({category})")
         greeting = data.get("suggested_greeting", f"Hey Daniel, I see you're at {place_name}, how is it going?")
 
+        motion = data.get("motion_activity")
+        if data.get("motion_fresh") and motion and motion != "unknown":
+            movement_line = f"• Movement: {motion} (CoreMotion, live {int(data.get('motion_age_seconds', 0))}s ago)"
+        elif data.get("is_moving_now"):
+            movement_line = f"• Movement: moving at {data.get('speed_kmh')} km/h"
+        else:
+            movement_line = "• Movement: stationary"
+
         result_text = (
             f"User Location & Semantic Context:\n"
             f"• Current Place: {place_name} ({category.upper()})\n"
             f"• Activity: {activity}\n"
             f"• Context Summary: {context_summary}\n"
             f"• Suggested Conversational Opener: \"{greeting}\"\n"
-            f"• Movement: {'Moving at ' + str(data['speed_kmh']) + ' km/h' if data.get('is_moving') else 'Stationary'}\n"
+            f"{movement_line}\n"
             f"• Battery: {data.get('battery_percent')}% ({data.get('battery_state')})\n"
             f"• Coordinates: {data.get('coordinates')} (±{data.get('accuracy_meters', 0.0):.1f}m accuracy)\n"
             f"• Recorded: {data.get('recorded_at')} ({data.get('age_human')})\n"
             f"• Reported via: {data.get('trigger_source')} (App state: {data.get('app_state')})\n"
             f"• Maps Link: {data.get('maps_link')}\n"
         )
+        if data.get("is_stale"):
+            if data.get("is_moving_now"):
+                result_text += (
+                    f"\n⚠️ Position is NOT real-time (the iPhone reports on events to save battery): "
+                    f"last fix {data.get('fix_age_minutes')} min old. He IS moving now (per motion), but this "
+                    "position is only the last known — don't state it as his exact present location."
+                )
+            else:
+                result_text += (
+                    f"\n⚠️ Position is NOT real-time (the iPhone reports on events to save battery): last "
+                    f"known {data.get('fix_age_minutes')} min ago, likely still there (not confirmed). Refer "
+                    "to it as last known, not as present certainty."
+                )
         if is_stale:
             result_text += f"\n⚠️ Note: This location fix is {int(age_minutes)} minutes old (exceeds {max_age}m threshold)."
 
@@ -183,21 +196,20 @@ def handle_call_tool(name, arguments):
 
     elif name == "get_location_history":
         limit = min(int(arguments.get("limit", 20)), 100)
-        data = fetch_json(f"/api/location/history?limit={limit}")
-        if "error" in data:
-            try:
-                import sqlite3
-                db_path = Path(__file__).resolve().parent / "locations.sqlite3"
-                if db_path.is_file():
-                    conn = sqlite3.connect(db_path)
-                    conn.row_factory = sqlite3.Row
-                    cur = conn.cursor()
-                    cur.execute("SELECT * FROM locations ORDER BY recorded_at DESC LIMIT ?", (limit,))
-                    rows = cur.fetchall()
-                    conn.close()
-                    data = {"count": len(rows), "locations": [dict(r) for r in rows]}
-            except Exception:
-                pass
+        data = {"error": "No location history available."}
+        try:
+            import sqlite3
+            db_path = Path(__file__).resolve().parent / "locations.sqlite3"
+            if db_path.is_file():
+                conn = sqlite3.connect(db_path)
+                conn.row_factory = sqlite3.Row
+                cur = conn.cursor()
+                cur.execute("SELECT * FROM locations ORDER BY recorded_at DESC LIMIT ?", (limit,))
+                rows = cur.fetchall()
+                conn.close()
+                data = {"count": len(rows), "locations": [dict(r) for r in rows]}
+        except Exception:
+            pass
 
         if "error" in data:
             return {
@@ -280,6 +292,72 @@ def handle_call_tool(name, arguments):
                 "content": [{"type": "text", "text": f"Error listing places: {str(e)}"}],
                 "isError": True
             }
+
+    elif name == "get_user_health":
+        data = None
+        try:
+            here = Path(__file__).resolve().parent
+            if str(here) not in sys.path:
+                sys.path.insert(0, str(here))
+            from client import get_user_health as client_get_health
+            data = client_get_health()
+        except Exception:
+            pass
+
+        if not data or "error" in data:
+            err_msg = data.get("error") if data else "No Apple Health records available from Hermes Companion yet."
+            return {
+                "content": [{"type": "text", "text": f"Unable to fetch health data: {err_msg}"}],
+                "isError": True
+            }
+
+        lines = ["Daniel's Apple Health & Telemetry:"]
+        sleep = data.get("sleep")
+        if sleep:
+            lines.append(f"• Sleep: {sleep.get('formatted_duration', 'n/a')} ({sleep.get('quality_rating', '').upper()}) — {sleep.get('summary', '')}")
+        else:
+            lines.append("• Sleep: No sleep session recorded in the last 24h")
+
+        workout = data.get("workout")
+        if workout:
+            active_str = "ACTIVE NOW" if workout.get("is_currently_active") else f"Finished ({workout.get('phase', 'recent')})"
+            lines.append(f"• Workout: {workout.get('workout_type', 'Workout')} [{active_str}] — {workout.get('summary', '')}")
+            if workout.get("active_calories"):
+                lines.append(f"  Calories Burned: {int(workout['active_calories'])} kcal")
+        else:
+            lines.append("• Workout: No workouts recorded today")
+
+        rhr = data.get("resting_heart_rate_bpm")
+        hrv = data.get("heart_rate_variability_sdnn")
+        steps = data.get("step_count_today", 0)
+        cals = data.get("active_calories_today", 0)
+        rec = data.get("recovery_status", "unknown").upper()
+        lines.append(f"• Recovery: {rec} | Steps: {steps:,} | Active Cal: {int(cals)} kcal" + (f" | Resting HR: {int(rhr)} bpm" if rhr else "") + (f" | HRV: {int(hrv)} ms" if hrv else ""))
+
+        ctx = data.get("conversational_context", {})
+        if ctx.get("sleep_insight"):
+            lines.append(f"• Sleep Insight: \"{ctx['sleep_insight']}\"")
+        if ctx.get("workout_insight"):
+            lines.append(f"• Workout Insight: \"{ctx['workout_insight']}\"")
+        if ctx.get("nutrition_reminder"):
+            lines.append(f"• Post-Workout Nutrition: \"{ctx['nutrition_reminder']}\"")
+
+        openers = data.get("suggested_openers", [])
+        if openers:
+            lines.append(f"• Suggested Conversational Opener: \"{openers[0]}\"")
+
+        lines.append(f"• Recorded: {data.get('recorded_at')} ({data.get('age_human')}) via {data.get('source_channel')}")
+        return {"content": [{"type": "text", "text": "\n".join(lines)}]}
+
+    elif name == "get_user_physical_context":
+        loc_res = handle_call_tool("get_user_location", {})
+        health_res = handle_call_tool("get_user_health", {})
+
+        loc_text = loc_res["content"][0]["text"] if not loc_res.get("isError") else "Location: Unavailable"
+        health_text = health_res["content"][0]["text"] if not health_res.get("isError") else "Health: Unavailable"
+
+        combined = f"=== DANIEL'S PHYSICAL & BIOMETRIC CONTEXT ===\n\n{loc_text}\n\n{health_text}"
+        return {"content": [{"type": "text", "text": combined}]}
 
     else:
         return {

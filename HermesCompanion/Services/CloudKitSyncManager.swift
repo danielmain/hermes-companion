@@ -75,7 +75,7 @@ public final class CloudKitSyncManager: ObservableObject {
     private func formatCloudKitError(_ error: Error, containerId: String) -> String {
         let desc = error.localizedDescription
         if desc.contains("Couldn't get container configuration") || (error as? CKError)?.code == .badContainer {
-            return "Container '\(containerId)' is not registered on Apple's servers. In Xcode (Signing & Capabilities -> iCloud -> Containers), select your Developer Team and click '+' to link your container, or switch to HTTP Webhook Relay."
+            return "Container '\(containerId)' is not registered on Apple's servers. In Xcode (Signing & Capabilities -> iCloud -> Containers), select your Developer Team and click '+' to link your container."
         }
         return desc
     }
@@ -147,6 +147,11 @@ public final class CloudKitSyncManager: ObservableObject {
     public func syncPendingRecords(config: TrackingConfiguration, records: [LocationRecord]) {
         guard config.autoSyncEnabled, config.syncDestination.isCloudKitEnabled else { return }
 
+        // Always mirror newest known location to ubiquitous file regardless of batch status
+        if let newest = records.max(by: { $0.timestamp < $1.timestamp }) {
+            self.mirrorLatestLocationToFile(record: newest, config: config)
+        }
+
         let unsynced = records.filter { !$0.synced }
         guard !unsynced.isEmpty else { return }
 
@@ -158,9 +163,8 @@ public final class CloudKitSyncManager: ObservableObject {
         var recordsToSave: [CKRecord] = batch.map { $0.toCKRecord(deviceName: deviceName) }
 
         // Also update singleton latest location record if the batch has a fresh coordinate
-        if let newest = batch.max(by: { $0.timestamp < $1.timestamp }) {
-            recordsToSave.append(newest.toLatestCKRecord(deviceName: deviceName))
-            self.mirrorLatestLocationToFile(record: newest, config: config)
+        if let newestInBatch = batch.max(by: { $0.timestamp < $1.timestamp }) {
+            recordsToSave.append(newestInBatch.toLatestCKRecord(deviceName: deviceName))
         }
 
         let container = getContainer(identifier: config.cloudKitContainerIdentifier)
@@ -261,15 +265,6 @@ public final class CloudKitSyncManager: ObservableObject {
     // MARK: - iCloud Ubiquity Container File Mirroring
     private func mirrorLatestLocationToFile(record: LocationRecord, config: TrackingConfiguration) {
         DispatchQueue.global(qos: .utility).async {
-            let containerId = config.cloudKitContainerIdentifier.trimmingCharacters(in: .whitespaces).isEmpty ? nil : config.cloudKitContainerIdentifier
-            guard let containerURL = FileManager.default.url(forUbiquityContainerIdentifier: containerId) ?? FileManager.default.url(forUbiquityContainerIdentifier: nil) else {
-                return
-            }
-
-            let documentsURL = containerURL.appendingPathComponent("Documents", isDirectory: true)
-            try? FileManager.default.createDirectory(at: documentsURL, withIntermediateDirectories: true, attributes: nil)
-
-            let fileURL = documentsURL.appendingPathComponent("latest_location.json")
             let payload: [String: Any] = [
                 "id": record.id.uuidString,
                 "timestamp": ISO8601DateFormatter().string(from: record.timestamp),
@@ -284,12 +279,108 @@ public final class CloudKitSyncManager: ObservableObject {
                 "battery_level": record.batteryLevel,
                 "battery_state": record.batteryState,
                 "app_state": record.appState,
+                "motion_activity": record.motionActivity?.rawValue ?? MotionActivity.unknown.rawValue,
+                "motion_confidence": record.motionConfidence ?? "unknown",
+                "motion_timestamp": record.motionTimestamp.map { ISO8601DateFormatter().string(from: $0) } ?? "",
                 "device_name": config.deviceName
             ]
 
-            if let data = try? JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted]) {
+            guard let data = try? JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted]) else { return }
+
+            // Write to /tmp for local simulation / test
+            let tmpURL = URL(fileURLWithPath: "/tmp/hermes_latest_location.json")
+            try? data.write(to: tmpURL, options: .atomic)
+
+            let containerId = config.cloudKitContainerIdentifier.trimmingCharacters(in: .whitespaces).isEmpty ? nil : config.cloudKitContainerIdentifier
+            let containerURL = FileManager.default.url(forUbiquityContainerIdentifier: containerId) ?? FileManager.default.url(forUbiquityContainerIdentifier: nil)
+
+            if let containerURL = containerURL {
+                let documentsURL = containerURL.appendingPathComponent("Documents", isDirectory: true)
+                try? FileManager.default.createDirectory(at: documentsURL, withIntermediateDirectories: true, attributes: nil)
+
+                let fileURL = documentsURL.appendingPathComponent("latest_location.json")
                 try? data.write(to: fileURL, options: .atomic)
+
+                let rootFileURL = containerURL.appendingPathComponent("latest_location.json")
+                try? data.write(to: rootFileURL, options: .atomic)
+
+                LocationStore.shared.logDiagnostic(
+                    title: "iCloud File Mirrored",
+                    details: "Wrote latest_location.json to \(fileURL.lastPathComponent)",
+                    severity: .success
+                )
+            } else {
+                LocationStore.shared.logDiagnostic(
+                    title: "iCloud Ubiquity Unavailable",
+                    details: "url(forUbiquityContainerIdentifier: \(containerId ?? "nil")) returned nil. Container not in provisioning profile or iCloud Drive disabled.",
+                    severity: .warning
+                )
             }
         }
+    }
+
+    // MARK: - Health Snapshot CloudKit Sync
+    public func syncHealthRecord(config: TrackingConfiguration, snapshot: HealthSnapshot) {
+        guard config.autoSyncEnabled, config.syncDestination.isCloudKitEnabled else { return }
+
+        // Mirror to ubiquitous container Documents/latest_health.json immediately
+        HealthKitManager.shared.mirrorHealthToFile(snapshot: snapshot)
+
+        let container = getContainer(identifier: config.cloudKitContainerIdentifier)
+        let privateDatabase = container.privateCloudDatabase
+
+        let recordID = CKRecord.ID(recordName: "latest_user_health")
+        let healthRecord = CKRecord(recordType: "HealthSnapshot", recordID: recordID)
+
+        healthRecord["timestamp"] = snapshot.timestamp as NSDate
+        healthRecord["deviceName"] = config.deviceName as NSString
+        healthRecord["recoveryStatus"] = snapshot.vitals.recoveryStatus.rawValue as NSString
+        healthRecord["stepCountToday"] = snapshot.vitals.stepCountToday as NSNumber
+        healthRecord["activeCaloriesToday"] = snapshot.vitals.activeEnergyBurnedKCal as NSNumber
+
+        if let sleep = snapshot.sleep {
+            healthRecord["sleepDurationMinutes"] = sleep.totalSleepMinutes as NSNumber
+            healthRecord["sleepQuality"] = sleep.qualityRating.rawValue as NSString
+            healthRecord["sleepSummary"] = sleep.summaryText as NSString
+        }
+
+        if let workout = snapshot.activeWorkout ?? snapshot.latestWorkout {
+            healthRecord["workoutType"] = workout.workoutType as NSString
+            healthRecord["workoutDurationMinutes"] = workout.durationMinutes as NSNumber
+            healthRecord["workoutCalories"] = workout.activeCalories as NSNumber
+            healthRecord["isWorkoutActive"] = (workout.isCurrentlyActive ? 1 : 0) as NSNumber
+            healthRecord["workoutSummary"] = workout.summaryText as NSString
+        }
+
+        let dict = snapshot.toDictionary()
+        if let jsonData = try? JSONSerialization.data(withJSONObject: dict),
+           let jsonStr = String(data: jsonData, encoding: .utf8) {
+            healthRecord["rawJson"] = jsonStr as NSString
+        }
+
+        let operation = CKModifyRecordsOperation(recordsToSave: [healthRecord], recordIDsToDelete: nil)
+        operation.savePolicy = .changedKeys
+        operation.qualityOfService = .utility
+
+        operation.modifyRecordsResultBlock = { result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success:
+                    LocationStore.shared.logDiagnostic(
+                        title: "CloudKit Health Uploaded",
+                        details: "Synced latest health snapshot (sleep: \(snapshot.sleep?.formattedDuration ?? "n/a"), workout: \(snapshot.activeWorkout?.workoutType ?? snapshot.latestWorkout?.workoutType ?? "none"))",
+                        severity: .success
+                    )
+                case .failure(let error):
+                    LocationStore.shared.logDiagnostic(
+                        title: "CloudKit Health Upload Failed",
+                        details: error.localizedDescription,
+                        severity: .warning
+                    )
+                }
+            }
+        }
+
+        privateDatabase.add(operation)
     }
 }

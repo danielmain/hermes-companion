@@ -16,3 +16,7 @@ Carthage/Build/
 fastlane/report.xml
 fastlane/Preview.html
 fastlane/screenshots
+
+# Python
+__pycache__/
+*.pyc

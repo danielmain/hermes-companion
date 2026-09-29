@@ -22,6 +22,15 @@ DB_PATH = Path(__file__).resolve().parent / "locations.sqlite3"
 LOVE_PROFILE_PLACES = Path.home() / ".hermes/profiles/love/state/places.json"
 PLACES_JSON_PATH = LOVE_PROFILE_PLACES if LOVE_PROFILE_PLACES.parent.is_dir() else Path(__file__).resolve().parent / "places.json"
 
+# The iPhone is not a real-time GPS feed: it reports on movement / geofence events to save
+# battery, so the latest fix can be minutes old. Past this age we must not present the old
+# fix as the user's current state (e.g. "you're moving") — only as the last known position.
+STALE_FIX_SECONDS = 600
+
+# CoreMotion activity (stationary/walking/running/driving) is refreshed independently of the
+# GPS fix, so a reading younger than this tells what he is doing NOW.
+MOTION_FRESH_SECONDS = 300
+
 
 def haversine_distance_meters(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Calculate great-circle distance between two GPS points in meters."""
@@ -129,28 +138,29 @@ class PlacesManager:
 
     def _ensure_default_places(self) -> None:
         """Seed default places if table is empty."""
+        # If places.json exists, always sync from it
+        if self.places_file.is_file():
+            try:
+                data = json.loads(self.places_file.read_text(encoding="utf-8"))
+                for item in data:
+                    self.add_place(
+                        name=item["name"],
+                        category=item.get("category", "general"),
+                        activity=item.get("activity", f"at {item['name']}"),
+                        latitude=float(item["latitude"]),
+                        longitude=float(item["longitude"]),
+                        radius_meters=float(item.get("radius_meters", 150.0)),
+                        notes=item.get("notes", ""),
+                        place_id=item.get("id"),
+                    )
+                return
+            except Exception:
+                pass
+
         with self._get_connection() as conn:
             cur = conn.execute("SELECT COUNT(*) as cnt FROM known_places")
             cnt = cur.fetchone()["cnt"]
             if cnt == 0:
-                # If places.json exists, load from it
-                if self.places_file.is_file():
-                    try:
-                        data = json.loads(self.places_file.read_text(encoding="utf-8"))
-                        for item in data:
-                            self.add_place(
-                                name=item["name"],
-                                category=item.get("category", "general"),
-                                activity=item.get("activity", f"at {item['name']}"),
-                                latitude=float(item["latitude"]),
-                                longitude=float(item["longitude"]),
-                                radius_meters=float(item.get("radius_meters", 150.0)),
-                                notes=item.get("notes", ""),
-                                place_id=item.get("id"),
-                            )
-                        return
-                    except Exception:
-                        pass
 
                 # Otherwise insert default places
                 now_str = datetime.now(timezone.utc).isoformat()
@@ -364,43 +374,108 @@ class PlacesManager:
         speed_kmh: float = 0.0,
         is_moving: bool = False,
         age_seconds: int = 0,
+        motion_activity: str = "unknown",
+        motion_age_seconds: int = 999999,
     ) -> Dict[str, Any]:
         """
-        Synthesize rich semantic context, place name, activity, and suggested agent greeting.
+        Synthesize semantic context: place, activity, movement (now vs last known) and a greeting.
+
+        Two independent signals with different freshness:
+          - GPS fix (age_seconds): WHERE he is; may be minutes old (battery saving).
+          - CoreMotion activity (motion_age_seconds): whether he is moving NOW; refreshed
+            independently of the GPS fix, so it is often much fresher.
+
+        Rules:
+          - fresh motion is authoritative for movement (stationary/walking/running/driving now);
+          - without fresh motion, only a fresh GPS fix's speed may claim movement;
+          - a stale fix is "last known", never present certainty.
         """
-        # If moving > 3 km/h
-        if is_moving or speed_kmh > 3.0:
-            if speed_kmh > 35.0:
+        stale = age_seconds > STALE_FIX_SECONDS
+        fix_age_minutes = int(age_seconds // 60) if age_seconds else 0
+
+        valid_motion = motion_activity in ("stationary", "walking", "running", "cycling", "automotive")
+        motion_fresh = valid_motion and motion_age_seconds <= MOTION_FRESH_SECONDS
+        motion_moving = motion_activity in ("walking", "running", "cycling", "automotive")
+        motion_label = {
+            "walking": "walking",
+            "running": "running",
+            "cycling": "cycling",
+            "automotive": "driving",
+        }.get(motion_activity)
+
+        fix_moving = is_moving or speed_kmh > 3.0
+        is_moving_now = motion_moving if motion_fresh else (fix_moving and not stale)
+
+        base = {
+            "is_stale": stale,
+            "fix_age_minutes": fix_age_minutes,
+            "motion_activity": motion_activity if valid_motion else "unknown",
+            "motion_age_seconds": motion_age_seconds,
+            "motion_fresh": motion_fresh,
+            "is_moving_now": is_moving_now,
+        }
+
+        # 1) Moving now (fresh motion, or a fresh fix with speed).
+        if is_moving_now:
+            if motion_fresh and motion_label:
+                act = motion_label
+                summary = f"Moving now ({act})"
+            elif speed_kmh > 35.0:
                 act = "driving or transit"
+                summary = f"In transit (driving) at {speed_kmh:.1f} km/h"
             elif speed_kmh > 12.0:
                 act = "cycling or fast transit"
+                summary = f"In transit (cycling) at {speed_kmh:.1f} km/h"
             else:
                 act = "walking or running"
+                summary = f"In transit (walking/running) at {speed_kmh:.1f} km/h"
             return {
+                **base,
                 "place_name": "In Transit",
                 "place_category": "transit",
                 "activity": act,
-                "context_summary": f"In transit ({act}) moving at {speed_kmh:.1f} km/h",
+                "context_summary": summary,
                 "suggested_greeting": "Hey Daniel, looks like you're on the move! Where are you headed?",
                 "is_at_known_place": False,
                 "duration_stationary": None,
+                "was_moving_at_fix": True,
             }
 
-        # Check known places first
+        # 2) Not moving now, and the (stale) last fix showed movement: we lost track of him.
+        if not motion_fresh and stale and fix_moving:
+            return {
+                **base,
+                "place_name": "In Transit (last known)",
+                "place_category": "transit",
+                "activity": motion_label or "moving",
+                "context_summary": (
+                    f"Last fix {fix_age_minutes} min ago showed movement at {speed_kmh:.1f} km/h "
+                    "— current location unknown"
+                ),
+                "suggested_greeting": (
+                    f"Your last fix had you moving {fix_age_minutes} min ago; "
+                    "I don't know where you are now."
+                ),
+                "is_at_known_place": False,
+                "duration_stationary": None,
+                "was_moving_at_fix": True,
+            }
+
+        # 3) Stationary: certain ("now") only when motion is fresh; otherwise last known.
+        stationary_now = motion_fresh and not motion_moving
+
         known = self.match_known_place(latitude, longitude)
         if known:
             p_name = known["place_name"]
             p_cat = known["place_category"]
             act = known["activity"]
 
-            # Format stationary duration if age is known
             duration_txt = ""
             if age_seconds > 60:
-                m = age_seconds // 60
-                duration_txt = f" (stationary for ~{m} min)"
+                duration_txt = f" (stationary for ~{age_seconds // 60} min)"
 
             if p_cat == "gym":
-                greeting = f"Hey Daniel, I see you are at the gym, how is it doing?"
+                greeting = "Hey Daniel, I see you are at the gym, how is it doing?"
             elif p_cat == "home":
                 greeting = "Hey Daniel, welcome back home. How are you feeling?"
             elif p_cat == "work":
@@ -410,18 +485,27 @@ class PlacesManager:
             else:
                 greeting = f"Hey Daniel, I see you're at {p_name}, how is it going?"
 
+            if stationary_now:
+                summary = f"At {p_name} (stationary now; last position {fix_age_minutes} min ago)"
+            elif stale:
+                summary = f"Last known position: at {p_name} (~{fix_age_minutes} min ago, likely still there)"
+            else:
+                summary = f"At {p_name}{duration_txt}"
+
             return {
+                **base,
                 "place_name": p_name,
                 "place_category": p_cat,
                 "activity": act,
-                "context_summary": f"At {p_name}{duration_txt}",
+                "context_summary": summary,
                 "suggested_greeting": greeting,
                 "is_at_known_place": True,
                 "known_place_id": known["place_id"],
                 "distance_to_center_meters": known["distance_meters"],
+                "was_moving_at_fix": False,
             }
 
-        # Fallback to reverse geocoding
+        # 4) Reverse geocoding fallback.
         rev = self.reverse_geocode(latitude, longitude)
         cat = rev.get("category", "general")
         disp = rev.get("display_name", "")
@@ -448,15 +532,24 @@ class PlacesManager:
             act = f"around {short_name}"
             greeting = f"Hey Daniel, I see you're around {short_name}, how is it going?"
 
+        if stationary_now:
+            summary = f"Around {short_name} (stationary now; last position {fix_age_minutes} min ago)"
+        elif stale:
+            summary = f"Last known position: around {short_name} (~{fix_age_minutes} min ago)"
+        else:
+            summary = f"Around {short_name} ({cat})"
+
         return {
+            **base,
             "place_name": short_name,
             "place_category": cat,
             "activity": act,
-            "context_summary": f"Around {short_name} ({cat})",
+            "context_summary": summary,
             "suggested_greeting": greeting,
             "is_at_known_place": False,
             "full_address": disp,
             "address_parts": addr,
+            "was_moving_at_fix": False,
         }
 
 

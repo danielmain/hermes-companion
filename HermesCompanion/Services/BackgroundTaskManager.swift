@@ -80,6 +80,9 @@ public final class BackgroundTaskManager {
             // Request one-shot location fix during background task
             DispatchQueue.main.async {
                 LocationManager.shared.requestSingleLocationUpdate(source: .backgroundFetch)
+                if HealthKitManager.shared.authorizationStatus == .authorized {
+                    HealthKitManager.shared.refreshHealthSnapshot { _ in }
+                }
             }
 
             task.setTaskCompleted(success: true)
@@ -97,12 +100,13 @@ public final class BackgroundTaskManager {
             let config = LocationManager.shared.configuration
             let records = LocationStore.shared.records
             if config.autoSyncEnabled {
-                if config.syncDestination.isWebhookEnabled {
-                    SyncManager.shared.syncPendingRecords(config: config, records: records)
+                CloudKitSyncManager.shared.syncPendingRecords(config: config, records: records)
+                if let health = HealthKitManager.shared.latestSnapshot {
+                    CloudKitSyncManager.shared.syncHealthRecord(config: config, snapshot: health)
                 }
-                if config.syncDestination.isCloudKitEnabled {
-                    CloudKitSyncManager.shared.syncPendingRecords(config: config, records: records)
-                }
+            }
+            if HealthKitManager.shared.authorizationStatus == .authorized {
+                HealthKitManager.shared.refreshHealthSnapshot { _ in }
             }
             task.setTaskCompleted(success: true)
         }

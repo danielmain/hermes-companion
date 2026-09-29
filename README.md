@@ -1,32 +1,41 @@
-# Hermes Companion iOS - Always-On Location Transmitter for Hermes Agent
+# Hermes Companion iOS - Always-On Location & Apple Health Transmitter for Hermes Agent
 
-A dedicated iOS companion app built with one single mission: **reliably supply user location to your Hermes AI Agent at all times — even when the iPhone app is closed, suspended in the background, or restarted**.
+A dedicated iOS companion app built with a dual mission:
+1. **Always-On Physical Location:** Reliably supply user location and movement context to your Hermes AI Agent at all times — even when the iPhone app is closed, suspended in the background, or restarted.
+2. **Apple Health & Wellness Telemetry:** Seamlessly stream deduplicated sleep analysis, active/recent workouts, resting heart rate, HRV, and daily recovery status so Hermes (Rukara) can converse naturally about your sleep quality, congratulate workouts, and proactively remind you to refuel with 30-40g protein and water.
 
 ---
 
-## 🧭 The Solution: How Hermes Agent Fetches the Location
+## 🧭 The Solution: Zero-TCP Sync via Apple iCloud
 
-Because iOS restricts apps when closed, an external agent cannot directly inbound-HTTP-call an iPhone in your pocket (especially across cellular networks and NAT). 
-
-Instead, Hermes Companion uses a **High-Availability Ingestion Relay + MCP Tool**:
+Because iOS restricts apps when closed, and both the iPhone and the Mac can sit behind NAT / carrier CGNAT, there is **no inbound connection and no relay server**.
+The only transport is **iCloud Drive / CloudKit sync** — Apple's own end-to-end encrypted channel between the two devices under the same Apple ID.
 
 ```
 [ iPhone (Closed / Pocket) ]
        │
-       │ (Wakes on cell moves / geofence exits / periodic)
-       │ Auto-POSTs coordinates via Wi-Fi / Cellular / Tailscale
+       │ (Wakes on cell moves / geofence exits / HealthKit background observers)
+       │ Writes JSON into the app's iCloud/CloudKit ubiquity container
        ▼
-[ Hermes Location Relay (server/relay.py) ]
+[ iCloud Drive — Apple sync (bird daemon) ]
+       │
+       │ macOS materialises the files locally (zero network on the Mac)
+       ▼
+[ ~/Library/Mobile Documents/iCloud~com~hermes~HermesCompanion/Documents/ ]
+       ├── latest_location.json
+       └── latest_health.json
        ▲
-       │ Instant Query (<2ms) via MCP or REST
+       │ Read locally via MCP tools / Python helper
        │
 [ Hermes Agent (Autonomous AI) ]
-   └── Calls tool: `get_user_location(max_age_minutes=60)`
+       ├── Calls: `get_user_location()`
+       ├── Calls: `get_user_health()`
+       └── Calls: `get_user_physical_context()`
 ```
 
-1. **iOS App Transmits Silently**: Even when killed from the App Switcher, iOS wakes up the app whenever you move (~500m significant change) or exit your stationary geofence. The app POSTs the new coordinates, speed, battery, and timestamp to your Hermes Relay.
-2. **Relay Stores State**: The lightweight Python relay (`server/relay.py`) stores the latest position in SQLite.
-3. **Hermes Agent Fetches On-Demand**: Whenever Hermes needs to know where you are (e.g. for calendar events, weather, arrival estimates, local recommendations), Hermes executes `get_user_location()` through its native **Model Context Protocol (MCP)** tool or a simple `GET /api/location/latest` HTTP request.
+1. **iOS App Writes Silently**: Even when killed from the App Switcher, iOS wakes the app whenever you move (~500m significant change), exit your stationary geofence, or record Apple Health events (sleep/workouts). The app writes coordinates and health telemetry into its iCloud ubiquity container.
+2. **iCloud Syncs Automatically**: Apple mirrors those files down to the Mac's local iCloud container — no open ports, no background server, no NAT traversal.
+3. **Hermes Agent Reads On-Demand**: Whenever Hermes needs your location or health context (e.g. for morning greetings, workout check-ins, or post-workout protein reminders), it reads the local synced files via native **Model Context Protocol (MCP)** tools or the Python helper.
 
 ---
 
@@ -71,18 +80,17 @@ hermes-companion-ios/
 │   ├── Models/
 │   │   ├── AppDiagnosticEvent.swift        # Diagnostic log model (severity, timestamp, message)
 │   │   ├── LocationRecord.swift            # Core location model (coords, accuracy, speed, battery, CloudKit CKRecord)
-│   │   └── TrackingConfiguration.swift     # Profiles (Smart, Ultra, Battery), Pipeline (CloudKit, Webhook, Dual)
+│   │   └── TrackingConfiguration.swift     # Profiles (Smart, Ultra, Battery) and CloudKit sync parameters
 │   ├── Services/
 │   │   ├── BackgroundTaskManager.swift     # BGTaskScheduler registration for refresh & processing
 │   │   ├── CloudKitSyncManager.swift       # Apple CloudKit Private DB & Ubiquity container synchronizer
 │   │   ├── LocationManager.swift           # CoreLocation manager (significant, geofence, visits, wakeups)
-│   │   ├── LocationStore.swift             # Thread-safe persistent JSON store with GPX/GeoJSON/CSV export
-│   │   └── SyncManager.swift               # HTTP transmission engine, batch uploader, test ping runner
+│   │   └── LocationStore.swift             # Thread-safe persistent JSON store with GPX/GeoJSON/CSV export
 │   ├── Views/
 │   │   ├── MainTabView.swift               # 3-tab layout (Transmitter, Transmissions, Hermes Config)
 │   │   ├── DashboardView.swift             # Primary transmitter telemetry UI and architecture guides
 │   │   ├── HistoryLogView.swift            # Historical transmission stream and diagnostic event logs
-│   │   ├── SettingsView.swift              # Pipeline selector (CloudKit / Webhook / Dual), CloudKit status & ping
+│   │   ├── SettingsView.swift              # Pipeline selector (CloudKit), CloudKit status & ping
 │   │   └── Components/
 │   │       ├── LocationRowView.swift       # Visual row for individual location fixes with trigger badges
 │   │       ├── MetricTileView.swift        # Telemetry stat cards (Accuracy, Battery, Wakes, Sync count)
@@ -95,19 +103,16 @@ hermes-companion-ios/
 │           ├── Contents.json
 │           ├── AccentColor.colorset/Contents.json
 │           └── AppIcon.appiconset/Contents.json
-└── server/                                 # Hermes backend relay, MCP tools, and integration tests
-    ├── bridge/
-    │   └── HermesCloudKitBridge.swift      # Native macOS CloudKit CLI bridge (status, latest, history, daemon)
+└── server/                                 # Hermes macOS integration: MCP tools & tests
     ├── places.py                           # Semantic place & activity recognition engine (known places, geocoding)
     ├── places.json                         # Known places registry (Gym, Home, Work) with geofence radii
-    ├── relay.py                            # Zero-dependency Python HTTP relay with SQLite persistence & places API
     ├── mcp_server.py                       # Model Context Protocol (MCP) server for Hermes Agent (stdio)
-    ├── client.py                           # Python client module (iCloud, SQLite, & HTTP relay fallbacks + context)
+    ├── client.py                           # Python client module (reads synced iCloud file + local SQLite cache)
     ├── skills/
     │   └── user-location/
     │       └── SKILL.md                    # Hermes agent skill for location awareness & conversational context
     ├── HERMES_AGENT_PROMPT.md              # System prompt and Heartbeat protocol specification for Hermes Agent
-    └── test_integration.py                 # End-to-end integration test (ping, upload, REST fetch, MCP, iCloud)
+    └── test_integration.py                 # Integration test (iCloud parsing + MCP tools, no network)
 ```
 
 ---
@@ -123,10 +128,28 @@ love mcp add hermes-companion --command /usr/bin/python3 --args /Users/daniel/Wo
 ```
 
 Hermes Agent gains direct access to:
-- `get_user_location(max_age_minutes=60)`: Returns place name, activity, context summary, suggested conversational opener, coordinates, accuracy, battery, and speed.
+- `get_user_location(max_age_minutes=60)`: Returns place name, activity, context summary, suggested conversational opener, coordinates, accuracy, **movement context**, battery, and speed.
 - `get_location_history(limit=20)`: Returns recent movement trajectory with resolved places.
 - `add_known_place(name, category, latitude, longitude, radius_meters)`: Dynamically registers new places (e.g. gym, home, office).
 - `list_known_places()`: Lists all configured places and geofences.
+
+**Movement context — CoreMotion is the "now" signal, GPS answers "where":**
+- `motion_activity`: `walking` / `running` / `cycling` / `driving` / `stationary` / `unknown`
+  (CoreMotion, refreshed independently of the GPS fix).
+- `is_moving_now`: whether he is moving right now (fresh motion wins; otherwise a fresh fix's speed).
+- `motion_fresh`: whether the motion reading is recent enough to trust (≤ 5 minutes).
+- `is_stale` / `fix_age_minutes`: how old the GPS **position** is (the position is last-known, not real-time).
+
+`get_user_location()` returns a line like `• Movement: walking (CoreMotion, live 12s ago)` or
+`• Movement: stationary`. So a stale GPS fix can still say "at the gym" while `motion_activity`
+says "walking": trust `is_moving_now` + `motion_activity` for *moving vs staying*, and
+`place_name` for *which place*. On the phone, **Motion & Fitness** must be allowed
+(`NSMotionUsageDescription` is in `Info.plist`); the Simulator emits no CoreMotion, so
+`unknown` there is expected.
+
+The phone writes these fields into `latest_location.json` in the iCloud container:
+`motion_activity` (`stationary`/`walking`/`running`/`cycling`/`automotive`/`unknown`),
+`motion_confidence` (`high`/`medium`/`low`), and `motion_timestamp` (ISO-8601 UTC).
 
 ### Option 2: Python Helper (`server.client`)
 Used directly in Python runtimes or heartbeat scripts:
@@ -143,54 +166,11 @@ loc = get_user_location()
 ### Option 3: Dedicated Hermes Skill (`user-location`)
 Installed at `~/.hermes/profiles/love/skills/user-location/SKILL.md`. Automatically triggers when Daniel asks where he is, what he is doing, or during proactive heartbeats.
 
-### Option 3: REST API (Relay Server)
-Hermes Agent can query the local relay:
-```bash
-curl http://localhost:8080/api/location/latest
-```
-Response:
-```json
-{
-  "status": "ok",
-  "latitude": 52.520008,
-  "longitude": 13.404954,
-  "altitude_meters": 34.2,
-  "accuracy_meters": 4.5,
-  "speed_kmh": 0.0,
-  "is_moving": false,
-  "recorded_at": "2026-09-28T21:40:55Z",
-  "age_seconds": 15,
-  "age_human": "15s ago",
-  "trigger_source": "Significant Change",
-  "battery_percent": 88,
-  "battery_state": "unplugged",
-  "app_state": "resumed_terminated",
-  "device_name": "Daniel's iPhone",
-  "coordinates": "52.520008, 13.404954",
-  "maps_link": "https://maps.apple.com/?ll=52.520008,13.404954&q=User+Location"
-}
-```
-
-### Option 3: Python Script Import
-```python
-from server.client import get_user_location
-
-location = get_user_location()
-if location:
-    print(f"Latitude: {location['latitude']}, Longitude: {location['longitude']}")
-```
-
 ---
 
 ## 🚀 Running the System
 
-### Step 1: Start the Relay Server on your Mac
-```bash
-python3 server/relay.py --port 8080
-```
-*(Tip: If accessing from outside home Wi-Fi, run over [Tailscale](https://tailscale.com) or Cloudflare Tunnel).*
-
-### Step 2: Open and Run the iOS Companion App
+### Step 1: Open and Run the iOS Companion App
 1. Open `hermes-companion-ios.xcworkspace` in Xcode:
    ```bash
    open hermes-companion-ios.xcworkspace
@@ -198,13 +178,22 @@ python3 server/relay.py --port 8080
 2. Select your iPhone and press **Run (⌘R)**.
 3. On first launch:
    - Select **"Allow While Using App"**, then tap the in-app banner to upgrade to **"Always Allow"** in iOS Settings (required by iOS to wake closed apps).
-4. Go to **Hermes Config** tab in the app:
-   - Set **Server URL** to your relay (e.g. `http://<your-mac-ip-or-tailscale>:8080/api/location`).
-   - Tap **Send Test Ping** to verify connectivity.
-   - Toggle **Auto-Sync Location Updates** to ON.
+4. Make sure the app is signed into iCloud with the **same Apple ID** as the Mac and the
+   `iCloud.com.hermes.HermesCompanion` container is enabled in the provisioning profile,
+   so the synced file reaches the Mac's iCloud container.
+
+### Step 2: Verify the Mac-side Reading
+macOS syncs the file to
+`~/Library/Mobile Documents/iCloud~com~hermes~HermesCompanion/Documents/latest_location.json`.
+Confirm it is readable:
+```bash
+python3 server/scripts/rukara_location.py
+```
+
+> **Note on Timestamps & Timezones:** The raw JSON timestamp uses ISO-8601 UTC format (`...Z`). For example, `09:53:05Z` represents `11:53:05` local time in Germany (CEST / UTC+2). All client scripts calculate data freshness relative to `UTC now`, ensuring precise age calculations regardless of local timezones.
 
 ### Step 3: Run the Integration Test
-Verify the whole loop (iOS ping, upload, latest fetch, and MCP stdio call):
+Verify the iCloud parsing and the MCP tools (no relay, no network):
 ```bash
 python3 server/test_integration.py
 ```

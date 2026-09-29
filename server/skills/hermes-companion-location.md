@@ -21,11 +21,11 @@ Rukara no solo recibe coordenadas GPS brutas (`lat, lon`), sino que **entiende e
 ```text
 [ iPhone de Daniel ]
    │  (Hermes Companion iOS: CoreLocation tri-capa, geocercas, wakeups en segundo plano)
+   │  Escribe JSON (location + health) en su contenedor iCloud/CloudKit
    ▼
-[ Canales de Ingesta en macOS ]
-   ├── (A) iCloud Ubiquitous Sync: ~/Library/Mobile Documents/... (cero red, cero puertos)
-   ├── (B) Base SQLite local: /Users/daniel/Workspace/hermes-companion-ios/server/locations.sqlite3
-   └── (C) Relay HTTP opcional: http://127.0.0.1:8080/api/location/latest
+[ iCloud Drive / CloudKit Sync — ÚNICO transporte ]
+   │  macOS materializa el archivo localmente (cero red en la Mac, cero puertos, sin NAT)
+   └── ~/Library/Mobile Documents/iCloud~com~hermes~HermesCompanion/Documents/latest_location.json
    │
    ▼
 [ Motor Semántico de Lugares (places.py / state/places.json) ]

@@ -27,12 +27,18 @@
 	<string>1</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSHealthShareUsageDescription</key>
+	<string>Hermes Companion reads your sleep stages, workouts, heart rate, and daily activity from Apple Health so your Hermes companion agent can understand your physical recovery, workout status, and sleep quality.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>Hermes Companion connects to Apple Health to synchronize your health telemetry with your personal companion.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>Hermes Companion needs location access at all times to report your position and trigger companion automations even when the app is closed or running in the background.</string>
 	<key>NSLocationAlwaysUsageDescription</key>
 	<string>Hermes Companion needs continuous location access even when the app is closed to record significant movements and wake up on arrivals/departures.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Hermes Companion needs your location to provide accurate companion updates and map your coordinates.</string>
+	<key>NSMotionUsageDescription</key>
+	<string>Hermes Companion reads motion activity (stationary, walking, running, driving) so your companion agent knows whether you are moving right now, even when the location fix is a few minutes old.</string>
 	<key>NSUbiquitousContainers</key>
 	<dict>
 		<key>iCloud.com.hermes.HermesCompanion</key>

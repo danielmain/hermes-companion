@@ -1,156 +1,171 @@
 #!/usr/bin/env python3
 """
-Integration test for Hermes Location Relay and MCP Server
+Integration test for the Hermes Companion macOS side.
+
+The one and only transport from the iPhone is iCloud Drive / CloudKit sync, so
+this test exercises that path end to end, with no relay, no TCP and no network:
+
+  1. Raw payload -> formatted Hermes location schema (place context included).
+  2. Raw payload -> formatted Hermes health schema.
+  3. client.get_user_location / get_user_health reading a synced iCloud file.
+  4. Combined physical context (location + health).
+  5. MCP tools answered over JSON-RPC (get_user_location, get_user_health,
+     list_known_places).
+
+Fixtures are written to /tmp and injected at the top of the client's iCloud path
+list, so the test is hermetic and never touches the real synced container.
 """
 
-import subprocess
-import time
-import urllib.request
 import json
 import os
 import sys
+from pathlib import Path
+
+REPO = "/Users/daniel/Workspace/hermes-companion-ios"
+SERVER = os.path.join(REPO, "server")
+sys.path.insert(0, SERVER)
+
+LOCATION_FIXTURE = {
+    "id": "ck-fix-001",
+    "timestamp": "2026-09-28T21:40:55Z",
+    "latitude": 48.858844,
+    "longitude": 2.294351,
+    "altitude": 35.0,
+    "horizontal_accuracy": 3.2,
+    "speed_mps": 1.2,
+    "course": 90.0,
+    "source": "CloudKit Private DB",
+    "battery_level": 0.95,
+    "battery_state": "charging",
+    "app_state": "background",
+    "device_name": "Daniel's iPhone",
+}
+
+HEALTH_FIXTURE = {
+    "id": "ck-health-001",
+    "device_name": "Daniel's iPhone",
+    "timestamp": "2026-09-29T08:30:00Z",
+    "recovery_status": "recovered",
+    "step_count_today": 8450,
+    "active_calories_today": 450.0,
+    "resting_heart_rate_bpm": 58.0,
+    "heart_rate_variability_sdnn": 62.0,
+    "sleep": {
+        "total_sleep_minutes": 465,
+        "total_hours": 7.75,
+        "formatted_duration": "7h 45m",
+        "deep_sleep_minutes": 95,
+        "rem_sleep_minutes": 110,
+        "quality_rating": "excellent",
+        "summary": "Slept 7h 45m (Excellent Rest), 1h 35m deep, 1h 50m REM",
+    },
+    "workout": {
+        "workout_type": "Strength Training",
+        "category": "strength",
+        "duration_minutes": 52,
+        "active_calories": 420.0,
+        "is_currently_active": False,
+        "minutes_since_completion": 25,
+        "phase": "just_finished",
+        "summary": "Strength Training (52m, 420 kcal) finished 25m ago",
+    },
+    "conversational_context": {
+        "sleep_insight": "I saw you had a wonderful 7h 45m of sleep last night! Feeling fully recharged today?",
+        "workout_insight": "You just wrapped up your Strength Training workout (52m, 420 kcal)! How are you feeling?",
+        "nutrition_reminder": "Time for your post-workout protein! Make sure you get 30-40g of protein and plenty of water in.",
+        "recovery_summary": "Well Recovered",
+    },
+    "suggested_openers": [
+        "Time for your post-workout protein! Make sure you get 30-40g of protein and plenty of water in."
+    ],
+}
+
 
 def run_test():
-    print("1. Starting relay server on port 8089...")
-    server_proc = subprocess.Popen(
-        [sys.executable, "server/relay.py", "--port", "8089"],
-        cwd="/Users/daniel/Workspace/hermes-companion-ios",
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE
-    )
-    time.sleep(1)
+    import client
+
+    temp_loc = "/tmp/hermes_test_latest_location.json"
+    temp_health = "/tmp/hermes_test_latest_health.json"
+
+    saved_loc_paths = list(client.ICLOUD_CONTAINER_PATHS)
+    saved_health_paths = list(client.ICLOUD_HEALTH_CONTAINER_PATHS)
+    client.ICLOUD_CONTAINER_PATHS.insert(0, Path(temp_loc))
+    client.ICLOUD_HEALTH_CONTAINER_PATHS.insert(0, Path(temp_health))
 
     try:
-        print("2. Simulating iOS app sending test ping...")
-        ping_payload = {
-            "type": "ping",
-            "device_name": "Daniel's iPhone",
-            "timestamp": "2026-09-28T21:40:00Z"
-        }
-        req = urllib.request.Request(
-            "http://127.0.0.1:8089/api/location",
-            data=json.dumps(ping_payload).encode("utf-8"),
-            headers={"Content-Type": "application/json"}
-        )
-        with urllib.request.urlopen(req) as resp:
-            data = json.loads(resp.read().decode())
-            print(f"   Ping response: {data}")
-            assert data.get("status") == "pong"
+        print("1. Formatting a raw CloudKit location payload...")
+        parsed = client.format_location_payload(LOCATION_FIXTURE, channel_name="iCloud Test")
+        assert parsed is not None
+        assert parsed["latitude"] == 48.858844
+        assert parsed["accuracy_meters"] == 3.2
+        assert parsed["battery_percent"] == 95
+        assert "maps_link" in parsed
+        assert "suggested_greeting" in parsed
+        print(f"   Location format OK: {parsed['coordinates']} -> {parsed.get('place_name')}")
 
-        print("3. Simulating iOS app waking from closed state and transmitting location...")
-        location_payload = {
-            "device_id": "TEST-DEVICE-UUID-1234",
-            "device_name": "Daniel's iPhone",
-            "sent_at": "2026-09-28T21:41:00Z",
-            "locations": [
-                {
-                    "id": "fix-001",
-                    "timestamp": "2026-09-28T21:40:55Z",
-                    "latitude": 52.520008,
-                    "longitude": 13.404954,
-                    "altitude": 34.2,
-                    "horizontal_accuracy": 4.5,
-                    "speed_mps": 0.0,
-                    "course": 0.0,
-                    "source": "Launch (Woke App)",
-                    "battery_level": 0.88,
-                    "battery_state": "unplugged",
-                    "app_state": "resumed_terminated"
-                }
-            ]
-        }
-        req2 = urllib.request.Request(
-            "http://127.0.0.1:8089/api/location",
-            data=json.dumps(location_payload).encode("utf-8"),
-            headers={"Content-Type": "application/json"}
-        )
-        with urllib.request.urlopen(req2) as resp:
-            data = json.loads(resp.read().decode())
-            print(f"   Upload response: {data}")
-            assert data.get("ingested") == 1
+        print("2. Formatting a raw health payload...")
+        parsed_h = client.format_health_payload(HEALTH_FIXTURE, channel_name="iCloud Test")
+        assert parsed_h is not None
+        assert parsed_h["sleep"]["quality_rating"] == "excellent"
+        assert parsed_h["workout"]["workout_type"] == "Strength Training"
+        print(f"   Health format OK: {parsed_h['sleep']['formatted_duration']}, {parsed_h['workout']['summary']}")
 
-        print("4. Fetching latest location via REST API (what Hermes Agent calls)...")
-        with urllib.request.urlopen("http://127.0.0.1:8089/api/location/latest") as resp:
-            latest = json.loads(resp.read().decode())
-            print(f"   Latest location fetched:")
-            print(f"   • Coordinates: {latest['coordinates']}")
-            print(f"   • Accuracy: {latest['accuracy_meters']}m")
-            print(f"   • Trigger Source: {latest['trigger_source']}")
-            print(f"   • App State: {latest['app_state']}")
-            print(f"   • Battery: {latest['battery_percent']}%")
-            assert latest["latitude"] == 52.520008
+        print("3. Writing synced iCloud fixtures and reading them zero-network...")
+        with open(temp_loc, "w", encoding="utf-8") as f:
+            json.dump(LOCATION_FIXTURE, f)
+        with open(temp_health, "w", encoding="utf-8") as f:
+            json.dump(HEALTH_FIXTURE, f)
 
-        print("5. Testing MCP Server JSON-RPC stdio call...")
-        mcp_env = os.environ.copy()
-        mcp_env["HERMES_RELAY_URL"] = "http://127.0.0.1:8089"
-        mcp_proc = subprocess.Popen(
-            [sys.executable, "server/mcp_server.py"],
-            cwd="/Users/daniel/Workspace/hermes-companion-ios",
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            env=mcp_env
-        )
+        loc = client.get_user_location(prefer_icloud=True)
+        assert loc is not None and loc["latitude"] == 48.858844
+        print(f"   get_user_location OK: {loc['coordinates']} ({loc['age_human']})")
+        health = client.get_user_health(prefer_icloud=True)
+        assert health is not None and health["sleep"]["total_sleep_minutes"] == 465
+        print(f"   get_user_health OK: {health['sleep']['formatted_duration']}")
 
-        init_msg = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}) + "\n"
-        mcp_proc.stdin.write(init_msg.encode("utf-8"))
-        mcp_proc.stdin.flush()
-        init_resp = json.loads(mcp_proc.stdout.readline().decode("utf-8"))
-        print(f"   MCP initialize: {init_resp['result']['serverInfo']}")
+        print("4. Resolving combined physical context...")
+        ctx = client.get_user_physical_context(prefer_icloud=True)
+        assert ctx["location"] is not None and ctx["health"] is not None
+        print("   get_user_physical_context OK: location + health")
 
-        tool_msg = json.dumps({
-            "jsonrpc": "2.0",
-            "id": 2,
-            "method": "tools/call",
-            "params": {"name": "get_user_location", "arguments": {}}
-        }) + "\n"
-        mcp_proc.stdin.write(tool_msg.encode("utf-8"))
-        mcp_proc.stdin.flush()
-        tool_resp = json.loads(mcp_proc.stdout.readline().decode("utf-8"))
-        print(f"   MCP tool call result:\n{tool_resp['result']['content'][0]['text']}")
+        print("5. Querying MCP tools over JSON-RPC (no relay)...")
+        import mcp_server
 
-        mcp_proc.terminate()
+        resp = mcp_server.process_message({
+            "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {},
+        })
+        print(f"   MCP initialize: {resp['result']['serverInfo']}")
 
-        print("6. Testing client.py iCloud container parsing and zero-network reading...")
-        from client import format_location_payload, get_user_location
-        test_icloud_json = {
-            "id": "ck-test-fix-777",
-            "timestamp": "2026-09-28T21:40:55Z",
-            "latitude": 48.858844,
-            "longitude": 2.294351,
-            "altitude": 35.0,
-            "horizontal_accuracy": 3.2,
-            "speed_mps": 1.2,
-            "course": 90.0,
-            "source": "CloudKit Private DB",
-            "battery_level": 0.95,
-            "battery_state": "charging",
-            "app_state": "background",
-            "device_name": "Daniel's iPhone 16"
-        }
-        temp_icloud_file = "/tmp/hermes_latest_location.json"
-        with open(temp_icloud_file, "w", encoding="utf-8") as f:
-            json.dump(test_icloud_json, f)
+        loc_res = mcp_server.process_message({
+            "jsonrpc": "2.0", "id": 2, "method": "tools/call",
+            "params": {"name": "get_user_location", "arguments": {}},
+        })["result"]
+        assert "error" not in loc_res, loc_res
+        loc_text = loc_res["content"][0]["text"]
+        assert "48.858844" in loc_text
+        print(f"   MCP get_user_location OK:\n{loc_text}")
 
-        parsed_loc = get_user_location(prefer_icloud=True)
-        assert parsed_loc is not None
-        assert parsed_loc["latitude"] == 48.858844
-        assert parsed_loc["accuracy_meters"] == 3.2
-        assert parsed_loc["battery_percent"] == 95
-        assert "maps_link" in parsed_loc
-        print(f"   Successfully read from iCloud local sync cache:")
-        print(f"   • Coordinates: {parsed_loc['coordinates']}")
-        print(f"   • Accuracy: ±{parsed_loc['accuracy_meters']}m")
-        print(f"   • Source Channel: {parsed_loc['source_channel']}")
+        health_res = mcp_server.process_message({
+            "jsonrpc": "2.0", "id": 3, "method": "tools/call",
+            "params": {"name": "get_user_health", "arguments": {}},
+        })["result"]
+        assert "Strength Training" in health_res["content"][0]["text"]
+        print(f"   MCP get_user_health OK:\n{health_res['content'][0]['text']}")
 
-        # Clean up temp file
-        if os.path.exists(temp_icloud_file):
-            os.remove(temp_icloud_file)
+        places_res = mcp_server.process_message({
+            "jsonrpc": "2.0", "id": 4, "method": "tools/call",
+            "params": {"name": "list_known_places", "arguments": {}},
+        })["result"]
+        print(f"   MCP list_known_places OK:\n{places_res['content'][0]['text']}")
 
         print("\nAll integration tests passed successfully!")
     finally:
-        server_proc.terminate()
-        server_proc.wait()
+        client.ICLOUD_CONTAINER_PATHS[:] = saved_loc_paths
+        client.ICLOUD_HEALTH_CONTAINER_PATHS[:] = saved_health_paths
+        for p in (temp_loc, temp_health):
+            if os.path.exists(p):
+                os.remove(p)
+
 
 if __name__ == "__main__":
     run_test()

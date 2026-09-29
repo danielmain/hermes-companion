@@ -1,5 +1,6 @@
 import Foundation
 import CoreLocation
+import CoreMotion
 import UIKit
 import Combine
 
@@ -16,6 +17,8 @@ public final class LocationManager: NSObject, ObservableObject {
     @Published public private(set) var activeGeofenceRadius: Double?
     @Published public private(set) var wasLaunchedFromTerminated: Bool = false
     @Published public private(set) var lastErrorMessage: String?
+    @Published public private(set) var currentMotionActivity: MotionActivity = .unknown
+    @Published public private(set) var motionUpdatedAt: Date?
     @Published public var configuration: TrackingConfiguration {
         didSet {
             saveConfiguration()
@@ -28,6 +31,10 @@ public final class LocationManager: NSObject, ObservableObject {
     private var lastRecordedCoordinate: CLLocationCoordinate2D?
     private var currentGeofenceRegion: CLCircularRegion?
     private let userDefaultsKey = "com.hermes.companion.trackingConfig"
+
+    // MARK: - CoreMotion (real motion state, independent of the GPS fix age)
+    private let motionManager = CMMotionActivityManager()
+    private var currentMotionConfidence: String = "unknown"
 
     private override init() {
         // Load configuration
@@ -153,12 +160,19 @@ public final class LocationManager: NSObject, ObservableObject {
             locationManager.desiredAccuracy = kCLLocationAccuracyBest
             locationManager.distanceFilter = configuration.distanceFilterMeters
             locationManager.startUpdatingLocation()
+            locationManager.requestLocation()
 
         case .batterySaver:
             // In battery saver mode, we don't keep GPS radio open constantly;
             // we rely on Significant Location Changes + Visits + Geofencing
             locationManager.stopUpdatingLocation()
         }
+
+        // Start real motion activity monitoring (walking/running/driving/stationary)
+        startMotionUpdates()
+
+        // Immediately trigger sync for any existing or latest records
+        triggerRecordSync()
 
         LocationStore.shared.logDiagnostic(
             title: "Tracking Started",
@@ -177,6 +191,8 @@ public final class LocationManager: NSObject, ObservableObject {
 
         // Clear any active geofence
         clearDynamicGeofence()
+
+        motionManager.stopActivityUpdates()
 
         isSignificantMonitoringActive = false
         isVisitsMonitoringActive = false
@@ -235,6 +251,58 @@ public final class LocationManager: NSObject, ObservableObject {
             currentGeofenceRegion = nil
             activeGeofenceRadius = nil
         }
+    }
+
+    // MARK: - Motion Activity (CoreMotion)
+    private func startMotionUpdates() {
+        guard CMMotionActivityManager.isActivityAvailable() else {
+            LocationStore.shared.logDiagnostic(
+                title: "Motion Activity Unavailable",
+                details: "CMMotionActivityManager is not available on this device (e.g. Simulator).",
+                severity: .warning
+            )
+            return
+        }
+
+        motionManager.startActivityUpdates(to: OperationQueue.main) { [weak self] activity in
+            guard let self = self, let activity = activity else { return }
+            self.applyMotionActivity(activity)
+        }
+
+        LocationStore.shared.logDiagnostic(
+            title: "Motion Monitoring Started",
+            details: "CMMotionActivity updates enabled (stationary/walking/running/automotive)",
+            severity: .success
+        )
+    }
+
+    private func applyMotionActivity(_ activity: CMMotionActivity) {
+        let mapped: MotionActivity
+        if activity.automotive {
+            mapped = .automotive
+        } else if activity.cycling {
+            mapped = .cycling
+        } else if activity.running {
+            mapped = .running
+        } else if activity.walking {
+            mapped = .walking
+        } else if activity.stationary {
+            mapped = .stationary
+        } else {
+            mapped = .unknown
+        }
+
+        let confidence: String
+        switch activity.confidence {
+        case .high: confidence = "high"
+        case .medium: confidence = "medium"
+        case .low: confidence = "low"
+        @unknown default: confidence = "low"
+        }
+
+        self.currentMotionActivity = mapped
+        self.currentMotionConfidence = confidence
+        self.motionUpdatedAt = activity.startDate
     }
 
     private func saveConfiguration() {
@@ -321,7 +389,10 @@ extension LocationManager: CLLocationManagerDelegate {
                 source: source,
                 appState: self.currentAppStateString,
                 batteryLevel: self.currentBatteryLevel,
-                batteryState: self.currentBatteryStateString
+                batteryState: self.currentBatteryStateString,
+                motionActivity: self.currentMotionActivity,
+                motionTimestamp: self.motionUpdatedAt,
+                motionConfidence: self.currentMotionConfidence
             )
 
             self.latestRecord = record
@@ -332,7 +403,7 @@ extension LocationManager: CLLocationManagerDelegate {
                 self.setupDynamicGeofence(around: location.coordinate)
             }
 
-            // Sync with configured destinations (CloudKit / Webhook)
+            // Sync with CloudKit
             self.triggerRecordSync()
         }
     }
@@ -355,7 +426,10 @@ extension LocationManager: CLLocationManagerDelegate {
                 source: source,
                 appState: self.currentAppStateString,
                 batteryLevel: self.currentBatteryLevel,
-                batteryState: self.currentBatteryStateString
+                batteryState: self.currentBatteryStateString,
+                motionActivity: self.currentMotionActivity,
+                motionTimestamp: self.motionUpdatedAt,
+                motionConfidence: self.currentMotionConfidence
             )
 
             self.latestRecord = record
@@ -366,7 +440,7 @@ extension LocationManager: CLLocationManagerDelegate {
                 severity: .info
             )
 
-            // Sync with configured destinations (CloudKit / Webhook)
+            // Sync with CloudKit
             self.triggerRecordSync()
         }
     }
@@ -374,11 +448,9 @@ extension LocationManager: CLLocationManagerDelegate {
     private func triggerRecordSync() {
         guard configuration.autoSyncEnabled else { return }
         let records = LocationStore.shared.records
-        if configuration.syncDestination.isWebhookEnabled {
-            SyncManager.shared.syncPendingRecords(config: configuration, records: records)
-        }
-        if configuration.syncDestination.isCloudKitEnabled {
-            CloudKitSyncManager.shared.syncPendingRecords(config: configuration, records: records)
+        CloudKitSyncManager.shared.syncPendingRecords(config: configuration, records: records)
+        if let health = HealthKitManager.shared.latestSnapshot {
+            CloudKitSyncManager.shared.syncHealthRecord(config: configuration, snapshot: health)
         }
     }
 
