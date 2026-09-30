@@ -22,9 +22,10 @@ DB_PATH = Path(__file__).resolve().parent / "locations.sqlite3"
 LOVE_PROFILE_PLACES = Path.home() / ".hermes/profiles/love/state/places.json"
 PLACES_JSON_PATH = LOVE_PROFILE_PLACES if LOVE_PROFILE_PLACES.parent.is_dir() else Path(__file__).resolve().parent / "places.json"
 
-# The iPhone is not a real-time GPS feed: it reports on movement / geofence events to save
-# battery, so the latest fix can be minutes old. Past this age we must not present the old
-# fix as the user's current state (e.g. "you're moving") — only as the last known position.
+# GPS is write-on-change: latest_location.json is rewritten only when coordinates move
+# (~10 m). The timestamp is therefore minutes-since-last-move, not "data went stale".
+# Sitting still for hours is expected and means he is still at that place (a geofence
+# would have fired if he left). This threshold only labels a long stay, never "lost".
 STALE_FIX_SECONDS = 600
 
 # CoreMotion activity (stationary/walking/running/driving) is refreshed independently of the
@@ -378,20 +379,22 @@ class PlacesManager:
         motion_age_seconds: int = 999999,
     ) -> Dict[str, Any]:
         """
-        Synthesize semantic context: place, activity, movement (now vs last known) and a greeting.
+        Synthesize semantic context: place, activity, movement, and a greeting.
 
-        Two independent signals with different freshness:
-          - GPS fix (age_seconds): WHERE he is; may be minutes old (battery saving).
-          - CoreMotion activity (motion_age_seconds): whether he is moving NOW; refreshed
-            independently of the GPS fix, so it is often much fresher.
+        Two independent signals:
+          - GPS (age_seconds): WHERE he is. Write-on-change: the file is rewritten only
+            when coordinates move (~10 m). Age is minutes since last move. He is still
+            at that place until GPS writes again (a geofence would fire if he left).
+          - CoreMotion (motion_age_seconds): whether he is moving NOW (walking/running/
+            driving/stationary), refreshed independently of GPS.
 
         Rules:
-          - fresh motion is authoritative for movement (stationary/walking/running/driving now);
-          - without fresh motion, only a fresh GPS fix's speed may claim movement;
-          - a stale fix is "last known", never present certainty.
+          - GPS place is current until a new coordinate is written.
+          - Fresh motion is authoritative for moving vs staying *right now*.
+          - A long GPS age while at a place means he has been there that long.
         """
-        stale = age_seconds > STALE_FIX_SECONDS
-        fix_age_minutes = int(age_seconds // 60) if age_seconds else 0
+        long_stay = age_seconds > STALE_FIX_SECONDS
+        minutes_since_last_move = int(age_seconds // 60) if age_seconds else 0
 
         valid_motion = motion_activity in ("stationary", "walking", "running", "cycling", "automotive")
         motion_fresh = valid_motion and motion_age_seconds <= MOTION_FRESH_SECONDS
@@ -404,22 +407,48 @@ class PlacesManager:
         }.get(motion_activity)
 
         fix_moving = is_moving or speed_kmh > 3.0
-        is_moving_now = motion_moving if motion_fresh else (fix_moving and not stale)
+        # Without fresh motion, GPS speed is only meaningful on a *recent* write
+        # (he just moved). An old write with leftover speed is not "moving now".
+        is_moving_now = motion_moving if motion_fresh else (fix_moving and not long_stay)
 
         base = {
-            "is_stale": stale,
-            "fix_age_minutes": fix_age_minutes,
+            "is_stale": long_stay,
+            "fix_age_minutes": minutes_since_last_move,
+            "minutes_since_last_move": minutes_since_last_move,
             "motion_activity": motion_activity if valid_motion else "unknown",
             "motion_age_seconds": motion_age_seconds,
             "motion_fresh": motion_fresh,
             "is_moving_now": is_moving_now,
         }
 
-        # 1) Moving now (fresh motion, or a fresh fix with speed).
+        known = self.match_known_place(latitude, longitude)
+
+        stay_txt = ""
+        if minutes_since_last_move >= 1:
+            stay_txt = f" (hasn't moved in ~{minutes_since_last_move} min)"
+
+        # 1) Moving now. GPS still answers WHERE (last written coordinate).
         if is_moving_now:
+            if known and motion_label in ("walking", "running", "cycling"):
+                p_name = known["place_name"]
+                act = f"{motion_label} at {p_name}"
+                summary = f"At {p_name}, {motion_label} now{stay_txt}"
+                return {
+                    **base,
+                    "place_name": p_name,
+                    "place_category": known["place_category"],
+                    "activity": act,
+                    "context_summary": summary,
+                    "suggested_greeting": f"Hey Daniel, I see you're at {p_name} — looks like you're {motion_label}. How is it going?",
+                    "is_at_known_place": True,
+                    "known_place_id": known["place_id"],
+                    "distance_to_center_meters": known["distance_meters"],
+                    "was_moving_at_fix": True,
+                }
+
             if motion_fresh and motion_label:
                 act = motion_label
-                summary = f"Moving now ({act})"
+                summary = f"Moving now ({act}); last GPS write {minutes_since_last_move} min ago"
             elif speed_kmh > 35.0:
                 act = "driving or transit"
                 summary = f"In transit (driving) at {speed_kmh:.1f} km/h"
@@ -441,38 +470,12 @@ class PlacesManager:
                 "was_moving_at_fix": True,
             }
 
-        # 2) Not moving now, and the (stale) last fix showed movement: we lost track of him.
-        if not motion_fresh and stale and fix_moving:
-            return {
-                **base,
-                "place_name": "In Transit (last known)",
-                "place_category": "transit",
-                "activity": motion_label or "moving",
-                "context_summary": (
-                    f"Last fix {fix_age_minutes} min ago showed movement at {speed_kmh:.1f} km/h "
-                    "— current location unknown"
-                ),
-                "suggested_greeting": (
-                    f"Your last fix had you moving {fix_age_minutes} min ago; "
-                    "I don't know where you are now."
-                ),
-                "is_at_known_place": False,
-                "duration_stationary": None,
-                "was_moving_at_fix": True,
-            }
-
-        # 3) Stationary: certain ("now") only when motion is fresh; otherwise last known.
         stationary_now = motion_fresh and not motion_moving
 
-        known = self.match_known_place(latitude, longitude)
         if known:
             p_name = known["place_name"]
             p_cat = known["place_category"]
             act = known["activity"]
-
-            duration_txt = ""
-            if age_seconds > 60:
-                duration_txt = f" (stationary for ~{age_seconds // 60} min)"
 
             if p_cat == "gym":
                 greeting = "Hey Daniel, I see you are at the gym, how is it doing?"
@@ -485,12 +488,12 @@ class PlacesManager:
             else:
                 greeting = f"Hey Daniel, I see you're at {p_name}, how is it going?"
 
-            if stationary_now:
-                summary = f"At {p_name} (stationary now; last position {fix_age_minutes} min ago)"
-            elif stale:
-                summary = f"Last known position: at {p_name} (~{fix_age_minutes} min ago, likely still there)"
+            if stationary_now and minutes_since_last_move >= 1:
+                summary = f"At {p_name} (still there; hasn't moved in ~{minutes_since_last_move} min)"
+            elif stationary_now:
+                summary = f"At {p_name} (still there)"
             else:
-                summary = f"At {p_name}{duration_txt}"
+                summary = f"At {p_name}{stay_txt}"
 
             return {
                 **base,
@@ -505,7 +508,7 @@ class PlacesManager:
                 "was_moving_at_fix": False,
             }
 
-        # 4) Reverse geocoding fallback.
+        # Reverse geocoding fallback. Same write-on-change rule: he is still there.
         rev = self.reverse_geocode(latitude, longitude)
         cat = rev.get("category", "general")
         disp = rev.get("display_name", "")
@@ -532,12 +535,12 @@ class PlacesManager:
             act = f"around {short_name}"
             greeting = f"Hey Daniel, I see you're around {short_name}, how is it going?"
 
-        if stationary_now:
-            summary = f"Around {short_name} (stationary now; last position {fix_age_minutes} min ago)"
-        elif stale:
-            summary = f"Last known position: around {short_name} (~{fix_age_minutes} min ago)"
+        if stationary_now and minutes_since_last_move >= 1:
+            summary = f"Around {short_name} (still there; hasn't moved in ~{minutes_since_last_move} min)"
+        elif stationary_now:
+            summary = f"Around {short_name} (still there)"
         else:
-            summary = f"Around {short_name} ({cat})"
+            summary = f"Around {short_name} ({cat}){stay_txt}"
 
         return {
             **base,

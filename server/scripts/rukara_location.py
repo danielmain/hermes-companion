@@ -82,7 +82,8 @@ def cmd_status(as_json: bool = False) -> int:
     print(f"• Actividad: {activity}")
     print(f"• Movimiento: {'En tránsito a ' + str(speed) + ' km/h' if moving else 'Estacionario'}")
     print(f"• Batería: {battery}% ({bat_state})")
-    print(f"• Coordenadas: {coords} (hace {age})")
+    print(f"• Coordenadas: {coords}")
+    print(f"• Último movimiento GPS: hace {age} (el archivo solo se reescribe cuando se mueve ~10 m; sigue en este lugar)")
     if greeting:
         print(f"• Sugerencia conversacional: \"{greeting}\"")
     return 0

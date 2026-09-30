@@ -146,6 +146,9 @@ struct SettingsView: View {
                             in: 0...50,
                             step: 5
                         )
+                        Text("Fixes closer than this are discarded: no new record and no iCloud rewrite.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
                     }
 
                     Toggle("Show Background Indicator Bar", isOn: $locationManager.configuration.backgroundIndicatorEnabled)

@@ -89,8 +89,9 @@ When queried, the location payload provides the following fields:
 | `motion_age_seconds` | `int` | Age of the motion reading; small means it tells what he is doing *now*. |
 | `motion_fresh` | `boolean` | `true` if the motion reading is recent enough to be authoritative for the present. |
 | `is_moving_now` | `boolean` | Best estimate of movement *now*: fresh motion wins, else a fresh fix's speed. |
-| `is_stale` | `boolean` | `true` if the GPS fix is old (position is last known, not present certainty). |
-| `fix_age_minutes` | `int` | Age of the GPS fix in minutes. |
+| `is_stale` | `boolean` | `true` if GPS has not been rewritten for >10 min — he has been in this position that long (write-on-change), not that the place is unknown. |
+| `fix_age_minutes` | `int` | Minutes since GPS last changed (minutes since he last moved). |
+| `minutes_since_last_move` | `int` | Same as `fix_age_minutes`: last coordinate rewrite. |
 | `recorded_at` | `string` | ISO 8601 UTC timestamp with `Z` suffix (e.g., `2026-09-29T09:53:05Z`). Note: time is UTC (Zulu), not local time. |
 | `age_seconds` | `int` | Elapsed seconds since this fix was recorded (calculated against `UTC now`). |
 | `age_human` | `string` | Human-readable relative age (e.g., `"42s ago"`, `"12m ago"`). |
@@ -99,7 +100,7 @@ When queried, the location payload provides the following fields:
 | `trigger_source` | `string` | iOS trigger: `"SignificantLocation"`, `"GeofenceExit"`, `"Visit"`, `"StandardGPS"`. |
 | `maps_link` | `string` | Apple Maps URL pin for this exact coordinate. |
 
-> **Note on Timestamps & Timezones:** The raw timestamp in the iCloud JSON is strictly ISO-8601 UTC (`...Z`). For example, `09:53:05Z` equals `11:53:05` in Germany (CEST / UTC+2). The Python client and MCP server automatically parse this as UTC and compare against `datetime.now(timezone.utc)` so `age_seconds` is always accurate.
+> **Note on Timestamps & Timezones:** The raw timestamp in the iCloud JSON is strictly ISO-8601 UTC (`...Z`). For example, `09:53:05Z` equals `11:53:05` in Germany (CEST / UTC+2). The Python client and MCP server automatically parse this as UTC and compare against `datetime.now(timezone.utc)` so `age_seconds` is always accurate. GPS is write-on-change: `age_seconds` is time since Daniel last *moved*, not time since the last radio tick. A growing age at a known place means he is still there.
 
 ### Apple Health Telemetry Schema (`get_user_health()`)
 
@@ -189,7 +190,7 @@ Store the current `(latitude, longitude, timestamp, last_workout_id, sleep_date)
 3. **Direct Questions**:
    - *"How did I sleep?"* $\to$ Call `get_user_health()`, report duration, deep sleep, and quality.
    - *"Did I exercise today?"* $\to$ Call `get_user_health()`, report workout type, duration, calories burned.
-   - *"Where am I?"* $\to$ Call `get_user_location()`, report place, activity, address, and battery.
+   - *"Where am I?"* $\to$ Call `get_user_location()`, report place, activity, and battery in the **present tense**. GPS age is minutes since he last moved; do not treat it as a lost fix.
 ```
 
 ---

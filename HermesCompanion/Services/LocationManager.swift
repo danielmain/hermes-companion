@@ -3,6 +3,7 @@ import CoreLocation
 import CoreMotion
 import UIKit
 import Combine
+import os
 
 public final class LocationManager: NSObject, ObservableObject {
     public static let shared = LocationManager()
@@ -31,6 +32,7 @@ public final class LocationManager: NSObject, ObservableObject {
     private var lastRecordedCoordinate: CLLocationCoordinate2D?
     private var currentGeofenceRegion: CLCircularRegion?
     private let userDefaultsKey = "com.hermes.companion.trackingConfig"
+    private let logger = Logger(subsystem: "com.hermes.HermesCompanion", category: "LocationManager")
 
     // MARK: - CoreMotion (real motion state, independent of the GPS fix age)
     private let motionManager = CMMotionActivityManager()
@@ -346,6 +348,59 @@ public final class LocationManager: NSObject, ObservableObject {
         @unknown default: return "unknown"
         }
     }
+
+    /// Minimum displacement required before a GPS fix is persisted. Floor of 1 m absorbs identical ticks even when the slider is 0.
+    private var persistDistanceThreshold: Double {
+        max(configuration.distanceFilterMeters, 1.0)
+    }
+
+    private var lastPersistedCoordinate: CLLocationCoordinate2D? {
+        if let lastRecordedCoordinate {
+            return lastRecordedCoordinate
+        }
+        return LocationStore.shared.records.first?.coordinate
+    }
+
+    /// Writes a GPS record and touches iCloud/CloudKit files only when the coordinate has actually changed.
+    private func ingestLocation(_ location: CLLocation, source: LocationTriggerSource) {
+        currentLocation = location
+
+        let threshold = persistDistanceThreshold
+        if let last = lastPersistedCoordinate,
+           LocationRecord.isUnchangedGPS(from: last, to: location.coordinate, thresholdMeters: threshold) {
+            let displacement = LocationRecord.displacementMeters(from: last, to: location.coordinate)
+            logger.info("Skipped GPS persist (\(source.rawValue)): displacement \(displacement, format: .fixed(precision: 1))m is below \(threshold, format: .fixed(precision: 1))m. No record written, no file touched.")
+            return
+        }
+
+        let record = LocationRecord(
+            location: location,
+            source: source,
+            appState: currentAppStateString,
+            batteryLevel: currentBatteryLevel,
+            batteryState: currentBatteryStateString,
+            motionActivity: currentMotionActivity,
+            motionTimestamp: motionUpdatedAt,
+            motionConfidence: currentMotionConfidence
+        )
+
+        latestRecord = record
+        lastRecordedCoordinate = location.coordinate
+
+        let saved = LocationStore.shared.saveRecord(record, minDisplacementMeters: threshold)
+        guard saved else {
+            logger.info("LocationStore rejected duplicate GPS record (\(source.rawValue)). Files untouched.")
+            return
+        }
+
+        logger.info("Persisted GPS record (\(source.rawValue)) at (\(location.coordinate.latitude, format: .fixed(precision: 5)), \(location.coordinate.longitude, format: .fixed(precision: 5)))")
+
+        if location.speed < 1.0 {
+            setupDynamicGeofence(around: location.coordinate)
+        }
+
+        triggerRecordSync()
+    }
 }
 
 // MARK: - CLLocationManagerDelegate
@@ -373,9 +428,6 @@ extension LocationManager: CLLocationManagerDelegate {
         guard location.horizontalAccuracy >= 0 else { return }
 
         DispatchQueue.main.async {
-            self.currentLocation = location
-
-            // Determine trigger source
             var source: LocationTriggerSource = .standardGPS
             if self.wasLaunchedFromTerminated {
                 source = .wakeFromTerminated
@@ -383,28 +435,7 @@ extension LocationManager: CLLocationManagerDelegate {
             } else if self.configuration.trackingMode == .batterySaver {
                 source = .significantChange
             }
-
-            let record = LocationRecord(
-                location: location,
-                source: source,
-                appState: self.currentAppStateString,
-                batteryLevel: self.currentBatteryLevel,
-                batteryState: self.currentBatteryStateString,
-                motionActivity: self.currentMotionActivity,
-                motionTimestamp: self.motionUpdatedAt,
-                motionConfidence: self.currentMotionConfidence
-            )
-
-            self.latestRecord = record
-            LocationStore.shared.saveRecord(record)
-
-            // Setup rolling geofence when stopped
-            if location.speed < 1.0 { // Stationary or slow
-                self.setupDynamicGeofence(around: location.coordinate)
-            }
-
-            // Sync with CloudKit
-            self.triggerRecordSync()
+            self.ingestLocation(location, source: source)
         }
     }
 
@@ -421,27 +452,19 @@ extension LocationManager: CLLocationManagerDelegate {
                 timestamp: isArrival ? visit.arrivalDate : visit.departureDate
             )
 
-            let record = LocationRecord(
-                location: location,
-                source: source,
-                appState: self.currentAppStateString,
-                batteryLevel: self.currentBatteryLevel,
-                batteryState: self.currentBatteryStateString,
-                motionActivity: self.currentMotionActivity,
-                motionTimestamp: self.motionUpdatedAt,
-                motionConfidence: self.currentMotionConfidence
-            )
+            let previousCoordinate = self.lastPersistedCoordinate
+            self.ingestLocation(location, source: source)
 
-            self.latestRecord = record
-            LocationStore.shared.saveRecord(record)
+            if let previous = previousCoordinate,
+               LocationRecord.isUnchangedGPS(from: previous, to: location.coordinate, thresholdMeters: self.persistDistanceThreshold) {
+                return
+            }
+
             LocationStore.shared.logDiagnostic(
                 title: isArrival ? "Visit: Arrived at Place" : "Visit: Departed Place",
-                details: "Accuracy: \(record.formattedAccuracy)",
+                details: "Accuracy: \(String(format: "±%.1fm", location.horizontalAccuracy))",
                 severity: .info
             )
-
-            // Sync with CloudKit
-            self.triggerRecordSync()
         }
     }
 

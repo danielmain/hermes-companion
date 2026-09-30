@@ -147,7 +147,6 @@ def handle_call_tool(name, arguments):
 
         age_seconds = data.get("age_seconds", 0)
         age_minutes = age_seconds / 60.0
-        is_stale = age_minutes > max_age
 
         place_name = data.get("place_name", "Unknown location")
         category = data.get("place_category", "general")
@@ -176,21 +175,18 @@ def handle_call_tool(name, arguments):
             f"• Reported via: {data.get('trigger_source')} (App state: {data.get('app_state')})\n"
             f"• Maps Link: {data.get('maps_link')}\n"
         )
-        if data.get("is_stale"):
-            if data.get("is_moving_now"):
-                result_text += (
-                    f"\n⚠️ Position is NOT real-time (the iPhone reports on events to save battery): "
-                    f"last fix {data.get('fix_age_minutes')} min old. He IS moving now (per motion), but this "
-                    "position is only the last known — don't state it as his exact present location."
-                )
-            else:
-                result_text += (
-                    f"\n⚠️ Position is NOT real-time (the iPhone reports on events to save battery): last "
-                    f"known {data.get('fix_age_minutes')} min ago, likely still there (not confirmed). Refer "
-                    "to it as last known, not as present certainty."
-                )
-        if is_stale:
-            result_text += f"\n⚠️ Note: This location fix is {int(age_minutes)} minutes old (exceeds {max_age}m threshold)."
+        minutes_since_move = int(data.get("minutes_since_last_move") or data.get("fix_age_minutes") or age_minutes)
+        if data.get("is_moving_now") and not data.get("is_at_known_place"):
+            result_text += (
+                f"\nNote: GPS last rewrote {minutes_since_move} min ago (the phone only writes when "
+                "coordinates move ~10 m). CoreMotion says he is moving now; place_name is the last written position."
+            )
+        elif minutes_since_move >= 1:
+            result_text += (
+                f"\nNote: GPS last changed {minutes_since_move} min ago. The iPhone only rewrites "
+                "latest_location.json when he actually moves (~10 m). He is still at this place; "
+                "a growing age means he has been here that long, not that the location is lost."
+            )
 
         return {"content": [{"type": "text", "text": result_text}]}
 

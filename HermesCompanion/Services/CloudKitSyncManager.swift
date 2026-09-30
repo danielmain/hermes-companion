@@ -2,6 +2,8 @@ import Foundation
 import CloudKit
 import Combine
 import UIKit
+import CoreLocation
+import os
 
 public final class CloudKitSyncManager: ObservableObject {
     public static let shared = CloudKitSyncManager()
@@ -17,6 +19,11 @@ public final class CloudKitSyncManager: ObservableObject {
 
     private var activeContainerIdentifier: String = TrackingConfiguration.defaultContainerIdentifier
     private var cancellables = Set<AnyCancellable>()
+    private let logger = Logger(subsystem: "com.hermes.HermesCompanion", category: "CloudKitSync")
+    private let mirrorQueue = DispatchQueue(label: "com.hermes.cloudkit.mirror", qos: .utility)
+    /// Last coordinates actually written to `latest_location.json`. Identical GPS is never rewritten.
+    private var lastMirroredCoordinate: CLLocationCoordinate2D?
+    private static let identicalCoordinateThresholdMeters: Double = 1.0
 
     private init() {
         refreshAccountStatusSafely()
@@ -147,13 +154,16 @@ public final class CloudKitSyncManager: ObservableObject {
     public func syncPendingRecords(config: TrackingConfiguration, records: [LocationRecord]) {
         guard config.autoSyncEnabled, config.syncDestination.isCloudKitEnabled else { return }
 
-        // Always mirror newest known location to ubiquitous file regardless of batch status
-        if let newest = records.max(by: { $0.timestamp < $1.timestamp }) {
-            self.mirrorLatestLocationToFile(record: newest, config: config)
+        let unsynced = records.filter { !$0.synced }
+        guard !unsynced.isEmpty else {
+            logger.info("No unsynced GPS records; skipped CloudKit upload and latest_location.json rewrite")
+            return
         }
 
-        let unsynced = records.filter { !$0.synced }
-        guard !unsynced.isEmpty else { return }
+        // Mirror the newest *new* coordinate only. Unchanged GPS must not touch the iCloud file.
+        if let newest = unsynced.max(by: { $0.timestamp < $1.timestamp }) {
+            self.mirrorLatestLocationToFile(record: newest, config: config)
+        }
 
         // Take up to 50 records per batch
         let batch = Array(unsynced.prefix(50))
@@ -263,8 +273,38 @@ public final class CloudKitSyncManager: ObservableObject {
     }
 
     // MARK: - iCloud Ubiquity Container File Mirroring
+    private func coordinatesInLocationFile(at url: URL) -> CLLocationCoordinate2D? {
+        guard FileManager.default.fileExists(atPath: url.path),
+              let data = try? Data(contentsOf: url),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let lat = json["latitude"] as? NSNumber,
+              let lon = json["longitude"] as? NSNumber else {
+            return nil
+        }
+        return CLLocationCoordinate2D(latitude: lat.doubleValue, longitude: lon.doubleValue)
+    }
+
+    private func isIdenticalGPS(_ a: CLLocationCoordinate2D, _ b: CLLocationCoordinate2D) -> Bool {
+        LocationRecord.isUnchangedGPS(
+            from: a,
+            to: b,
+            thresholdMeters: Self.identicalCoordinateThresholdMeters
+        )
+    }
+
+    private func fileHasIdenticalGPS(at url: URL, record: LocationRecord) -> Bool {
+        guard let existing = coordinatesInLocationFile(at: url) else { return false }
+        return isIdenticalGPS(existing, record.coordinate)
+    }
+
+    /// Writes `latest_location.json` only when the GPS coordinate has changed. Identical positions never update mtime.
     private func mirrorLatestLocationToFile(record: LocationRecord, config: TrackingConfiguration) {
-        DispatchQueue.global(qos: .utility).async {
+        mirrorQueue.async {
+            if let last = self.lastMirroredCoordinate, self.isIdenticalGPS(last, record.coordinate) {
+                self.logger.info("Skipped latest_location.json rewrite: GPS coordinates unchanged")
+                return
+            }
+
             let payload: [String: Any] = [
                 "id": record.id.uuidString,
                 "timestamp": ISO8601DateFormatter().string(from: record.timestamp),
@@ -287,34 +327,62 @@ public final class CloudKitSyncManager: ObservableObject {
 
             guard let data = try? JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted]) else { return }
 
-            // Write to /tmp for local simulation / test
+            func writeIfCoordinateChanged(to url: URL) -> Bool {
+                if self.fileHasIdenticalGPS(at: url, record: record) {
+                    return false
+                }
+                try? data.write(to: url, options: .atomic)
+                return true
+            }
+
+            var wroteAnyFile = false
+
             let tmpURL = URL(fileURLWithPath: "/tmp/hermes_latest_location.json")
-            try? data.write(to: tmpURL, options: .atomic)
+            if writeIfCoordinateChanged(to: tmpURL) {
+                wroteAnyFile = true
+            }
 
             let containerId = config.cloudKitContainerIdentifier.trimmingCharacters(in: .whitespaces).isEmpty ? nil : config.cloudKitContainerIdentifier
             let containerURL = FileManager.default.url(forUbiquityContainerIdentifier: containerId) ?? FileManager.default.url(forUbiquityContainerIdentifier: nil)
 
             if let containerURL = containerURL {
                 let documentsURL = containerURL.appendingPathComponent("Documents", isDirectory: true)
-                try? FileManager.default.createDirectory(at: documentsURL, withIntermediateDirectories: true, attributes: nil)
-
                 let fileURL = documentsURL.appendingPathComponent("latest_location.json")
-                try? data.write(to: fileURL, options: .atomic)
-
                 let rootFileURL = containerURL.appendingPathComponent("latest_location.json")
-                try? data.write(to: rootFileURL, options: .atomic)
 
-                LocationStore.shared.logDiagnostic(
-                    title: "iCloud File Mirrored",
-                    details: "Wrote latest_location.json to \(fileURL.lastPathComponent)",
-                    severity: .success
-                )
+                let documentsNeedsWrite = !self.fileHasIdenticalGPS(at: fileURL, record: record)
+                let rootNeedsWrite = !self.fileHasIdenticalGPS(at: rootFileURL, record: record)
+
+                if documentsNeedsWrite {
+                    try? FileManager.default.createDirectory(at: documentsURL, withIntermediateDirectories: true, attributes: nil)
+                    if writeIfCoordinateChanged(to: fileURL) {
+                        wroteAnyFile = true
+                    }
+                }
+                if rootNeedsWrite, writeIfCoordinateChanged(to: rootFileURL) {
+                    wroteAnyFile = true
+                }
+
+                if documentsNeedsWrite || rootNeedsWrite {
+                    LocationStore.shared.logDiagnostic(
+                        title: "iCloud File Mirrored",
+                        details: "Wrote latest_location.json because GPS coordinates changed",
+                        severity: .success
+                    )
+                } else {
+                    self.logger.info("Skipped iCloud latest_location.json rewrite: on-disk coordinates already match")
+                }
             } else {
                 LocationStore.shared.logDiagnostic(
                     title: "iCloud Ubiquity Unavailable",
                     details: "url(forUbiquityContainerIdentifier: \(containerId ?? "nil")) returned nil. Container not in provisioning profile or iCloud Drive disabled.",
                     severity: .warning
                 )
+            }
+
+            self.lastMirroredCoordinate = record.coordinate
+            if !wroteAnyFile {
+                self.logger.info("No GPS files written; coordinates unchanged")
             }
         }
     }

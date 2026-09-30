@@ -1,5 +1,6 @@
 import Foundation
 import CoreLocation
+import os
 
 public final class LocationStore: ObservableObject {
     public static let shared = LocationStore()
@@ -9,6 +10,7 @@ public final class LocationStore: ObservableObject {
 
     private let fileManager = FileManager.default
     private let queue = DispatchQueue(label: "com.hermes.locationstore", qos: .utility)
+    private let logger = Logger(subsystem: "com.hermes.HermesCompanion", category: "LocationStore")
 
     private var recordsFileURL: URL {
         let dir = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
@@ -50,13 +52,34 @@ public final class LocationStore: ObservableObject {
         }
     }
 
-    public func saveRecord(_ record: LocationRecord) {
-        DispatchQueue.main.async {
+    /// Persists a GPS record only when the coordinate has actually moved.
+    /// Returns `false` when the latest stored position is unchanged (no record appended, no file touched).
+    @discardableResult
+    public func saveRecord(
+        _ record: LocationRecord,
+        minDisplacementMeters: Double = LocationRecord.unchangedPositionThresholdMeters
+    ) -> Bool {
+        let persistOnMain: () -> Bool = {
+            if let last = self.records.first,
+               record.isUnchangedPosition(from: last, thresholdMeters: minDisplacementMeters) {
+                let displacement = LocationRecord.displacementMeters(from: last.coordinate, to: record.coordinate)
+                self.logger.info("Skipped GPS record persist: displacement \(displacement, format: .fixed(precision: 1))m is below \(minDisplacementMeters, format: .fixed(precision: 1))m threshold")
+                return false
+            }
             self.records.insert(record, at: 0)
             if self.records.count > 1000 {
                 self.records.removeLast(self.records.count - 1000)
             }
+            return true
         }
+
+        let saved: Bool
+        if Thread.isMainThread {
+            saved = persistOnMain()
+        } else {
+            saved = DispatchQueue.main.sync(execute: persistOnMain)
+        }
+        guard saved else { return false }
 
         queue.async { [weak self] in
             guard let self = self else { return }
@@ -68,6 +91,7 @@ public final class LocationStore: ObservableObject {
                 try? data.write(to: self.recordsFileURL, options: .atomic)
             }
         }
+        return true
     }
 
     public func markSynced(ids: Set<UUID>) {

@@ -337,7 +337,7 @@ struct HermesAgentGuideSheet: View {
                         GuideStep(
                             number: "1",
                             title: "iOS Writes to iCloud Container",
-                            desc: "Whenever you move, exit a geofence, or record an Apple Health workout, the app updates its private CloudKit DB and writes JSON into its iCloud Drive container."
+                            desc: "The app writes a GPS record only when your coordinates actually change (default 10 m). Stationary ticks do not rewrite iCloud files. Health snapshots still write when Apple Health data changes."
                         )
 
                         GuideStep(

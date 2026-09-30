@@ -94,6 +94,35 @@ public struct LocationRecord: Identifiable, Codable, Equatable {
         CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
     }
 
+    /// Displacement below this is treated as an unchanged GPS position (matches the default distance filter).
+    public static let unchangedPositionThresholdMeters: Double = 10.0
+
+    /// Haversine displacement in meters between two WGS-84 coordinates.
+    public static func displacementMeters(
+        from: CLLocationCoordinate2D,
+        to: CLLocationCoordinate2D
+    ) -> Double {
+        CLLocation(latitude: from.latitude, longitude: from.longitude)
+            .distance(from: CLLocation(latitude: to.latitude, longitude: to.longitude))
+    }
+
+    /// True when the two coordinates represent the same GPS position (below `thresholdMeters`).
+    public static func isUnchangedGPS(
+        from: CLLocationCoordinate2D,
+        to: CLLocationCoordinate2D,
+        thresholdMeters: Double = LocationRecord.unchangedPositionThresholdMeters
+    ) -> Bool {
+        displacementMeters(from: from, to: to) < thresholdMeters
+    }
+
+    /// True when this record's coordinates have not moved relative to `other`.
+    public func isUnchangedPosition(
+        from other: LocationRecord,
+        thresholdMeters: Double = LocationRecord.unchangedPositionThresholdMeters
+    ) -> Bool {
+        Self.isUnchangedGPS(from: other.coordinate, to: coordinate, thresholdMeters: thresholdMeters)
+    }
+
     public var speedKmH: Double {
         speed > 0 ? (speed * 3.6) : 0
     }

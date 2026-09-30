@@ -157,6 +157,32 @@ def run_test():
             "params": {"name": "list_known_places", "arguments": {}},
         })["result"]
         print(f"   MCP list_known_places OK:\n{places_res['content'][0]['text']}")
+        assert "I don't know where you are" not in loc_text
+        assert "not as present certainty" not in loc_text
+
+        print("6. Write-on-change: old GPS at a known place is still there...")
+        import places as places_mod
+        pm = places_mod.get_places_manager()
+        homes = [p for p in pm.list_places() if p.category == "home"]
+        assert homes, "expected a home place in places.json"
+        home = homes[0]
+        ctx = pm.resolve_context(
+            home.latitude,
+            home.longitude,
+            speed_kmh=0.0,
+            is_moving=False,
+            age_seconds=10800,
+            motion_activity="stationary",
+            motion_age_seconds=20,
+        )
+        assert ctx["is_at_known_place"] is True
+        assert ctx["minutes_since_last_move"] == 180
+        greet = (ctx.get("suggested_greeting") or "").lower()
+        summary = (ctx.get("context_summary") or "").lower()
+        assert "don't know" not in greet
+        assert "last known" not in summary
+        assert "still there" in summary
+        print(f"   Old GPS at {ctx['place_name']}: {ctx['context_summary']}")
 
         print("\nAll integration tests passed successfully!")
     finally:
