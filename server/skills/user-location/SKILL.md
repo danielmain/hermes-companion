@@ -9,7 +9,7 @@ Daniel carries an iPhone running **Hermes Companion iOS** which transmits his ph
 
 ## GPS only updates when he moves
 
-`latest_location.json` is rewritten **only when his coordinates actually change** (~10 m). The timestamp is the last time he *moved*, not a heartbeat.
+`latest_location.json` is rewritten when his coordinates change ~10 m — real movement **or** GPS drift while he sits still. So a fresh timestamp is not proof that he moved or arrived: the payload only tells you *where* he is, never *when* he got there.
 
 - Sitting at home for three hours → GPS age of three hours → **he is still at home**. Speak in the present: *"estás en casa"*.
 - A growing `age_seconds` / `minutes_since_last_move` means he has been in that place that long. It does **not** mean the location is lost, stale, or unconfirmed.

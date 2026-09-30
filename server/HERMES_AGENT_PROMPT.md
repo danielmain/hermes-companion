@@ -79,7 +79,7 @@ When queried, the location payload provides the following fields:
 | `place_category`| `string` | Semantic type: `"home"`, `"gym"`, `"work"`, `"cafe"`, `"transit"`, `"general"` |
 | `activity` | `string` | Inferred user activity (e.g., `"relaxing at home"`, `"working out at the gym"`, `"in transit"`) |
 | `context_summary`| `string`| Human-readable summary (e.g., `"At Home (stationary)"`) |
-| `suggested_greeting`| `string`| Tailored opener (e.g., `"Hey Daniel, welcome back home. How are you feeling?"`) |
+| `suggested_greeting`| `string`| Tailored opener (e.g., `"Hey Daniel, you are at home. How are you feeling?"`). It never states an arrival: the home text is neutral on purpose, because a fresh fix can be GPS drift while he sits still. |
 | `is_at_known_place`| `boolean`| `true` if coordinates match a configured geofenced place in `places.json` |
 | `accuracy_meters`| `float` | Horizontal accuracy radius in meters (e.g., `4.5m`). Lower is more precise. |
 | `speed_kmh` | `float` | Velocity in kilometers per hour (`0.0` if stationary). |
@@ -89,9 +89,9 @@ When queried, the location payload provides the following fields:
 | `motion_age_seconds` | `int` | Age of the motion reading; small means it tells what he is doing *now*. |
 | `motion_fresh` | `boolean` | `true` if the motion reading is recent enough to be authoritative for the present. |
 | `is_moving_now` | `boolean` | Best estimate of movement *now*: fresh motion wins, else a fresh fix's speed. |
-| `is_stale` | `boolean` | `true` if GPS has not been rewritten for >10 min — he has been in this position that long (write-on-change), not that the place is unknown. |
-| `fix_age_minutes` | `int` | Minutes since GPS last changed (minutes since he last moved). |
-| `minutes_since_last_move` | `int` | Same as `fix_age_minutes`: last coordinate rewrite. |
+| `is_stale` | `boolean` | `true` if GPS has not been rewritten for >10 min — he has been in this position that long (write-on-change), not that the place is unknown. A **recent** rewrite is not an arrival either: drift rewrites the coordinate while he is stationary. |
+| `fix_age_minutes` | `int` | Minutes since the coordinate was last rewritten — movement **or** stationary drift, not time since he arrived. |
+| `minutes_since_last_move` | `int` | Same as `fix_age_minutes`: last coordinate rewrite (movement or drift). |
 | `recorded_at` | `string` | ISO 8601 UTC timestamp with `Z` suffix (e.g., `2026-09-29T09:53:05Z`). Note: time is UTC (Zulu), not local time. |
 | `age_seconds` | `int` | Elapsed seconds since this fix was recorded (calculated against `UTC now`). |
 | `age_human` | `string` | Human-readable relative age (e.g., `"42s ago"`, `"12m ago"`). |

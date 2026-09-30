@@ -480,7 +480,12 @@ class PlacesManager:
             if p_cat == "gym":
                 greeting = "Hey Daniel, I see you are at the gym, how is it doing?"
             elif p_cat == "home":
-                greeting = "Hey Daniel, welcome back home. How are you feeling?"
+                # Sin lenguaje de llegada: la coordenada es write-on-change y la deriva
+                # del GPS la reescribe estando él quieto en casa (medido 30/9: escrituras
+                # 09:22 y 10:34 con él en casa toda la mañana). Un timestamp fresco no es
+                # prueba de que acaba de volver, así que el texto dice dónde está, nunca
+                # cuándo llegó.
+                greeting = "Hey Daniel, you are at home. How are you feeling?"
             elif p_cat == "work":
                 greeting = f"Hey Daniel, I see you're at work at {p_name}. How is the day going?"
             elif p_cat == "cafe":
