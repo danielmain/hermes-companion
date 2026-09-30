@@ -2,547 +2,426 @@ import SwiftUI
 import CoreLocation
 
 struct DashboardView: View {
-    @EnvironmentObject private var locationManager: LocationManager
     @EnvironmentObject private var locationStore: LocationStore
-
-    @State private var showingInfoModal: Bool = false
-    @State private var showingApiGuide: Bool = false
+    @State private var presentedDocument: DashboardDocument?
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 18) {
-                    // Permission Banner (if not Always)
-                    PermissionBannerView()
+                VStack(alignment: .leading, spacing: EditorialSpacing.section) {
+                    EditorialPageHeader(
+                        index: "HERMES / FIELD UNIT 01",
+                        title: "Living\nTelemetry",
+                        subtitle: "A private field instrument for location, health, and the signals your Mac can retrieve through iCloud."
+                    )
 
-                    // iCloud Account Sign-In Banner (if CloudKit enabled and not signed in)
-                    ICloudAccountBannerView()
+                    VStack(spacing: EditorialSpacing.compact) {
+                        PermissionBannerView()
+                        ICloudAccountBannerView()
+                    }
 
-                    // Hermes Agent Connection Status Card
-                    HermesConnectionStatusCard()
-
-                    // Main Telemetry & Location Card
+                    DashboardConnectionSection()
                     StatusCardView()
-
-                    // Apple Health & Telemetry Card (Sleep, Workouts, Protein / Recovery)
-                    HealthOverviewCard()
-
-                    // Key Metric Tiles
-                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 14) {
-                        MetricTileView(
-                            title: "Sent to Hermes",
-                            value: "\(locationStore.records.filter { $0.synced }.count)",
-                            subtitle: "\(locationStore.records.filter { !$0.synced }.count) queued",
-                            icon: "icloud.and.arrow.up",
-                            color: .blue
-                        )
-
-                        MetricTileView(
-                            title: "Closed Wakes",
-                            value: "\(wakeCount)",
-                            subtitle: "Woke from closed state",
-                            icon: "bolt.fill",
-                            color: .orange
-                        )
-
-                        MetricTileView(
-                            title: "GPS Accuracy",
-                            value: latestAccuracyString,
-                            subtitle: "Horizontal radius",
-                            icon: "scope",
-                            color: .green
-                        )
-
-                        MetricTileView(
-                            title: "Battery",
-                            value: currentBatteryString,
-                            subtitle: UIDevice.current.batteryState == .charging ? "Charging" : "Discharging",
-                            icon: "battery.100",
-                            color: .indigo
-                        )
-                    }
-
-                    // Tracking Profile Picker
-                    VStack(alignment: .leading, spacing: 14) {
-                        HStack {
-                            Text("TRACKING & TRANSMISSION PROFILE")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(.secondary)
-                            Spacer()
-                        }
-
-                        ForEach(TrackingMode.allCases) { mode in
-                            Button(action: {
-                                withAnimation {
-                                    locationManager.configuration.trackingMode = mode
-                                }
-                            }) {
-                                HStack(alignment: .top, spacing: 12) {
-                                    Image(systemName: locationManager.configuration.trackingMode == mode ? "largecircle.fill.circle" : "circle")
-                                        .font(.title3)
-                                        .foregroundColor(locationManager.configuration.trackingMode == mode ? .accentColor : .secondary)
-                                        .padding(.top, 2)
-
-                                    VStack(alignment: .leading, spacing: 3) {
-                                        Text(mode.rawValue)
-                                            .font(.subheadline)
-                                            .fontWeight(.semibold)
-                                            .foregroundColor(.primary)
-
-                                        Text(mode.subtitle)
-                                            .font(.caption2)
-                                            .foregroundColor(.secondary)
-                                            .fixedSize(horizontal: false, vertical: true)
-                                    }
-
-                                    Spacer()
-                                }
-                                .padding(12)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                        .fill(locationManager.configuration.trackingMode == mode ? Color.accentColor.opacity(0.08) : Color.clear)
-                                )
-                            }
-                            .buttonStyle(.plain)
-
-                            if mode != TrackingMode.allCases.last {
-                                Divider()
-                            }
-                        }
-                    }
-                    .padding(16)
-                    .background(
-                        RoundedRectangle(cornerRadius: 20, style: .continuous)
-                            .fill(Color(UIColor.secondarySystemGroupedBackground))
-                    )
-
-                    // Recent Transmissions Preview
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack {
-                            Text("RECENT TRANSMISSIONS")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(.secondary)
-                            Spacer()
-
-                            NavigationLink(destination: HistoryLogView()) {
-                                Text("View All")
-                                    .font(.caption)
-                                    .fontWeight(.semibold)
-                                    .foregroundColor(.accentColor)
-                            }
-                        }
-
-                        if locationStore.records.isEmpty {
-                            Text("No locations captured yet. Tap 'Ping Now' or move around.")
-                                .font(.footnote)
-                                .foregroundColor(.secondary)
-                                .frame(maxWidth: .infinity, alignment: .center)
-                                .padding(.vertical, 16)
-                        } else {
-                            VStack(spacing: 8) {
-                                ForEach(locationStore.records.prefix(3)) { record in
-                                    LocationRowView(record: record)
-                                    if record.id != locationStore.records.prefix(3).last?.id {
-                                        Divider()
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    .padding(16)
-                    .background(
-                        RoundedRectangle(cornerRadius: 20, style: .continuous)
-                            .fill(Color(UIColor.secondarySystemGroupedBackground))
-                    )
-
-                    // Help & Architecture Cards
-                    VStack(spacing: 10) {
-                        Button(action: { showingApiGuide = true }) {
-                            HStack(spacing: 8) {
-                                Image(systemName: "cpu")
-                                    .foregroundColor(.purple)
-                                Text("How Hermes Agent Fetches Your Location")
-                                    .font(.subheadline)
-                                    .fontWeight(.medium)
-                                    .foregroundColor(.primary)
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                                    .font(.caption2)
-                                    .foregroundColor(.secondary)
-                            }
-                            .padding(14)
-                            .background(
-                                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                    .fill(Color(UIColor.secondarySystemGroupedBackground))
-                            )
-                        }
-
-                        Button(action: { showingInfoModal = true }) {
-                            HStack(spacing: 8) {
-                                Image(systemName: "bolt.fill")
-                                    .foregroundColor(.orange)
-                                Text("How iOS Wakes the App When Completely Closed")
-                                    .font(.subheadline)
-                                    .fontWeight(.medium)
-                                    .foregroundColor(.primary)
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                                    .font(.caption2)
-                                    .foregroundColor(.secondary)
-                            }
-                            .padding(14)
-                            .background(
-                                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                    .fill(Color(UIColor.secondarySystemGroupedBackground))
-                            )
-                        }
-                    }
+                    DashboardMetricsSection()
+                    DashboardTrackingSection()
+                    DashboardRecentSection(records: Array(locationStore.records.prefix(3)))
+                    DashboardReferenceSection(presentedDocument: $presentedDocument)
                 }
-                .padding()
+                .padding(.horizontal, EditorialSpacing.page)
+                .padding(.top, EditorialSpacing.large)
+                .padding(.bottom, EditorialSpacing.hero)
             }
-            .background(Color(UIColor.systemGroupedBackground).ignoresSafeArea())
-            .navigationTitle("Hermes Transmitter")
-            .sheet(isPresented: $showingInfoModal) {
-                ClosedTrackingInfoSheet()
-            }
-            .sheet(isPresented: $showingApiGuide) {
-                HermesAgentGuideSheet()
+            .background(EditorialColor.paper)
+            .toolbar(.hidden, for: .navigationBar)
+            .sheet(item: $presentedDocument) { document in
+                EditorialDocumentSheet(document: document)
             }
         }
     }
-
-    private var wakeCount: Int {
-        locationStore.records.filter { $0.source == .wakeFromTerminated }.count
-    }
-
-    private var latestAccuracyString: String {
-        guard let rec = locationManager.latestRecord else { return "--" }
-        return rec.formattedAccuracy
-    }
-
-    private var currentBatteryString: String {
-        let level = UIDevice.current.batteryLevel
-        if level < 0 { return "100%" }
-        return "\(Int(level * 100))%"
-    }
 }
 
-// MARK: - Hermes Connection Status Card
-struct HermesConnectionStatusCard: View {
+private struct DashboardConnectionSection: View {
     @EnvironmentObject private var locationManager: LocationManager
     @EnvironmentObject private var cloudKitSyncManager: CloudKitSyncManager
 
     var body: some View {
-        HStack(spacing: 12) {
-            ZStack {
-                Circle()
-                    .fill(connectionColor.opacity(0.18))
-                    .frame(width: 40, height: 40)
-                Image(systemName: connectionIcon)
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundColor(connectionColor)
-            }
+        VStack(alignment: .leading, spacing: EditorialSpacing.medium) {
+            EditorialSectionHeader(index: "#01", title: "CONNECT", trailing: "PRIVATE ICLOUD")
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text(connectionTitle)
-                    .font(.subheadline)
-                    .fontWeight(.bold)
-                    .foregroundColor(.primary)
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: EditorialSpacing.medium) {
+                    connectionCopy
+                    Spacer(minLength: EditorialSpacing.medium)
+                    token
+                }
 
-                Text(connectionSubtitle)
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
-            }
-
-            Spacer()
-
-            if cloudKitSyncManager.isSyncing {
-                ProgressView()
-                    .scaleEffect(0.85)
-            } else if cloudKitSyncManager.accountStatus == .available {
-                Text("iCloud")
-                    .font(.system(size: 11, weight: .bold))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Color.blue.opacity(0.12))
-                    .foregroundColor(.blue)
-                    .clipShape(Capsule())
+                VStack(alignment: .leading, spacing: EditorialSpacing.medium) {
+                    connectionCopy
+                    token
+                }
             }
         }
-        .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(Color(UIColor.secondarySystemGroupedBackground))
+        .editorialPanel(emphasized: true, cutCorner: true)
+    }
+
+    private var connectionCopy: some View {
+        VStack(alignment: .leading, spacing: EditorialSpacing.small) {
+            Text(connectionTitle)
+                .font(.editorialTitle)
+                .foregroundStyle(EditorialColor.ink)
+                .accessibilityAddTraits(.isHeader)
+
+            Text(connectionSubtitle)
+                .font(.body)
+                .foregroundStyle(EditorialColor.secondaryInk)
+        }
+    }
+
+    private var token: some View {
+        EditorialStatusToken(
+            text: cloudKitSyncManager.isSyncing ? "SYNCING" : statusLabel,
+            isInverted: cloudKitSyncManager.accountStatus == .available,
+            systemImage: cloudKitSyncManager.isSyncing ? "arrow.triangle.2.circlepath" : "icloud"
         )
     }
 
-    private var connectionColor: Color {
-        guard locationManager.configuration.autoSyncEnabled else { return .secondary }
-        if cloudKitSyncManager.accountStatus == .available {
-            return .blue
+    private var statusLabel: String {
+        if !locationManager.configuration.autoSyncEnabled {
+            return "DISABLED"
         }
-        return .orange
-    }
-
-    private var connectionIcon: String {
-        guard locationManager.configuration.autoSyncEnabled else { return "wifi.slash" }
-        return "icloud.fill"
+        return cloudKitSyncManager.accountStatus == .available ? "LINK READY" : "SETUP NEEDED"
     }
 
     private var connectionTitle: String {
         if !locationManager.configuration.autoSyncEnabled {
-            return "Hermes Sync Disabled"
+            return "Signal dormant"
         }
-        if cloudKitSyncManager.isSyncing {
-            return "Syncing with iCloud..."
-        }
-        return cloudKitSyncManager.accountStatus == .available ? "Apple iCloud Ready" : "iCloud Setup Needed"
+        return cloudKitSyncManager.accountStatus == .available ? "Archive linked" : "Link incomplete"
     }
 
     private var connectionSubtitle: String {
-        if !locationManager.configuration.autoSyncEnabled {
-            return "Enable in Hermes Config to upload locations"
-        }
-
         if let lastSync = cloudKitSyncManager.lastSyncDate {
-            let formatter = RelativeDateTimeFormatter()
-            formatter.unitsStyle = .abbreviated
-            return "Last sync " + formatter.localizedString(for: lastSync, relativeTo: Date())
+            return "Last transmission \(lastSync.formatted(.relative(presentation: .named)))"
         }
-
         return cloudKitSyncManager.accountStatusDescription
     }
 }
 
-// MARK: - Hermes Agent Guide Sheet
-struct HermesAgentGuideSheet: View {
-    @Environment(\.dismiss) private var dismiss
+private struct DashboardMetricsSection: View {
+    @EnvironmentObject private var locationManager: LocationManager
+    @EnvironmentObject private var locationStore: LocationStore
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Apple iCloud Zero-Network Pipeline")
-                            .font(.title2)
-                            .fontWeight(.bold)
+        VStack(alignment: .leading, spacing: EditorialSpacing.medium) {
+            EditorialSectionHeader(index: "#02", title: "OBSERVE", trailing: "LIVE MEASURES")
 
-                        Text("Hermes Agent and your iPhone can both be behind router NAT or cellular CGNAT. The app communicates strictly via Apple iCloud with zero open ports and zero direct TCP connections:")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                    }
-
-                    VStack(alignment: .leading, spacing: 14) {
-                        GuideStep(
-                            number: "1",
-                            title: "iOS Writes to iCloud Container",
-                            desc: "The app writes a GPS record only when your coordinates actually change (default 10 m). Stationary ticks do not rewrite iCloud files. Health snapshots still write when Apple Health data changes."
-                        )
-
-                        GuideStep(
-                            number: "2",
-                            title: "macOS Native Daemon Syncs Files",
-                            desc: "Apple's system daemon syncs the files directly to your Mac at ~/Library/Mobile Documents/iCloud~com~hermes~HermesCompanion/Documents/."
-                        )
-
-                        GuideStep(
-                            number: "3",
-                            title: "Hermes Reads Locally via MCP",
-                            desc: "When Hermes needs your location or wellness telemetry, it calls get_user_location or get_user_health over MCP to read the local copy in milliseconds."
-                        )
-                    }
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Local Storage Path on Mac")
-                            .font(.headline)
-
-                        Text("~/Library/Mobile Documents/iCloud~com~hermes~HermesCompanion/Documents/latest_location.json")
-                            .font(.system(size: 11, weight: .bold, design: .monospaced))
-                            .padding(10)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Color(UIColor.secondarySystemGroupedBackground))
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-
-                        Text("Live Synced Schema:")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-
-                        Text("""
-                        {
-                          "latitude": 48.8149,
-                          "longitude": 9.2325,
-                          "horizontal_accuracy": 3.3,
-                          "timestamp": "2026-09-29T09:44:26Z",
-                          "battery_level": 1.0,
-                          "source": "Significant Location Change",
-                          "app_state": "background"
-                        }
-                        """)
-                        .font(.system(size: 11, design: .monospaced))
-                        .padding(10)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color(UIColor.secondarySystemGroupedBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                    }
-                }
-                .padding()
-            }
-            .navigationTitle("Hermes Integration")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
-                }
+            LazyVGrid(columns: columns, alignment: .leading, spacing: EditorialSpacing.compact) {
+                MetricTileView(
+                    title: "TRANSMITTED",
+                    value: locationStore.records.filter(\.synced).count.formatted(),
+                    subtitle: "\(locationStore.records.filter { !$0.synced }.count.formatted()) queued",
+                    icon: "arrow.up.doc"
+                )
+                MetricTileView(
+                    title: "CLOSED WAKES",
+                    value: locationStore.records.filter { $0.source == .wakeFromTerminated }.count.formatted(),
+                    subtitle: "Terminated-state events",
+                    icon: "bolt"
+                )
+                MetricTileView(
+                    title: "GPS ACCURACY",
+                    value: locationManager.latestRecord?.formattedAccuracy ?? "—",
+                    subtitle: "Horizontal radius",
+                    icon: "scope"
+                )
+                MetricTileView(
+                    title: "BATTERY",
+                    value: batteryLevel,
+                    subtitle: UIDevice.current.batteryState == .charging ? "Charging" : "Discharging",
+                    icon: "battery.75"
+                )
             }
         }
     }
-}
 
-struct GuideStep: View {
-    let number: String
-    let title: String
-    let desc: String
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 14) {
-            Text(number)
-                .font(.headline)
-                .fontWeight(.bold)
-                .foregroundColor(.white)
-                .frame(width: 28, height: 28)
-                .background(Circle().fill(Color.accentColor))
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title)
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                Text(desc)
-                    .font(.footnote)
-                    .foregroundColor(.secondary)
-            }
-        }
+    private var batteryLevel: String {
+        let level = UIDevice.current.batteryLevel
+        return level < 0 ? "—" : (level * 100).formatted(.number.precision(.fractionLength(0))) + "%"
     }
-}
 
-// MARK: - Closed Tracking Info Sheet
-struct ClosedTrackingInfoSheet: View {
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Continuous Tracking Architecture")
-                            .font(.title2)
-                            .fontWeight(.bold)
-
-                        Text("iOS applies strict sandbox rules to apps. To guarantee location tracking even after you force-close the app or restart your phone, Hermes Companion combines 3 Apple-native services:")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                    }
-
-                    VStack(alignment: .leading, spacing: 16) {
-                        TechCard(
-                            title: "1. Significant Location Service",
-                            badge: "Apple Native",
-                            description: "Monitors mobile cell-tower changes (~500m movements). When triggered, iOS wakes the terminated app into the background, executes AppDelegate, and passes the location fix to be transmitted.",
-                            icon: "antenna.radiowaves.left.and.right",
-                            color: .orange
-                        )
-
-                        TechCard(
-                            title: "2. Stationary Dynamic Geofencing",
-                            badge: "Zero Drift",
-                            description: "When you stay stationary for more than a minute, Hermes creates an invisible 100m circular perimeter. As soon as you walk or drive outside this perimeter, iOS immediately wakes up the app even if closed!",
-                            icon: "circle.dashed.rectangle",
-                            color: .mint
-                        )
-
-                        TechCard(
-                            title: "3. Continuous Standard GPS",
-                            badge: "High Precision",
-                            description: "While traveling or while active in the background, standard high-precision GPS streams updates with distance filtering.",
-                            icon: "location.fill",
-                            color: .blue
-                        )
-
-                        TechCard(
-                            title: "4. Visits & Places Service",
-                            badge: "Arrivals & Departures",
-                            description: "Uses iOS CoreLocation Visits to wake the app and log exact arrival and departure timestamps at frequent destinations.",
-                            icon: "figure.walk.motion",
-                            color: .purple
-                        )
-                    }
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Important Requirement")
-                            .font(.headline)
-                            .foregroundColor(.orange)
-
-                        Text("iOS will only wake up closed apps if you have granted 'Always' permission in Settings > Privacy & Security > Location Services > Hermes Companion. If set to 'While Using', Apple blocks wakeups.")
-                            .font(.footnote)
-                            .foregroundColor(.secondary)
-                    }
-                    .padding()
-                    .background(
-                        RoundedRectangle(cornerRadius: 14)
-                            .fill(Color.orange.opacity(0.1))
-                    )
-                }
-                .padding()
-            }
-            .navigationTitle("Always-On Location")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
-                }
-            }
-        }
-    }
-}
-
-struct TechCard: View {
-    let title: String
-    let badge: String
-    let description: String
-    let icon: String
-    let color: Color
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 14) {
-            Image(systemName: icon)
-                .font(.title2)
-                .foregroundColor(color)
-                .frame(width: 32, height: 32)
-                .padding(.top, 2)
-
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text(title)
-                        .font(.headline)
-                    Spacer()
-                    Text(badge)
-                        .font(.system(size: 10, weight: .bold))
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(color.opacity(0.15))
-                        .foregroundColor(color)
-                        .clipShape(Capsule())
-                }
-
-                Text(description)
-                    .font(.footnote)
-                    .foregroundColor(.secondary)
-            }
-        }
-        .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(Color(UIColor.secondarySystemGroupedBackground))
+    private var columns: [GridItem] {
+        let count = prefersSingleColumn ? 1 : (horizontalSizeClass == .regular ? 3 : 2)
+        return Array(
+            repeating: GridItem(.flexible(), spacing: EditorialSpacing.compact),
+            count: count
         )
     }
+
+    private var prefersSingleColumn: Bool {
+        switch dynamicTypeSize {
+        case .xxLarge, .xxxLarge,
+             .accessibility1, .accessibility2, .accessibility3,
+             .accessibility4, .accessibility5:
+            true
+        default:
+            false
+        }
+    }
+}
+
+private struct DashboardTrackingSection: View {
+    @EnvironmentObject private var locationManager: LocationManager
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: EditorialSpacing.medium) {
+            EditorialSectionHeader(index: "#03", title: "AUTOMATE", trailing: "TRACKING PROFILE")
+
+            VStack(spacing: 0) {
+                ForEach(Array(TrackingMode.allCases.enumerated()), id: \.element.id) { index, mode in
+                    Button {
+                        withAnimation(EditorialMotion.quick) {
+                            locationManager.configuration.trackingMode = mode
+                        }
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    } label: {
+                        TrackingModeRow(
+                            index: index + 1,
+                            title: mode.rawValue,
+                            subtitle: mode.subtitle,
+                            isSelected: locationManager.configuration.trackingMode == mode
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityValue(locationManager.configuration.trackingMode == mode ? "Selected" : "Not selected")
+
+                    if mode.id != TrackingMode.allCases.last?.id {
+                        EditorialRule()
+                    }
+                }
+            }
+            .overlay {
+                Rectangle().stroke(EditorialColor.hairline, lineWidth: EditorialBorder.hairline)
+            }
+        }
+    }
+}
+
+private struct TrackingModeRow: View {
+    let index: Int
+    let title: String
+    let subtitle: String
+    let isSelected: Bool
+
+    var body: some View {
+        HStack(alignment: .top, spacing: EditorialSpacing.compact) {
+            Text(index.formatted(.number.precision(.integerLength(2))))
+                .font(.editorialNumber)
+                .foregroundStyle(isSelected ? EditorialColor.paper : EditorialColor.ink)
+                .frame(minWidth: 44, alignment: .leading)
+
+            VStack(alignment: .leading, spacing: EditorialSpacing.small) {
+                Text(title)
+                    .font(.headline)
+                Text(subtitle)
+                    .font(.subheadline)
+                    .foregroundStyle(isSelected ? EditorialColor.paper.opacity(0.78) : EditorialColor.secondaryInk)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: EditorialSpacing.small)
+
+            Image(systemName: isSelected ? "square.inset.filled" : "square")
+                .font(.body.weight(.light))
+                .accessibilityHidden(true)
+        }
+        .foregroundStyle(isSelected ? EditorialColor.paper : EditorialColor.ink)
+        .padding(EditorialSpacing.medium)
+        .frame(maxWidth: .infinity, minHeight: 76, alignment: .leading)
+        .background(isSelected ? EditorialColor.ink : EditorialColor.paper)
+        .contentShape(Rectangle())
+    }
+}
+
+private struct DashboardRecentSection: View {
+    let records: [LocationRecord]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: EditorialSpacing.medium) {
+            EditorialSectionHeader(index: "#04", title: "REMEMBER", trailing: "RECENT SIGNALS")
+
+            if records.isEmpty {
+                EditorialEmptyState(
+                    index: "ARCHIVE / 000",
+                    title: "Nothing yet",
+                    message: "Move through the world or request a manual reading. The first signal will be filed here.",
+                    systemImage: "location.slash"
+                )
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(records) { record in
+                        LocationRowView(record: record)
+                        if record.id != records.last?.id {
+                            EditorialRule()
+                        }
+                    }
+                }
+                .overlay {
+                    Rectangle().stroke(EditorialColor.hairline, lineWidth: EditorialBorder.hairline)
+                }
+            }
+
+            NavigationLink {
+                HistoryLogView()
+            } label: {
+                Label("OPEN COMPLETE ARCHIVE", systemImage: "arrow.right")
+            }
+            .buttonStyle(EditorialButtonStyle(isPrimary: false))
+        }
+    }
+}
+
+private struct DashboardReferenceSection: View {
+    @Binding var presentedDocument: DashboardDocument?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: EditorialSpacing.medium) {
+            EditorialSectionHeader(index: "#05", title: "REFERENCE", trailing: "SYSTEM NOTES")
+
+            VStack(spacing: 0) {
+                referenceButton(
+                    title: "How Hermes retrieves a signal",
+                    code: "PIPELINE / 01",
+                    icon: "cpu",
+                    document: .pipeline
+                )
+                EditorialRule()
+                referenceButton(
+                    title: "How iOS wakes a closed field unit",
+                    code: "WAKE / 02",
+                    icon: "bolt",
+                    document: .wake
+                )
+            }
+            .overlay {
+                Rectangle().stroke(EditorialColor.hairline, lineWidth: EditorialBorder.hairline)
+            }
+        }
+    }
+
+    private func referenceButton(
+        title: LocalizedStringKey,
+        code: LocalizedStringKey,
+        icon: String,
+        document: DashboardDocument
+    ) -> some View {
+        Button {
+            presentedDocument = document
+        } label: {
+            HStack(spacing: EditorialSpacing.compact) {
+                Image(systemName: icon)
+                    .font(.body.weight(.light))
+                    .frame(width: 24)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: EditorialSpacing.xSmall) {
+                    Text(code)
+                        .font(.editorialUtilitySmall)
+                        .foregroundStyle(EditorialColor.secondaryInk)
+                    Text(title)
+                        .font(.body)
+                        .foregroundStyle(EditorialColor.ink)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.light))
+                    .accessibilityHidden(true)
+            }
+            .padding(EditorialSpacing.medium)
+            .frame(minHeight: 64)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private enum DashboardDocument: String, Identifiable {
+    case pipeline
+    case wake
+
+    var id: String { rawValue }
+
+    var index: LocalizedStringKey {
+        switch self {
+        case .pipeline: "TECHNICAL NOTE / 01"
+        case .wake: "TECHNICAL NOTE / 02"
+        }
+    }
+
+    var title: LocalizedStringKey {
+        switch self {
+        case .pipeline: "The private\npipeline"
+        case .wake: "After the\napp closes"
+        }
+    }
+
+    var body: LocalizedStringKey {
+        switch self {
+        case .pipeline:
+            "The field unit writes encrypted records to your private CloudKit database. Hermes on macOS reads the same private container. No inbound port, public endpoint, or direct device connection is required."
+        case .wake:
+            "iOS can relaunch the app for significant location changes, visits, and monitored-region crossings. Delivery remains system-managed and depends on authorization, movement, and available device resources."
+        }
+    }
+}
+
+private struct EditorialDocumentSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let document: DashboardDocument
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: EditorialSpacing.xLarge) {
+                    EditorialPageHeader(
+                        index: document.index,
+                        title: document.title,
+                        subtitle: "FIELD MANUAL / HERMES COMPANION"
+                    )
+
+                    Text(document.body)
+                        .font(.body)
+                        .foregroundStyle(EditorialColor.ink)
+                        .lineSpacing(6)
+
+                    EditorialRule()
+
+                    Text("This reference describes the operating model; iOS remains the authority for background execution.")
+                        .font(.editorialUtility)
+                        .foregroundStyle(EditorialColor.secondaryInk)
+                }
+                .padding(EditorialSpacing.page)
+            }
+            .background(EditorialColor.paper)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                    }
+                    .buttonStyle(EditorialIconButtonStyle())
+                    .accessibilityLabel("Close reference")
+                }
+            }
+        }
+    }
+}
+
+#Preview {
+    DashboardView()
+        .environmentObject(LocationManager.shared)
+        .environmentObject(LocationStore.shared)
+        .environmentObject(CloudKitSyncManager.shared)
+        .environmentObject(HealthKitManager.shared)
 }

@@ -44,6 +44,22 @@ public struct TrackingConfiguration: Codable, Equatable {
 
     public static let defaultContainerIdentifier = "iCloud.com.hermes.HermesCompanion"
 
+    /// Previous factory default. Indoor GPS drift crosses 10 m, so a stored 10 m filter is treated as "never customized" and raised on launch.
+    public static let legacyDistanceFilterMeters: Double = 10
+    /// Static persist threshold when CoreMotion has no fresh reading, and the normal threshold while walking, running, cycling, or driving.
+    public static let defaultDistanceFilterMeters: Double = 30
+    /// `saveRecord` never treats a sub-meter jitter as movement, even if the slider is 0.
+    public static let distanceFilterFloorMeters: Double = 1
+    public static let distanceFilterSliderMinMeters: Double = 0
+    public static let distanceFilterSliderMaxMeters: Double = 50
+    public static let distanceFilterSliderStepMeters: Double = 5
+    /// A CoreMotion sample newer than this is fresh enough to confirm or veto a GPS write.
+    public static let motionFreshnessSeconds: TimeInterval = 120
+    /// While CoreMotion says stationary, only a displacement past this is unambiguous movement.
+    public static let stationaryUnambiguousDisplacementMeters: Double = 150
+    /// GPS speed above this overrides a fresh stationary reading, still subject to the normal distance filter.
+    public static let stationarySpeedOverrideMps: Double = 1.0
+
     public static let `default` = TrackingConfiguration(
         trackingMode: .smartAlways,
         syncDestination: .cloudKit,
@@ -52,7 +68,7 @@ public struct TrackingConfiguration: Codable, Equatable {
         autoSyncEnabled: true,
         dynamicGeofenceEnabled: true,
         geofenceRadiusMeters: 100.0,
-        distanceFilterMeters: 10.0,
+        distanceFilterMeters: defaultDistanceFilterMeters,
         backgroundIndicatorEnabled: true
     )
 
@@ -64,7 +80,7 @@ public struct TrackingConfiguration: Codable, Equatable {
         autoSyncEnabled: Bool = true,
         dynamicGeofenceEnabled: Bool = true,
         geofenceRadiusMeters: Double = 100.0,
-        distanceFilterMeters: Double = 10.0,
+        distanceFilterMeters: Double = defaultDistanceFilterMeters,
         backgroundIndicatorEnabled: Bool = true
     ) {
         self.trackingMode = trackingMode
@@ -88,7 +104,7 @@ public struct TrackingConfiguration: Codable, Equatable {
         self.autoSyncEnabled = try container.decodeIfPresent(Bool.self, forKey: .autoSyncEnabled) ?? true
         self.dynamicGeofenceEnabled = try container.decodeIfPresent(Bool.self, forKey: .dynamicGeofenceEnabled) ?? true
         self.geofenceRadiusMeters = try container.decodeIfPresent(Double.self, forKey: .geofenceRadiusMeters) ?? 100.0
-        self.distanceFilterMeters = try container.decodeIfPresent(Double.self, forKey: .distanceFilterMeters) ?? 10.0
+        self.distanceFilterMeters = try container.decodeIfPresent(Double.self, forKey: .distanceFilterMeters) ?? Self.defaultDistanceFilterMeters
         self.backgroundIndicatorEnabled = try container.decodeIfPresent(Bool.self, forKey: .backgroundIndicatorEnabled) ?? true
     }
 }

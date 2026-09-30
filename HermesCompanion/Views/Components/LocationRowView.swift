@@ -4,92 +4,87 @@ struct LocationRowView: View {
     let record: LocationRecord
 
     var body: some View {
-        HStack(spacing: 12) {
-            // Source icon
-            ZStack {
-                Circle()
-                    .fill(sourceColor.opacity(0.15))
-                    .frame(width: 38, height: 38)
-                Image(systemName: record.source.systemIcon)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(sourceColor)
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: EditorialSpacing.compact) {
+                sourceMark
+                recordCopy
+                Spacer(minLength: EditorialSpacing.medium)
+                timestamp
             }
 
-            // Main Info
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: EditorialSpacing.compact) {
                 HStack {
-                    Text(record.source.rawValue)
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.primary)
-
-                    if record.source == .wakeFromTerminated {
-                        Text("CLOSED WAKE")
-                            .font(.system(size: 9, weight: .heavy))
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 2)
-                            .background(Color.red.opacity(0.15))
-                            .foregroundColor(.red)
-                            .clipShape(RoundedRectangle(cornerRadius: 4))
-                    }
-
+                    sourceMark
                     Spacer()
-
-                    Text(timeString)
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
+                    timestamp
                 }
+                recordCopy
+            }
+        }
+        .padding(EditorialSpacing.medium)
+        .foregroundStyle(EditorialColor.ink)
+        .background(EditorialColor.paper)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilitySummary)
+    }
 
-                Text("\(String(format: "%.4f", record.latitude)), \(String(format: "%.4f", record.longitude))")
-                    .font(.system(size: 13, weight: .regular, design: .monospaced))
-                    .foregroundColor(.secondary)
+    private var sourceMark: some View {
+        Image(systemName: record.source.systemIcon)
+            .font(.body.weight(.light))
+            .frame(width: 36, height: 36)
+            .overlay {
+                Rectangle().stroke(EditorialColor.ink, lineWidth: EditorialBorder.hairline)
+            }
+            .accessibilityHidden(true)
+    }
 
-                HStack(spacing: 8) {
-                    Label(record.formattedAccuracy, systemImage: "scope")
-                        .font(.system(size: 10))
-                        .foregroundColor(.secondary)
+    private var recordCopy: some View {
+        VStack(alignment: .leading, spacing: EditorialSpacing.small) {
+            HStack(spacing: EditorialSpacing.small) {
+                Text(record.source.rawValue.uppercased())
+                    .font(.editorialUtility)
+                if record.source == .wakeFromTerminated {
+                    EditorialStatusToken(text: "CLOSED WAKE", isInverted: true)
+                }
+            }
 
-                    if record.speed >= 0 {
-                        Label(record.formattedSpeed, systemImage: "speedometer")
-                            .font(.system(size: 10))
-                            .foregroundColor(.secondary)
-                    }
+            Text("\(record.latitude, format: .number.precision(.fractionLength(4))), \(record.longitude, format: .number.precision(.fractionLength(4)))")
+                .font(.system(.callout, design: .monospaced, weight: .regular))
+                .foregroundStyle(EditorialColor.secondaryInk)
 
-                    if record.batteryLevel >= 0 {
-                        Label("\(Int(record.batteryLevel * 100))%", systemImage: "battery.100")
-                            .font(.system(size: 10))
-                            .foregroundColor(.secondary)
-                    }
-
-                    Spacer()
-
-                    if record.synced {
-                        Image(systemName: "checkmark.icloud.fill")
-                            .font(.caption2)
-                            .foregroundColor(.blue)
-                    }
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: EditorialSpacing.compact) {
+                    metadata
+                }
+                VStack(alignment: .leading, spacing: EditorialSpacing.xSmall) {
+                    metadata
                 }
             }
         }
-        .padding(.vertical, 4)
     }
 
-    private var timeString: String {
-        let formatter = DateFormatter()
-        formatter.timeStyle = .medium
-        formatter.dateStyle = .none
-        return formatter.string(from: record.timestamp)
-    }
-
-    private var sourceColor: Color {
-        switch record.source {
-        case .wakeFromTerminated: return .red
-        case .significantChange: return .orange
-        case .visitArrival, .visitDeparture: return .purple
-        case .geofenceExit, .geofenceEnter: return .mint
-        case .standardGPS: return .blue
-        case .manualPing: return .indigo
-        case .backgroundFetch: return .teal
+    @ViewBuilder
+    private var metadata: some View {
+        Label(record.formattedAccuracy, systemImage: "scope")
+        if record.speed >= 0 {
+            Label(record.formattedSpeed, systemImage: "speedometer")
         }
+        if record.batteryLevel >= 0 {
+            Label("\(Int(record.batteryLevel * 100))%", systemImage: "battery.75")
+        }
+        if record.synced {
+            Label("Filed", systemImage: "checkmark")
+        }
+    }
+
+    private var timestamp: some View {
+        Text(record.timestamp, format: .dateTime.hour().minute().second())
+            .font(.editorialUtilitySmall)
+            .foregroundStyle(EditorialColor.secondaryInk)
+    }
+
+    private var accessibilitySummary: String {
+        let syncState = record.synced ? "filed" : "queued"
+        return "\(record.source.rawValue), \(record.formattedAccuracy), \(syncState)"
     }
 }

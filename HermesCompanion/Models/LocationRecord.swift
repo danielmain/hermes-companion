@@ -70,6 +70,122 @@ public enum MotionActivity: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+/// Why a GPS fix was persisted, or why it was refused. `stationary_drift` is a refusal: that fix is not written.
+public enum MovementReason: String, Codable, Equatable, CaseIterable {
+    case moved
+    case stationaryDrift = "stationary_drift"
+    case distance
+    case noMotionReading = "no_motion_reading"
+}
+
+/// Pure persist gate. CoreMotion confirms movement; the distance filter is the fallback when motion is missing or stale.
+public struct GPSPersistDecision: Equatable {
+    public enum Basis: String, Equatable {
+        case movement
+        case distance
+    }
+
+    public let shouldPersist: Bool
+    public let reason: MovementReason
+    public let basis: Basis
+    public let thresholdMeters: Double
+    public let displacementMeters: Double?
+    public let motionActivity: MotionActivity
+    public let motionAgeSeconds: TimeInterval?
+    public let horizontalAccuracyMeters: Double
+
+    public var auditLog: String {
+        let displacement = displacementMeters.map { String(format: "%.1f", $0) } ?? "none"
+        let age = motionAgeSeconds.map { String(format: "%.1f", $0) } ?? "none"
+        let action = shouldPersist ? "write" : "skip"
+        return String(
+            format: "GPS persist %@: displacement_m=%@ threshold_m=%.1f motion=%@ motion_age_s=%@ accuracy_m=%.1f by=%@ reason=%@",
+            action,
+            displacement,
+            thresholdMeters,
+            motionActivity.rawValue,
+            age,
+            horizontalAccuracyMeters,
+            basis.rawValue,
+            reason.rawValue
+        )
+    }
+
+    public static func evaluate(
+        displacementMeters: Double?,
+        horizontalAccuracyMeters: Double,
+        speedMps: Double,
+        motionActivity: MotionActivity,
+        motionSampleReceivedAt: Date?,
+        now: Date,
+        distanceFilterMeters: Double
+    ) -> GPSPersistDecision {
+        let normalThreshold = max(distanceFilterMeters, TrackingConfiguration.distanceFilterFloorMeters)
+        let stationaryThreshold = TrackingConfiguration.stationaryUnambiguousDisplacementMeters
+        let motionAge = motionSampleReceivedAt.map { now.timeIntervalSince($0) }
+        let motionIsFresh = motionAge.map { age in
+            age >= 0 && age <= TrackingConfiguration.motionFreshnessSeconds
+        } ?? false
+        let speedConfirmsMovement = speedMps > TrackingConfiguration.stationarySpeedOverrideMps
+
+        func decide(
+            shouldPersist: Bool,
+            reason: MovementReason,
+            basis: Basis,
+            thresholdMeters: Double
+        ) -> GPSPersistDecision {
+            GPSPersistDecision(
+                shouldPersist: shouldPersist,
+                reason: reason,
+                basis: basis,
+                thresholdMeters: thresholdMeters,
+                displacementMeters: displacementMeters,
+                motionActivity: motionActivity,
+                motionAgeSeconds: motionAge,
+                horizontalAccuracyMeters: horizontalAccuracyMeters
+            )
+        }
+
+        guard let displacementMeters else {
+            if motionIsFresh && motionActivity.isMoving {
+                return decide(shouldPersist: true, reason: .moved, basis: .movement, thresholdMeters: normalThreshold)
+            }
+            return decide(shouldPersist: true, reason: .noMotionReading, basis: .distance, thresholdMeters: normalThreshold)
+        }
+
+        if motionIsFresh && motionActivity == .stationary {
+            if displacementMeters > stationaryThreshold {
+                return decide(shouldPersist: true, reason: .distance, basis: .distance, thresholdMeters: stationaryThreshold)
+            }
+            if speedConfirmsMovement && displacementMeters >= normalThreshold {
+                return decide(shouldPersist: true, reason: .moved, basis: .movement, thresholdMeters: normalThreshold)
+            }
+            if speedConfirmsMovement {
+                return decide(shouldPersist: false, reason: .distance, basis: .distance, thresholdMeters: normalThreshold)
+            }
+            return decide(shouldPersist: false, reason: .stationaryDrift, basis: .movement, thresholdMeters: stationaryThreshold)
+        }
+
+        if motionIsFresh && motionActivity.isMoving {
+            let shouldPersist = displacementMeters >= normalThreshold
+            return decide(
+                shouldPersist: shouldPersist,
+                reason: shouldPersist ? .moved : .distance,
+                basis: shouldPersist ? .movement : .distance,
+                thresholdMeters: normalThreshold
+            )
+        }
+
+        let shouldPersist = displacementMeters >= normalThreshold
+        return decide(
+            shouldPersist: shouldPersist,
+            reason: .noMotionReading,
+            basis: .distance,
+            thresholdMeters: normalThreshold
+        )
+    }
+}
+
 public struct LocationRecord: Identifiable, Codable, Equatable {
     public let id: UUID
     public let timestamp: Date
@@ -88,14 +204,16 @@ public struct LocationRecord: Identifiable, Codable, Equatable {
     public let motionActivity: MotionActivity?
     public let motionTimestamp: Date?
     public let motionConfidence: String?
+    /// Why this coordinate was written. Nil on records saved before the field existed.
+    public let movementReason: MovementReason?
     public var synced: Bool
 
     public var coordinate: CLLocationCoordinate2D {
         CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
     }
 
-    /// Displacement below this is treated as an unchanged GPS position (matches the default distance filter).
-    public static let unchangedPositionThresholdMeters: Double = 10.0
+    /// Displacement below this is treated as an unchanged GPS position when the caller does not pass a threshold.
+    public static let unchangedPositionThresholdMeters: Double = TrackingConfiguration.defaultDistanceFilterMeters
 
     /// Haversine displacement in meters between two WGS-84 coordinates.
     public static func displacementMeters(
@@ -153,6 +271,7 @@ public struct LocationRecord: Identifiable, Codable, Equatable {
         motionActivity: MotionActivity? = nil,
         motionTimestamp: Date? = nil,
         motionConfidence: String? = nil,
+        movementReason: MovementReason? = nil,
         synced: Bool = false
     ) {
         self.id = id
@@ -171,6 +290,7 @@ public struct LocationRecord: Identifiable, Codable, Equatable {
         self.motionActivity = motionActivity
         self.motionTimestamp = motionTimestamp
         self.motionConfidence = motionConfidence
+        self.movementReason = movementReason
         self.synced = synced
     }
 
@@ -182,7 +302,8 @@ public struct LocationRecord: Identifiable, Codable, Equatable {
         batteryState: String,
         motionActivity: MotionActivity? = nil,
         motionTimestamp: Date? = nil,
-        motionConfidence: String? = nil
+        motionConfidence: String? = nil,
+        movementReason: MovementReason? = nil
     ) {
         self.id = UUID()
         self.timestamp = location.timestamp
@@ -200,7 +321,75 @@ public struct LocationRecord: Identifiable, Codable, Equatable {
         self.motionActivity = motionActivity
         self.motionTimestamp = motionTimestamp
         self.motionConfidence = motionConfidence
+        self.movementReason = movementReason
         self.synced = false
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case timestamp
+        case latitude
+        case longitude
+        case altitude
+        case horizontalAccuracy
+        case verticalAccuracy
+        case speed
+        case course
+        case source
+        case batteryLevel
+        case batteryState
+        case appState
+        case motionActivity
+        case motionTimestamp
+        case motionConfidence
+        case movementReason
+        case synced
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        try self.init(
+            id: container.decode(UUID.self, forKey: .id),
+            timestamp: container.decode(Date.self, forKey: .timestamp),
+            latitude: container.decode(Double.self, forKey: .latitude),
+            longitude: container.decode(Double.self, forKey: .longitude),
+            altitude: container.decodeIfPresent(Double.self, forKey: .altitude) ?? 0,
+            horizontalAccuracy: container.decodeIfPresent(Double.self, forKey: .horizontalAccuracy) ?? 0,
+            verticalAccuracy: container.decodeIfPresent(Double.self, forKey: .verticalAccuracy) ?? 0,
+            speed: container.decodeIfPresent(Double.self, forKey: .speed) ?? -1,
+            course: container.decodeIfPresent(Double.self, forKey: .course) ?? -1,
+            source: container.decodeIfPresent(LocationTriggerSource.self, forKey: .source) ?? .standardGPS,
+            batteryLevel: container.decodeIfPresent(Float.self, forKey: .batteryLevel) ?? -1,
+            batteryState: container.decodeIfPresent(String.self, forKey: .batteryState) ?? "unknown",
+            appState: container.decodeIfPresent(String.self, forKey: .appState) ?? "active",
+            motionActivity: container.decodeIfPresent(MotionActivity.self, forKey: .motionActivity),
+            motionTimestamp: container.decodeIfPresent(Date.self, forKey: .motionTimestamp),
+            motionConfidence: container.decodeIfPresent(String.self, forKey: .motionConfidence),
+            movementReason: container.decodeIfPresent(MovementReason.self, forKey: .movementReason),
+            synced: container.decodeIfPresent(Bool.self, forKey: .synced) ?? false
+        )
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(timestamp, forKey: .timestamp)
+        try container.encode(latitude, forKey: .latitude)
+        try container.encode(longitude, forKey: .longitude)
+        try container.encode(altitude, forKey: .altitude)
+        try container.encode(horizontalAccuracy, forKey: .horizontalAccuracy)
+        try container.encode(verticalAccuracy, forKey: .verticalAccuracy)
+        try container.encode(speed, forKey: .speed)
+        try container.encode(course, forKey: .course)
+        try container.encode(source, forKey: .source)
+        try container.encode(batteryLevel, forKey: .batteryLevel)
+        try container.encode(batteryState, forKey: .batteryState)
+        try container.encode(appState, forKey: .appState)
+        try container.encodeIfPresent(motionActivity, forKey: .motionActivity)
+        try container.encodeIfPresent(motionTimestamp, forKey: .motionTimestamp)
+        try container.encodeIfPresent(motionConfidence, forKey: .motionConfidence)
+        try container.encodeIfPresent(movementReason, forKey: .movementReason)
+        try container.encode(synced, forKey: .synced)
     }
 
     // MARK: - CloudKit Serialization
@@ -226,6 +415,9 @@ public struct LocationRecord: Identifiable, Codable, Equatable {
         }
         if let motionTimestamp = motionTimestamp {
             record["motionTimestamp"] = motionTimestamp as NSDate
+        }
+        if let movementReason = movementReason {
+            record["movementReason"] = movementReason.rawValue as NSString
         }
         return record
     }
@@ -258,6 +450,7 @@ public struct LocationRecord: Identifiable, Codable, Equatable {
         let motionActivity = (record["motionActivity"] as? String).flatMap { MotionActivity(rawValue: $0) }
         let motionTimestamp = record["motionTimestamp"] as? Date
         let motionConfidence = record["motionConfidence"] as? String
+        let movementReason = (record["movementReason"] as? String).flatMap { MovementReason(rawValue: $0) }
 
         return LocationRecord(
             id: id,
@@ -276,6 +469,7 @@ public struct LocationRecord: Identifiable, Codable, Equatable {
             motionActivity: motionActivity,
             motionTimestamp: motionTimestamp,
             motionConfidence: motionConfidence,
+            movementReason: movementReason,
             synced: true
         )
     }

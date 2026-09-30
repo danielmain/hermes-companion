@@ -37,15 +37,23 @@ public final class LocationManager: NSObject, ObservableObject {
     // MARK: - CoreMotion (real motion state, independent of the GPS fix age)
     private let motionManager = CMMotionActivityManager()
     private var currentMotionConfidence: String = "unknown"
+    /// Time the latest CoreMotion callback arrived. Freshness uses this clock; `motionUpdatedAt` stays `activity.startDate` so `motion_timestamp` still means when the activity began.
+    private var motionSampleReceivedAt: Date?
+    private let didMigrateLegacyDistanceFilter: Bool
 
     private override init() {
-        // Load configuration
+        var migratedLegacyDistanceFilter = false
         if let data = UserDefaults.standard.data(forKey: userDefaultsKey),
-           let saved = try? JSONDecoder().decode(TrackingConfiguration.self, from: data) {
+           var saved = try? JSONDecoder().decode(TrackingConfiguration.self, from: data) {
+            if saved.distanceFilterMeters == TrackingConfiguration.legacyDistanceFilterMeters {
+                saved.distanceFilterMeters = TrackingConfiguration.defaultDistanceFilterMeters
+                migratedLegacyDistanceFilter = true
+            }
             self.configuration = saved
         } else {
             self.configuration = .default
         }
+        self.didMigrateLegacyDistanceFilter = migratedLegacyDistanceFilter
 
         super.init()
 
@@ -56,6 +64,18 @@ public final class LocationManager: NSObject, ObservableObject {
         locationManager.activityType = .otherNavigation
 
         self.authorizationStatus = locationManager.authorizationStatus
+
+        if didMigrateLegacyDistanceFilter {
+            saveConfiguration()
+            let fromMeters = Int(TrackingConfiguration.legacyDistanceFilterMeters)
+            let toMeters = Int(TrackingConfiguration.defaultDistanceFilterMeters)
+            logger.info("Migrated Standard Distance Filter from the legacy \(fromMeters)m default to \(toMeters)m")
+            LocationStore.shared.logDiagnostic(
+                title: "Distance Filter Migrated",
+                details: "Legacy \(fromMeters) m default raised to \(toMeters) m so indoor GPS drift does not rewrite location files.",
+                severity: .info
+            )
+        }
 
         // Check if tracking was enabled previously
         let wasActive = UserDefaults.standard.bool(forKey: "com.hermes.trackingActiveState")
@@ -305,6 +325,8 @@ public final class LocationManager: NSObject, ObservableObject {
         self.currentMotionActivity = mapped
         self.currentMotionConfidence = confidence
         self.motionUpdatedAt = activity.startDate
+        self.motionSampleReceivedAt = Date()
+        logger.info("Motion sample \(mapped.rawValue, privacy: .public) confidence \(confidence, privacy: .public)")
     }
 
     private func saveConfiguration() {
@@ -349,11 +371,6 @@ public final class LocationManager: NSObject, ObservableObject {
         }
     }
 
-    /// Minimum displacement required before a GPS fix is persisted. Floor of 1 m absorbs identical ticks even when the slider is 0.
-    private var persistDistanceThreshold: Double {
-        max(configuration.distanceFilterMeters, 1.0)
-    }
-
     private var lastPersistedCoordinate: CLLocationCoordinate2D? {
         if let lastRecordedCoordinate {
             return lastRecordedCoordinate
@@ -361,16 +378,28 @@ public final class LocationManager: NSObject, ObservableObject {
         return LocationStore.shared.records.first?.coordinate
     }
 
-    /// Writes a GPS record and touches iCloud/CloudKit files only when the coordinate has actually changed.
-    private func ingestLocation(_ location: CLLocation, source: LocationTriggerSource) {
+    /// Writes a GPS record and touches iCloud/CloudKit files only when the persist gate accepts the displacement as movement.
+    @discardableResult
+    private func ingestLocation(_ location: CLLocation, source: LocationTriggerSource) -> Bool {
         currentLocation = location
 
-        let threshold = persistDistanceThreshold
-        if let last = lastPersistedCoordinate,
-           LocationRecord.isUnchangedGPS(from: last, to: location.coordinate, thresholdMeters: threshold) {
-            let displacement = LocationRecord.displacementMeters(from: last, to: location.coordinate)
-            logger.info("Skipped GPS persist (\(source.rawValue)): displacement \(displacement, format: .fixed(precision: 1))m is below \(threshold, format: .fixed(precision: 1))m. No record written, no file touched.")
-            return
+        let displacement = lastPersistedCoordinate.map {
+            LocationRecord.displacementMeters(from: $0, to: location.coordinate)
+        }
+        let decision = GPSPersistDecision.evaluate(
+            displacementMeters: displacement,
+            horizontalAccuracyMeters: location.horizontalAccuracy,
+            speedMps: location.speed,
+            motionActivity: currentMotionActivity,
+            motionSampleReceivedAt: motionSampleReceivedAt,
+            now: Date(),
+            distanceFilterMeters: configuration.distanceFilterMeters
+        )
+
+        guard decision.shouldPersist else {
+            // A refused tick must not append a record, rewrite latest_location.json, upload CloudKit, or write a diagnostic file.
+            logger.info("\(decision.auditLog, privacy: .public) source=\(source.rawValue, privacy: .public)")
+            return false
         }
 
         let record = LocationRecord(
@@ -381,25 +410,26 @@ public final class LocationManager: NSObject, ObservableObject {
             batteryState: currentBatteryStateString,
             motionActivity: currentMotionActivity,
             motionTimestamp: motionUpdatedAt,
-            motionConfidence: currentMotionConfidence
+            motionConfidence: currentMotionConfidence,
+            movementReason: decision.reason
         )
+
+        let saved = LocationStore.shared.saveRecord(record, minDisplacementMeters: decision.thresholdMeters)
+        guard saved else {
+            logger.info("\(decision.auditLog, privacy: .public) source=\(source.rawValue, privacy: .public) store_rejected=true")
+            return false
+        }
 
         latestRecord = record
         lastRecordedCoordinate = location.coordinate
+        logger.info("\(decision.auditLog, privacy: .public) source=\(source.rawValue, privacy: .public)")
 
-        let saved = LocationStore.shared.saveRecord(record, minDisplacementMeters: threshold)
-        guard saved else {
-            logger.info("LocationStore rejected duplicate GPS record (\(source.rawValue)). Files untouched.")
-            return
-        }
-
-        logger.info("Persisted GPS record (\(source.rawValue)) at (\(location.coordinate.latitude, format: .fixed(precision: 5)), \(location.coordinate.longitude, format: .fixed(precision: 5)))")
-
-        if location.speed < 1.0 {
+        if location.speed < TrackingConfiguration.stationarySpeedOverrideMps {
             setupDynamicGeofence(around: location.coordinate)
         }
 
         triggerRecordSync()
+        return true
     }
 }
 
@@ -452,13 +482,8 @@ extension LocationManager: CLLocationManagerDelegate {
                 timestamp: isArrival ? visit.arrivalDate : visit.departureDate
             )
 
-            let previousCoordinate = self.lastPersistedCoordinate
-            self.ingestLocation(location, source: source)
-
-            if let previous = previousCoordinate,
-               LocationRecord.isUnchangedGPS(from: previous, to: location.coordinate, thresholdMeters: self.persistDistanceThreshold) {
-                return
-            }
+            let persisted = self.ingestLocation(location, source: source)
+            guard persisted else { return }
 
             LocationStore.shared.logDiagnostic(
                 title: isArrival ? "Visit: Arrived at Place" : "Visit: Departed Place",

@@ -2,212 +2,325 @@ import SwiftUI
 import CloudKit
 
 struct SettingsView: View {
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: EditorialSpacing.section) {
+                    EditorialPageHeader(
+                        index: "HERMES / CONFIGURATION 03",
+                        title: "System\nParameters",
+                        subtitle: "Adjust the field unit, private archive, and background observation policy."
+                    )
+
+                    TransmissionSettingsSection()
+                    CloudSettingsSection()
+                    TrackingSettingsSection()
+                    PermissionSettingsSection()
+                    AboutSettingsSection()
+                }
+                .padding(.horizontal, EditorialSpacing.page)
+                .padding(.top, EditorialSpacing.large)
+                .padding(.bottom, EditorialSpacing.hero)
+            }
+            .background(EditorialColor.paper)
+            .toolbar(.hidden, for: .navigationBar)
+        }
+    }
+}
+
+private struct TransmissionSettingsSection: View {
+    @EnvironmentObject private var locationManager: LocationManager
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: EditorialSpacing.medium) {
+            EditorialSectionHeader(index: "#01", title: "TRANSMISSION", trailing: "PRIVATE PIPELINE")
+
+            SettingsValueRow(label: "SYNC PIPELINE", value: "Apple iCloud", systemImage: "icloud")
+            EditorialRule()
+            EditorialToggleRow(
+                title: "Auto-sync location updates",
+                detail: "File new records in the private CloudKit archive.",
+                isOn: $locationManager.configuration.autoSyncEnabled
+            )
+            EditorialRule()
+            EditorialField(
+                label: "DEVICE NAME",
+                prompt: "iPhone Companion",
+                text: $locationManager.configuration.deviceName
+            )
+        }
+        .editorialPanel()
+    }
+}
+
+private struct CloudSettingsSection: View {
     @EnvironmentObject private var locationManager: LocationManager
     @EnvironmentObject private var cloudKitSyncManager: CloudKitSyncManager
 
-    // CloudKit Ping State
-    @State private var cloudKitPingMessage: String?
-    @State private var cloudKitPingSuccess: Bool = false
-    @State private var isCloudKitPinging: Bool = false
+    @State private var pingMessage: String?
+    @State private var pingSucceeded = false
+    @State private var isPinging = false
 
     var body: some View {
-        NavigationStack {
-            Form {
-                // Section 1: Transmission Destination & Preferences
-                Section(
-                    header: Text("Transmission Pipeline"),
-                    footer: Text("Transmits location securely via your private Apple iCloud account directly to macOS Hermes. Zero open ports, zero TCP, works everywhere.")
-                ) {
-                    HStack {
-                        Label("Sync Pipeline", systemImage: "icloud.fill")
-                        Spacer()
-                        Text("Apple iCloud")
-                            .foregroundColor(.secondary)
-                    }
+        VStack(alignment: .leading, spacing: EditorialSpacing.medium) {
+            EditorialSectionHeader(index: "#02", title: "ARCHIVE", trailing: "CLOUDKIT")
 
-                    Toggle("Auto-Sync Location Updates", isOn: $locationManager.configuration.autoSyncEnabled)
+            SettingsValueRow(
+                label: "ACCOUNT",
+                value: cloudKitSyncManager.accountStatusDescription,
+                systemImage: cloudKitSyncManager.accountStatus == .available ? "checkmark" : "exclamationmark"
+            )
 
-                    HStack {
-                        Text("Device Name")
-                            .frame(width: 95, alignment: .leading)
-                        TextField("Name", text: $locationManager.configuration.deviceName)
-                    }
+            if cloudKitSyncManager.accountStatus != .available {
+                Button(action: cloudKitSyncManager.openSettingsForAccount) {
+                    Label("OPEN ACCOUNT SETTINGS", systemImage: "arrow.up.forward.app")
                 }
+                .buttonStyle(EditorialButtonStyle(isPrimary: false))
+            }
 
-                // Section 2: Apple CloudKit Private DB & Ubiquity Container
-                Section(
-                    header: Text("Apple CloudKit & iCloud Drive"),
-                    footer: Text("Stored securely in your private iCloud database and synced to your Mac's iCloud container. Seamlessly accessed by Hermes on macOS.")
-                ) {
-                    HStack {
-                        Text("iCloud Account")
-                        Spacer()
-                        HStack(spacing: 6) {
-                            Circle()
-                                .fill(cloudKitSyncManager.accountStatus == .available ? Color.green : Color.orange)
-                                .frame(width: 8, height: 8)
-                            Text(cloudKitSyncManager.accountStatusDescription)
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                        }
+            EditorialField(
+                label: "CONTAINER IDENTIFIER",
+                prompt: TrackingConfiguration.defaultContainerIdentifier,
+                text: $locationManager.configuration.cloudKitContainerIdentifier
+            )
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+
+            if isPinging {
+                EditorialLoadingState(message: "TESTING PRIVATE ARCHIVE")
+            } else if let pingMessage {
+                if pingSucceeded {
+                    HStack(alignment: .top, spacing: EditorialSpacing.compact) {
+                        Image(systemName: "checkmark.square")
+                            .accessibilityHidden(true)
+                        Text(pingMessage)
+                            .font(.body)
                     }
-
-                    if cloudKitSyncManager.accountStatus != .available {
-                        Button(action: { cloudKitSyncManager.openSettingsForAccount() }) {
-                            HStack {
-                                Label("Sign In to iCloud (Open Settings)", systemImage: "person.crop.circle.badge.plus")
-                                Spacer()
-                                Image(systemName: "arrow.up.forward.app")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                    }
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack {
-                            Text("Container ID")
-                                .frame(width: 95, alignment: .leading)
-                            TextField("iCloud.com.hermes.HermesCompanion", text: $locationManager.configuration.cloudKitContainerIdentifier)
-                                .keyboardType(.URL)
-                                .autocapitalization(.none)
-                                .disableAutocorrection(true)
-                                .font(.footnote)
-                        }
-                    }
-
-                    Button(action: runCloudKitTestPing) {
-                        HStack {
-                            if isCloudKitPinging {
-                                ProgressView()
-                                    .padding(.trailing, 6)
-                            } else {
-                                Image(systemName: "icloud.and.arrow.up.fill")
-                            }
-                            Text("Test CloudKit Sync")
-                                .fontWeight(.medium)
-                        }
-                    }
-                    .disabled(isCloudKitPinging)
-
-                    if let msg = cloudKitPingMessage {
-                        HStack {
-                            Image(systemName: cloudKitPingSuccess ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
-                                .foregroundColor(cloudKitPingSuccess ? .green : .red)
-                            Text(msg)
-                                .font(.footnote)
-                                .foregroundColor(cloudKitPingSuccess ? .green : .red)
-                        }
-                    }
-
-                    if let lastSync = cloudKitSyncManager.lastSyncDate {
-                        HStack {
-                            Text("Last Synced")
-                                .font(.footnote)
-                                .foregroundColor(.secondary)
-                            Spacer()
-                            Text(lastSync, style: .time)
-                                .font(.footnote)
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                }
-
-                // Section 4: Always-On Location & Geofence Tuning
-                Section(
-                    header: Text("Closed Wake & Geofence Tuning"),
-                    footer: Text("When stationary, a circular geofence is deployed. When you cross it, iOS wakes up the app even if closed or terminated.")
-                ) {
-                    Toggle("Dynamic Stationary Geofence", isOn: $locationManager.configuration.dynamicGeofenceEnabled)
-
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack {
-                            Text("Geofence Radius")
-                            Spacer()
-                            Text("\(Int(locationManager.configuration.geofenceRadiusMeters)) m")
-                                .foregroundColor(.secondary)
-                        }
-                        Slider(
-                            value: $locationManager.configuration.geofenceRadiusMeters,
-                            in: 50...500,
-                            step: 25
-                        )
-                    }
-
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack {
-                            Text("Standard Distance Filter")
-                            Spacer()
-                            Text("\(Int(locationManager.configuration.distanceFilterMeters)) m")
-                                .foregroundColor(.secondary)
-                        }
-                        Slider(
-                            value: $locationManager.configuration.distanceFilterMeters,
-                            in: 0...50,
-                            step: 5
-                        )
-                        Text("Fixes closer than this are discarded: no new record and no iCloud rewrite.")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-
-                    Toggle("Show Background Indicator Bar", isOn: $locationManager.configuration.backgroundIndicatorEnabled)
-                }
-
-                // Section 5: System Permissions
-                Section(header: Text("iOS Permissions & Health")) {
-                    HStack {
-                        Text("Location Authorization")
-                        Spacer()
-                        Text(locationManager.authorizationStatusDescription)
-                            .font(.subheadline)
-                            .foregroundColor(locationManager.isAlwaysAuthorized ? .green : .orange)
-                    }
-
-                    Button(action: openSettings) {
-                        HStack {
-                            Label("Open iOS Settings", systemImage: "gearshape")
-                            Spacer()
-                            Image(systemName: "arrow.up.forward.app")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                }
-
-                // Section 6: About
-                Section(header: Text("About Hermes Companion")) {
-                    HStack {
-                        Text("Version")
-                        Spacer()
-                        Text("1.1.0 (CloudKit Enabled)")
-                            .foregroundColor(.secondary)
-                    }
-                    HStack {
-                        Text("Core Architecture")
-                        Spacer()
-                        Text("CoreLocation + CloudKit + Significant + Visits")
-                            .foregroundColor(.secondary)
-                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .editorialPanel()
+                    .accessibilityElement(children: .combine)
+                } else {
+                    EditorialErrorState(message: pingMessage)
                 }
             }
-            .navigationTitle("Settings")
+
+            Button(action: runCloudKitTest) {
+                Label("TEST CLOUDKIT CONNECTION", systemImage: "network")
+            }
+            .buttonStyle(EditorialButtonStyle(isPrimary: true))
+            .disabled(isPinging)
+
+            if let lastSync = cloudKitSyncManager.lastSyncDate {
+                Text("LAST FILED / \(lastSync.formatted(.dateTime.year().month().day().hour().minute()))")
+                    .font(.editorialUtilitySmall)
+                    .foregroundStyle(EditorialColor.secondaryInk)
+            }
         }
+        .editorialPanel(cutCorner: true)
     }
 
-    private func runCloudKitTestPing() {
-        isCloudKitPinging = true
-        cloudKitPingMessage = nil
+    private func runCloudKitTest() {
+        isPinging = true
+        pingMessage = nil
 
         cloudKitSyncManager.sendTestPing(config: locationManager.configuration) { success, message in
-            isCloudKitPinging = false
-            cloudKitPingSuccess = success
-            cloudKitPingMessage = message
+            isPinging = false
+            pingSucceeded = success
+            pingMessage = message
+            UINotificationFeedbackGenerator().notificationOccurred(success ? .success : .error)
         }
+    }
+}
+
+private struct TrackingSettingsSection: View {
+    @EnvironmentObject private var locationManager: LocationManager
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: EditorialSpacing.large) {
+            EditorialSectionHeader(index: "#03", title: "OBSERVATION", trailing: "BACKGROUND")
+
+            EditorialToggleRow(
+                title: "Dynamic stationary geofence",
+                detail: "Deploy a monitored region while the device is stationary.",
+                isOn: $locationManager.configuration.dynamicGeofenceEnabled
+            )
+
+            EditorialSlider(
+                label: "GEOFENCE RADIUS",
+                value: $locationManager.configuration.geofenceRadiusMeters,
+                range: 50...500,
+                step: 25,
+                unit: "m"
+            )
+
+            EditorialSlider(
+                label: "DISTANCE FILTER",
+                value: $locationManager.configuration.distanceFilterMeters,
+                range: TrackingConfiguration.distanceFilterSliderMinMeters...TrackingConfiguration.distanceFilterSliderMaxMeters,
+                step: TrackingConfiguration.distanceFilterSliderStepMeters,
+                unit: "m"
+            )
+
+            Text("Readings inside the distance filter are discarded unless motion evidence makes a larger displacement unambiguous.")
+                .font(.footnote)
+                .foregroundStyle(EditorialColor.secondaryInk)
+
+            EditorialToggleRow(
+                title: "Background indicator",
+                detail: "Allow iOS to show that location is active.",
+                isOn: $locationManager.configuration.backgroundIndicatorEnabled
+            )
+        }
+        .editorialPanel()
+    }
+}
+
+private struct PermissionSettingsSection: View {
+    @EnvironmentObject private var locationManager: LocationManager
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: EditorialSpacing.medium) {
+            EditorialSectionHeader(index: "#04", title: "PERMISSIONS", trailing: "IOS")
+
+            SettingsValueRow(
+                label: "LOCATION",
+                value: locationManager.authorizationStatusDescription,
+                systemImage: locationManager.isAlwaysAuthorized ? "checkmark" : "exclamationmark"
+            )
+
+            Button(action: openSettings) {
+                Label("OPEN IOS SETTINGS", systemImage: "gearshape")
+            }
+            .buttonStyle(EditorialButtonStyle(isPrimary: false))
+        }
+        .editorialPanel()
     }
 
     private func openSettings() {
         guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
         UIApplication.shared.open(url)
+    }
+}
+
+private struct AboutSettingsSection: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: EditorialSpacing.medium) {
+            EditorialSectionHeader(index: "#05", title: "COLOPHON", trailing: "FIELD UNIT")
+
+            SettingsValueRow(label: "VERSION", value: "1.1.0", systemImage: "number")
+            EditorialRule()
+            SettingsValueRow(label: "ARCHITECTURE", value: "CoreLocation / CloudKit / HealthKit", systemImage: "cpu")
+            EditorialRule()
+            Text("Designed as a private companion instrument. Records remain in local storage and your private Apple cloud container.")
+                .font(.body)
+                .foregroundStyle(EditorialColor.secondaryInk)
+        }
+        .editorialPanel(emphasized: true, cutCorner: true)
+    }
+}
+
+private struct SettingsValueRow: View {
+    let label: String
+    let value: String
+    let systemImage: String
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .firstTextBaseline, spacing: EditorialSpacing.compact) {
+                Label(label, systemImage: systemImage)
+                    .font(.editorialUtilitySmall)
+                Spacer(minLength: EditorialSpacing.medium)
+                Text(value)
+                    .font(.body)
+                    .foregroundStyle(EditorialColor.secondaryInk)
+                    .multilineTextAlignment(.trailing)
+            }
+
+            VStack(alignment: .leading, spacing: EditorialSpacing.small) {
+                Label(label, systemImage: systemImage)
+                    .font(.editorialUtilitySmall)
+                Text(value)
+                    .font(.body)
+                    .foregroundStyle(EditorialColor.secondaryInk)
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private struct EditorialToggleRow: View {
+    let title: LocalizedStringKey
+    let detail: LocalizedStringKey
+    @Binding var isOn: Bool
+
+    var body: some View {
+        Toggle(isOn: $isOn) {
+            VStack(alignment: .leading, spacing: EditorialSpacing.xSmall) {
+                Text(title)
+                    .font(.body)
+                Text(detail)
+                    .font(.footnote)
+                    .foregroundStyle(EditorialColor.secondaryInk)
+            }
+        }
+        .tint(EditorialColor.ink)
+        .frame(minHeight: 44)
+    }
+}
+
+private struct EditorialField: View {
+    let label: LocalizedStringKey
+    let prompt: String
+    @Binding var text: String
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: EditorialSpacing.small) {
+            Text(label)
+                .font(.editorialUtilitySmall)
+                .foregroundStyle(EditorialColor.secondaryInk)
+
+            TextField(prompt, text: $text)
+                .font(.body)
+                .textFieldStyle(.plain)
+                .padding(EditorialSpacing.compact)
+                .frame(minHeight: 48)
+                .background(EditorialColor.paper)
+                .overlay {
+                    Rectangle()
+                        .stroke(EditorialColor.ink, lineWidth: isFocused ? EditorialBorder.strong : EditorialBorder.hairline)
+                }
+                .focused($isFocused)
+        }
+    }
+}
+
+private struct EditorialSlider: View {
+    let label: String
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+    let step: Double
+    let unit: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: EditorialSpacing.small) {
+            HStack {
+                Text(label)
+                    .font(.editorialUtilitySmall)
+                Spacer()
+                Text("\(Int(value)) \(unit)")
+                    .font(.system(.body, design: .monospaced))
+            }
+
+            Slider(value: $value, in: range, step: step) {
+                Text(label)
+            } minimumValueLabel: {
+                Text("\(Int(range.lowerBound))")
+            } maximumValueLabel: {
+                Text("\(Int(range.upperBound))")
+            }
+            .font(.caption)
+            .tint(EditorialColor.ink)
+        }
     }
 }

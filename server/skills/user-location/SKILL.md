@@ -9,7 +9,7 @@ Daniel carries an iPhone running **Hermes Companion iOS** which transmits his ph
 
 ## GPS only updates when he moves
 
-`latest_location.json` is rewritten when his coordinates change ~10 m — real movement **or** GPS drift while he sits still. So a fresh timestamp is not proof that he moved or arrived: the payload only tells you *where* he is, never *when* he got there.
+`latest_location.json` is rewritten when the phone accepts a displacement as movement: fresh walking, running, cycling, or driving past the distance filter (default 30 m); no fresh CoreMotion reading past that same filter; or a fresh stationary reading only past 150 m (or GPS speed above 1 m/s, still past the distance filter). Indoor drift of about 10 m while he is still does not rewrite the file. `movement_reason` on the JSON is `moved`, `distance`, or `no_motion_reading`. A fresh timestamp means that gate accepted a move. It is not proof that he arrived: the payload tells you *where* he is, not *when* he got there.
 
 - Sitting at home for three hours → GPS age of three hours → **he is still at home**. Speak in the present: *"estás en casa"*.
 - A growing `age_seconds` / `minutes_since_last_move` means he has been in that place that long. It does **not** mean the location is lost, stale, or unconfirmed.

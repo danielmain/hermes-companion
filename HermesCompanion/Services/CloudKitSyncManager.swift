@@ -305,7 +305,7 @@ public final class CloudKitSyncManager: ObservableObject {
                 return
             }
 
-            let payload: [String: Any] = [
+            var payload: [String: Any] = [
                 "id": record.id.uuidString,
                 "timestamp": ISO8601DateFormatter().string(from: record.timestamp),
                 "latitude": record.latitude,
@@ -324,6 +324,9 @@ public final class CloudKitSyncManager: ObservableObject {
                 "motion_timestamp": record.motionTimestamp.map { ISO8601DateFormatter().string(from: $0) } ?? "",
                 "device_name": config.deviceName
             ]
+            if let movementReason = record.movementReason?.rawValue {
+                payload["movement_reason"] = movementReason
+            }
 
             guard let data = try? JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted]) else { return }
 
@@ -366,7 +369,7 @@ public final class CloudKitSyncManager: ObservableObject {
                 if documentsNeedsWrite || rootNeedsWrite {
                     LocationStore.shared.logDiagnostic(
                         title: "iCloud File Mirrored",
-                        details: "Wrote latest_location.json because GPS coordinates changed",
+                        details: "Wrote latest_location.json because GPS coordinates changed (movement_reason: \(record.movementReason?.rawValue ?? "unset"))",
                         severity: .success
                     )
                 } else {

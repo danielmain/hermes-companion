@@ -2,201 +2,178 @@ import SwiftUI
 
 struct StatusCardView: View {
     @EnvironmentObject private var locationManager: LocationManager
-    @State private var copied: Bool = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var copied = false
 
     var body: some View {
-        VStack(spacing: 16) {
-            // Header Row: Status and Master Toggle
-            HStack(alignment: .center) {
-                HStack(spacing: 10) {
-                    ZStack {
-                        Circle()
-                            .fill(statusColor.opacity(0.2))
-                            .frame(width: 34, height: 34)
-                        Circle()
-                            .fill(statusColor)
-                            .frame(width: 14, height: 14)
-                    }
+        VStack(alignment: .leading, spacing: EditorialSpacing.large) {
+            EditorialSectionHeader(index: "#00", title: "ACTIVE SESSION", trailing: trackingCode)
 
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(statusTitle)
-                            .font(.headline)
-                            .fontWeight(.bold)
-                            .foregroundColor(.primary)
-
-                        Text(statusSubtitle)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: EditorialSpacing.medium) {
+                    statusCopy
+                    Spacer(minLength: EditorialSpacing.medium)
+                    trackingButton
+                        .frame(maxWidth: 150)
                 }
 
-                Spacer()
-
-                Button(action: {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
-                        locationManager.toggleTracking()
-                    }
-                }) {
-                    Text(locationManager.isTrackingActive ? "Pause" : "Start")
-                        .font(.subheadline)
-                        .fontWeight(.bold)
-                        .foregroundColor(locationManager.isTrackingActive ? .red : .white)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .background(
-                            locationManager.isTrackingActive
-                                ? Color.red.opacity(0.12)
-                                : Color.accentColor
-                        )
-                        .clipShape(Capsule())
+                VStack(alignment: .leading, spacing: EditorialSpacing.medium) {
+                    statusCopy
+                    trackingButton
                 }
             }
 
-            Divider()
+            EditorialRule()
 
-            // Coordinates Row
-            if let rec = locationManager.latestRecord {
-                VStack(spacing: 8) {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("CURRENT COORDINATES")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundColor(.secondary)
-
-                            Text("\(String(format: "%.5f", rec.latitude)), \(String(format: "%.5f", rec.longitude))")
-                                .font(.system(size: 16, weight: .semibold, design: .monospaced))
-                                .foregroundColor(.primary)
-                        }
-
-                        Spacer()
-
-                        Button(action: copyCoordinates) {
-                            HStack(spacing: 4) {
-                                Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                                    .font(.caption2)
-                                Text(copied ? "Copied" : "Copy")
-                                    .font(.caption2)
-                                    .fontWeight(.medium)
-                            }
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
-                            .background(Color(UIColor.tertiarySystemFill))
-                            .clipShape(Capsule())
-                        }
-                    }
-
-                    // Source and Accuracy Badges
-                    HStack(spacing: 8) {
-                        Label(rec.source.rawValue, systemImage: rec.source.systemIcon)
-                            .font(.caption2)
-                            .fontWeight(.medium)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Color.blue.opacity(0.12))
-                            .foregroundColor(.blue)
-                            .clipShape(RoundedRectangle(cornerRadius: 6))
-
-                        Label(rec.formattedAccuracy, systemImage: "scope")
-                            .font(.caption2)
-                            .fontWeight(.medium)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Color.secondary.opacity(0.12))
-                            .foregroundColor(.secondary)
-                            .clipShape(RoundedRectangle(cornerRadius: 6))
-
-                        Label(rec.appState, systemImage: "iphone")
-                            .font(.caption2)
-                            .fontWeight(.medium)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Color.purple.opacity(0.12))
-                            .foregroundColor(.purple)
-                            .clipShape(RoundedRectangle(cornerRadius: 6))
-
-                        Spacer()
-                    }
-                }
+            if let record = locationManager.latestRecord {
+                CoordinateReadout(record: record, copied: copied, copyAction: copyCoordinates)
             } else {
-                HStack {
+                HStack(alignment: .top, spacing: EditorialSpacing.compact) {
                     Image(systemName: "location.slash")
-                        .foregroundColor(.secondary)
-                    Text("No location fix yet. Tap 'Ping Now' or wait for GPS lock.")
-                        .font(.footnote)
-                        .foregroundColor(.secondary)
-                    Spacer()
-                }
-                .padding(.vertical, 4)
-            }
-
-            // Sub-bar with Always Mode badges and One-shot ping
-            HStack {
-                HStack(spacing: 6) {
-                    Circle()
-                        .fill(locationManager.isSignificantMonitoringActive ? Color.green : Color.gray)
-                        .frame(width: 7, height: 7)
-                    Text("Significant Changes: Active")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(.secondary)
-                }
-
-                Spacer()
-
-                Button(action: {
-                    locationManager.requestSingleLocationUpdate(source: .manualPing)
-                }) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.caption2)
-                        Text("Ping Now")
-                            .font(.caption2)
-                            .fontWeight(.semibold)
+                        .font(.title3.weight(.ultraLight))
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: EditorialSpacing.xSmall) {
+                        Text("AWAITING FIRST FIX")
+                            .font(.editorialUtility)
+                        Text("Request a reading or wait for the receiver to establish a location.")
+                            .font(.body)
+                            .foregroundStyle(EditorialColor.secondaryInk)
                     }
-                    .foregroundColor(.accentColor)
                 }
             }
+
+            Button {
+                locationManager.requestSingleLocationUpdate(source: .manualPing)
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            } label: {
+                Label("REQUEST READING", systemImage: "arrow.clockwise")
+            }
+            .buttonStyle(EditorialButtonStyle(isPrimary: false))
         }
-        .padding(18)
-        .background(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(Color(UIColor.secondarySystemGroupedBackground))
-                .shadow(color: Color.black.opacity(0.06), radius: 10, x: 0, y: 3)
-        )
+        .foregroundStyle(EditorialColor.ink)
+        .editorialPanel(emphasized: true, cutCorner: true)
     }
 
-    private var statusColor: Color {
-        guard locationManager.isAuthorized else { return .orange }
-        return locationManager.isTrackingActive ? .green : .gray
+    private var statusCopy: some View {
+        VStack(alignment: .leading, spacing: EditorialSpacing.small) {
+            Text(statusTitle)
+                .font(.editorialTitle)
+                .foregroundStyle(EditorialColor.ink)
+                .accessibilityAddTraits(.isHeader)
+            Text(statusSubtitle)
+                .font(.body)
+                .foregroundStyle(EditorialColor.secondaryInk)
+        }
+    }
+
+    private var trackingButton: some View {
+        Button {
+            withAnimation(reduceMotion ? nil : EditorialMotion.quick) {
+                locationManager.toggleTracking()
+            }
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        } label: {
+            Label(locationManager.isTrackingActive ? "PAUSE TRACKING" : "START TRACKING",
+                  systemImage: locationManager.isTrackingActive ? "pause" : "play")
+        }
+        .buttonStyle(EditorialButtonStyle(isPrimary: !locationManager.isTrackingActive))
+    }
+
+    private var trackingCode: String {
+        locationManager.isTrackingActive ? "RUNNING" : "PAUSED"
     }
 
     private var statusTitle: String {
         if !locationManager.isAuthorized {
-            return "Permission Required"
+            return "Permission required"
         }
-        return locationManager.isTrackingActive ? "Tracking Active" : "Tracking Paused"
+        return locationManager.isTrackingActive ? "Receiver online" : "Receiver paused"
     }
 
     private var statusSubtitle: String {
         if !locationManager.isAuthorized {
-            return "Requires Always location"
+            return "Always location access is required for unattended readings."
         }
         if locationManager.isTrackingActive {
-            return locationManager.isAlwaysAuthorized ? "Always-On (Even When Closed)" : "When In Use Only"
-        } else {
-            return "Tap Start to resume"
+            return locationManager.isAlwaysAuthorized ? "The field unit can observe movement after the app closes." : "Readings are limited to foreground use."
         }
+        return "The archive is intact; new location readings are suspended."
     }
 
     private func copyCoordinates() {
-        guard let rec = locationManager.latestRecord else { return }
-        UIPasteboard.general.string = "\(rec.latitude), \(rec.longitude)"
-        withAnimation {
+        guard let record = locationManager.latestRecord else { return }
+        UIPasteboard.general.string = "\(record.latitude), \(record.longitude)"
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+
+        withAnimation(reduceMotion ? nil : EditorialMotion.quick) {
             copied = true
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            withAnimation {
+
+        Task {
+            try? await Task.sleep(for: .seconds(1.5))
+            withAnimation(reduceMotion ? nil : EditorialMotion.quick) {
                 copied = false
             }
         }
+    }
+}
+
+private struct CoordinateReadout: View {
+    let record: LocationRecord
+    let copied: Bool
+    let copyAction: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: EditorialSpacing.medium) {
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .firstTextBaseline) {
+                    coordinateCopy
+                    Spacer(minLength: EditorialSpacing.medium)
+                    copyButton
+                }
+
+                VStack(alignment: .leading, spacing: EditorialSpacing.compact) {
+                    coordinateCopy
+                    copyButton
+                }
+            }
+
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: EditorialSpacing.small) {
+                    tokens
+                }
+
+                VStack(alignment: .leading, spacing: EditorialSpacing.small) {
+                    tokens
+                }
+            }
+        }
+    }
+
+    private var coordinateCopy: some View {
+        VStack(alignment: .leading, spacing: EditorialSpacing.xSmall) {
+            Text("CURRENT COORDINATES")
+                .font(.editorialUtilitySmall)
+                .foregroundStyle(EditorialColor.secondaryInk)
+            Text("\(record.latitude, format: .number.precision(.fractionLength(5))), \(record.longitude, format: .number.precision(.fractionLength(5)))")
+                .font(.system(.title3, design: .monospaced, weight: .regular))
+                .foregroundStyle(EditorialColor.ink)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var copyButton: some View {
+        Button(action: copyAction) {
+            Label(copied ? "COPIED" : "COPY", systemImage: copied ? "checkmark" : "doc.on.doc")
+        }
+        .buttonStyle(EditorialButtonStyle(isPrimary: false))
+        .frame(maxWidth: 130)
+    }
+
+    @ViewBuilder
+    private var tokens: some View {
+        EditorialStatusToken(text: record.source.rawValue.uppercased(), isInverted: true, systemImage: record.source.systemIcon)
+        EditorialStatusToken(text: record.formattedAccuracy.uppercased(), isInverted: false, systemImage: "scope")
+        EditorialStatusToken(text: record.appState.uppercased(), isInverted: false, systemImage: "iphone")
     }
 }
