@@ -34,8 +34,9 @@ The only transport is **iCloud Drive / CloudKit sync** — Apple's own end-to-en
 ```
 
 1. **iOS App Writes Silently**: Even when killed from the App Switcher, iOS wakes the app whenever you move (~500m significant change), exit your stationary geofence, or record Apple Health events (sleep/workouts). The app writes coordinates and health telemetry into its iCloud ubiquity container.
-2. **iCloud Syncs Automatically**: Apple mirrors those files down to the Mac's local iCloud container — no open ports, no background server, no NAT traversal.
-3. **Hermes Agent Reads On-Demand**: Whenever Hermes needs your location or health context (e.g. for morning greetings, workout check-ins, or post-workout protein reminders), it reads the local synced files via native **Model Context Protocol (MCP)** tools or the Python helper.
+2. **GPS is write-on-change**: A new location record is stored, and `latest_location.json` is rewritten, **only when the GPS coordinate actually moves** (default 10 m, the Standard Distance Filter). Stationary GPS ticks do not append history, do not update file mtime, and do not trigger iCloud re-sync. The timestamp in `latest_location.json` is the last time the position changed; CoreMotion `motion_activity` answers whether you are moving right now.
+3. **iCloud Syncs Automatically**: Apple mirrors those files down to the Mac's local iCloud container — no open ports, no background server, no NAT traversal.
+4. **Hermes Agent Reads On-Demand**: Whenever Hermes needs your location or health context (e.g. for morning greetings, workout check-ins, or post-workout protein reminders), it reads the local synced files via native **Model Context Protocol (MCP)** tools or the Python helper.
 
 ---
 
@@ -138,7 +139,7 @@ Hermes Agent gains direct access to:
   (CoreMotion, refreshed independently of the GPS fix).
 - `is_moving_now`: whether he is moving right now (fresh motion wins; otherwise a fresh fix's speed).
 - `motion_fresh`: whether the motion reading is recent enough to trust (≤ 5 minutes).
-- `is_stale` / `fix_age_minutes`: how old the GPS **position** is (the position is last-known, not real-time).
+- `is_stale` / `fix_age_minutes` / `minutes_since_last_move`: minutes since GPS last **rewrote** (he last moved ~10 m). A long age at a known place means he is still there.
 
 `get_user_location()` returns a line like `• Movement: walking (CoreMotion, live 12s ago)` or
 `• Movement: stationary`. So a stale GPS fix can still say "at the gym" while `motion_activity`
@@ -150,6 +151,7 @@ says "walking": trust `is_moving_now` + `motion_activity` for *moving vs staying
 The phone writes these fields into `latest_location.json` in the iCloud container:
 `motion_activity` (`stationary`/`walking`/`running`/`cycling`/`automotive`/`unknown`),
 `motion_confidence` (`high`/`medium`/`low`), and `motion_timestamp` (ISO-8601 UTC).
+That file is rewritten only when the GPS coordinate changes; an unchanged position leaves the file (and its timestamp) untouched.
 
 ### Option 2: Python Helper (`server.client`)
 Used directly in Python runtimes or heartbeat scripts:
@@ -190,7 +192,7 @@ Confirm it is readable:
 python3 server/scripts/rukara_location.py
 ```
 
-> **Note on Timestamps & Timezones:** The raw JSON timestamp uses ISO-8601 UTC format (`...Z`). For example, `09:53:05Z` represents `11:53:05` local time in Germany (CEST / UTC+2). All client scripts calculate data freshness relative to `UTC now`, ensuring precise age calculations regardless of local timezones.
+> **Note on Timestamps & Timezones:** The raw JSON timestamp uses ISO-8601 UTC format (`...Z`). For example, `09:53:05Z` represents `11:53:05` local time in Germany (CEST / UTC+2). All client scripts calculate data freshness relative to `UTC now`, ensuring precise age calculations regardless of local timezones. Because GPS files are write-on-change, a growing `age_seconds` while you stay put is expected: the timestamp is the last movement, not the last GPS radio tick.
 
 ### Step 3: Run the Integration Test
 Verify the iCloud parsing and the MCP tools (no relay, no network):
