@@ -139,6 +139,43 @@ private struct TrackingSettingsSection: View {
         VStack(alignment: .leading, spacing: EditorialSpacing.large) {
             EditorialSectionHeader(index: "#03", title: "OBSERVATION", trailing: "BACKGROUND")
 
+            VStack(alignment: .leading, spacing: EditorialSpacing.small) {
+                Text("TRACKING PROFILE")
+                    .font(.editorialUtilitySmall)
+                    .foregroundStyle(EditorialColor.secondaryInk)
+
+                Picker("Tracking profile", selection: $locationManager.configuration.trackingMode) {
+                    ForEach(TrackingMode.allCases) { mode in
+                        Text(mode.rawValue).tag(mode)
+                    }
+                }
+                .pickerStyle(.menu)
+                .tint(EditorialColor.ink)
+
+                Text(locationManager.configuration.trackingMode.subtitle)
+                    .font(.footnote)
+                    .foregroundStyle(EditorialColor.secondaryInk)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(EditorialSpacing.compact)
+            .overlay {
+                Rectangle().stroke(EditorialColor.hairline, lineWidth: EditorialBorder.hairline)
+            }
+
+            Button {
+                locationManager.toggleTracking()
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            } label: {
+                Label(
+                    locationManager.isTrackingActive ? "PAUSE LOCATION TRACKING" : "START LOCATION TRACKING",
+                    systemImage: locationManager.isTrackingActive ? "pause" : "play"
+                )
+            }
+            .buttonStyle(EditorialButtonStyle(isPrimary: !locationManager.isTrackingActive))
+
+            EditorialRule()
+
             EditorialToggleRow(
                 title: "Dynamic stationary geofence",
                 detail: "Deploy a monitored region while the device is stationary.",

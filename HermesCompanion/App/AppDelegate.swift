@@ -17,10 +17,11 @@ public final class AppDelegate: NSObject, UIApplicationDelegate {
 
         // Initialize HealthKitManager
         let healthKitManager = HealthKitManager.shared
-        healthKitManager.checkCurrentAuthorization()
-        if healthKitManager.authorizationStatus == .authorized {
-            healthKitManager.setupBackgroundObservers()
-            healthKitManager.refreshHealthSnapshot { _ in }
+        healthKitManager.checkCurrentAuthorization { status in
+            if status == .accessRequested {
+                healthKitManager.setupBackgroundObservers()
+                healthKitManager.refreshHealthSnapshot { _ in }
+            }
         }
 
         return true

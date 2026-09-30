@@ -10,9 +10,9 @@ public struct HealthOverviewCard: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: EditorialSpacing.medium) {
-            EditorialSectionHeader(index: "#06", title: "VITAL ARCHIVE", trailing: authorizationLabel)
+            EditorialSectionHeader(index: "#01", title: "TODAY'S HEALTH", trailing: authorizationLabel)
 
-            if healthKitManager.authorizationStatus == .authorized {
+            if healthKitManager.authorizationStatus == .accessRequested {
                 AuthorizedHealthContent(
                     snapshot: healthKitManager.latestSnapshot,
                     isRefreshing: healthKitManager.isQuerying,
@@ -23,10 +23,17 @@ public struct HealthOverviewCard: View {
             }
         }
         .editorialPanel(cutCorner: true)
+        .task(id: healthKitManager.authorizationStatus) {
+            if healthKitManager.authorizationStatus == .accessRequested,
+               healthKitManager.latestSnapshot == nil,
+               !healthKitManager.isQuerying {
+                refresh()
+            }
+        }
     }
 
     private var authorizationLabel: String {
-        healthKitManager.authorizationStatus == .authorized ? "CONNECTED" : "OPTIONAL"
+        healthKitManager.authorizationStatus == .accessRequested ? "REQUESTED" : "OPTIONAL"
     }
 
     private func requestAuthorization() {
@@ -87,27 +94,51 @@ private struct AuthorizedHealthContent: View {
                     detail: snapshot?.sleep?.qualityRating.title ?? "No recent record"
                 )
 
-                let workout = snapshot?.activeWorkout ?? snapshot?.latestWorkout
                 HealthMetric(
                     index: "02",
-                    label: "WORKOUT",
-                    value: workout?.workoutType ?? "—",
-                    detail: workout?.isCurrentlyActive == true ? "Active now" : "Last 24 hours"
-                )
-
-                HealthMetric(
-                    index: "03",
                     label: "STEPS",
                     value: snapshot?.vitals.stepCountToday.formatted() ?? "—",
                     detail: "Today"
                 )
 
                 HealthMetric(
+                    index: "03",
+                    label: "ACTIVE ENERGY",
+                    value: snapshot.map { "\(Int($0.vitals.activeEnergyBurnedKCal.rounded()).formatted())" } ?? "—",
+                    detail: "Kilocalories today"
+                )
+
+                HealthMetric(
                     index: "04",
                     label: "RESTING HR",
-                    value: snapshot?.vitals.restingHeartRateBPM.map { "\(Int($0))" } ?? "—",
+                    value: snapshot?.vitals.restingHeartRateBPM.map { "\(Int($0.rounded()))" } ?? "—",
                     detail: "Beats per minute"
                 )
+            }
+
+            if let workout = snapshot?.activeWorkout ?? snapshot?.latestWorkout {
+                HStack(alignment: .top, spacing: EditorialSpacing.compact) {
+                    Image(systemName: workout.isCurrentlyActive ? "figure.run" : "checkmark")
+                        .font(.body.weight(.light))
+                        .frame(width: 24)
+                        .accessibilityHidden(true)
+
+                    VStack(alignment: .leading, spacing: EditorialSpacing.xSmall) {
+                        Text(workout.isCurrentlyActive ? "WORKOUT ACTIVE" : "LATEST WORKOUT")
+                            .font(.editorialUtilitySmall)
+                            .foregroundStyle(EditorialColor.secondaryInk)
+                        Text("\(workout.workoutType) · \(workout.durationMinutes) min")
+                            .font(.body)
+                            .foregroundStyle(EditorialColor.ink)
+                    }
+
+                    Spacer()
+                }
+                .padding(EditorialSpacing.compact)
+                .overlay {
+                    Rectangle().stroke(EditorialColor.faintHairline, lineWidth: EditorialBorder.hairline)
+                }
+                .accessibilityElement(children: .combine)
             }
 
             if let insight = snapshot?.conversationalContext.suggestedOpeners.first {

@@ -80,7 +80,7 @@ public final class BackgroundTaskManager {
             // Request one-shot location fix during background task
             DispatchQueue.main.async {
                 LocationManager.shared.requestSingleLocationUpdate(source: .backgroundFetch)
-                if HealthKitManager.shared.authorizationStatus == .authorized {
+                if HealthKitManager.shared.authorizationStatus == .accessRequested {
                     HealthKitManager.shared.refreshHealthSnapshot { _ in }
                 }
             }
@@ -105,7 +105,7 @@ public final class BackgroundTaskManager {
                     CloudKitSyncManager.shared.syncHealthRecord(config: config, snapshot: health)
                 }
             }
-            if HealthKitManager.shared.authorizationStatus == .authorized {
+            if HealthKitManager.shared.authorizationStatus == .accessRequested {
                 HealthKitManager.shared.refreshHealthSnapshot { _ in }
             }
             task.setTaskCompleted(success: true)

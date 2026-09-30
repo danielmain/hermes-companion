@@ -7,21 +7,27 @@ struct MainTabView: View {
         TabView(selection: $selectedTab) {
             DashboardView()
                 .tabItem {
-                    Label("Field", systemImage: "antenna.radiowaves.left.and.right")
+                    Label("Today", systemImage: "sun.max")
                 }
                 .tag(0)
+
+            HealthDetailView()
+                .tabItem {
+                    Label("Health", systemImage: "heart.text.square")
+                }
+                .tag(1)
 
             HistoryLogView()
                 .tabItem {
                     Label("Archive", systemImage: "archivebox")
                 }
-                .tag(1)
+                .tag(2)
 
             SettingsView()
                 .tabItem {
-                    Label("Config", systemImage: "slider.horizontal.3")
+                    Label("Settings", systemImage: "slider.horizontal.3")
                 }
-                .tag(2)
+                .tag(3)
         }
         .tint(EditorialColor.ink)
         .toolbarBackground(EditorialColor.paper, for: .tabBar)

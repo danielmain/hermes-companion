@@ -5,14 +5,14 @@ import UIKit
 
 public enum HealthKitAuthorizationStatus: String, Codable {
     case notDetermined = "not_determined"
-    case authorized = "authorized"
+    case accessRequested = "access_requested"
     case denied = "denied"
     case unavailable = "unavailable"
 
     public var title: String {
         switch self {
         case .notDetermined: return "Authorization Needed"
-        case .authorized: return "Authorized"
+        case .accessRequested: return "Access Requested"
         case .denied: return "Access Denied"
         case .unavailable: return "HealthKit Unavailable"
         }
@@ -63,32 +63,43 @@ public final class HealthKitManager: ObservableObject {
     private init() {
         self.isAvailable = HKHealthStore.isHealthDataAvailable()
         loadCachedSnapshot()
-
-        if isAvailable {
-            checkCurrentAuthorization()
-        }
     }
 
     // MARK: - Permissions & Authorization
-    public func checkCurrentAuthorization() {
+    public func checkCurrentAuthorization(
+        completion: ((HealthKitAuthorizationStatus) -> Void)? = nil
+    ) {
         guard isAvailable else {
             self.authorizationStatus = .unavailable
+            completion?(.unavailable)
             return
         }
 
-        // Check status on a representative type (e.g. workout)
-        let workoutType = HKObjectType.workoutType()
-        let status = healthStore.authorizationStatus(for: workoutType)
-        DispatchQueue.main.async {
-            switch status {
-            case .notDetermined:
-                self.authorizationStatus = .notDetermined
-            case .sharingAuthorized:
-                self.authorizationStatus = .authorized
-            case .sharingDenied:
-                self.authorizationStatus = .denied
-            @unknown default:
-                self.authorizationStatus = .notDetermined
+        healthStore.getRequestStatusForAuthorization(toShare: [], read: readTypes) { [weak self] status, error in
+            DispatchQueue.main.async {
+                guard let self else { return }
+
+                let resolvedStatus: HealthKitAuthorizationStatus
+                if let error {
+                    self.lastErrorMessage = error.localizedDescription
+                    resolvedStatus = .notDetermined
+                } else {
+                    switch status {
+                    case .shouldRequest:
+                        resolvedStatus = .notDetermined
+                    case .unnecessary:
+                        // HealthKit intentionally doesn't reveal read authorization.
+                        // This means the person has already responded to the request.
+                        resolvedStatus = .accessRequested
+                    case .unknown:
+                        resolvedStatus = .notDetermined
+                    @unknown default:
+                        resolvedStatus = .notDetermined
+                    }
+                }
+
+                self.authorizationStatus = resolvedStatus
+                completion?(resolvedStatus)
             }
         }
     }
@@ -124,10 +135,10 @@ public final class HealthKitManager: ObservableObject {
                 }
 
                 if success {
-                    self.authorizationStatus = .authorized
+                    self.authorizationStatus = .accessRequested
                     LocationStore.shared.logDiagnostic(
-                        title: "HealthKit Authorized",
-                        details: "Permissions granted to access sleep, workouts, and vitals",
+                        title: "HealthKit Access Requested",
+                        details: "Authorization flow completed for sleep, workouts, and vitals",
                         severity: .success
                     )
                     self.setupBackgroundObservers()
