@@ -60,6 +60,8 @@ This repository has no personal name and no agent persona. Voice and schedule st
 
 The skill is `skills/hermes-companion` in this repository. One skill covers place and health. It reads the files this iPhone app writes. With the app uninstalled, or before iCloud has synced, the script reports that no file exists.
 
+Product page: [hermescompanion.funktional.dev](https://hermescompanion.funktional.dev).
+
 ```bash
 hermes skills install danielmain/hermes-companion/skills/hermes-companion
 ```
@@ -130,7 +132,8 @@ hermes-companion/
 │   └── scripts/companion.py
 ├── HermesCompanion/             # SwiftUI app
 ├── server/                      # MCP server and integration tests
-├── assets/                      # wordmark artwork
+├── assets/                      # wordmark artwork and device captures
+├── website/                     # Marketing, Support & Privacy web pages
 ├── project.yml                  # XcodeGen spec
 ├── AGENT.md                     # contributor and agent guide
 └── README.md

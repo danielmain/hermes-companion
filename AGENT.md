@@ -13,10 +13,11 @@
 
 **Hermes Companion iOS** is an iOS application whose sole purpose is to **reliably transmit the user's live physical location to the Hermes AI Agent framework**, even when the app is in the background, suspended, or **completely closed/terminated by iOS or device reboot**.
 
-The project consists of three pieces:
+The project consists of four pieces:
 1. **iOS Native Client (`HermesCompanion/`)**: A Swift/SwiftUI application configured with CoreLocation background modes, significant location change monitoring, stationary perimeter geofencing, and automatic **iCloud/CloudKit sync** of location and Apple Health telemetry.
 2. **Hermes Skill (`skills/hermes-companion/`)**: One published skill for place, motion, sleep, workouts, and recovery. `hermes skills install danielmain/hermes-companion/skills/hermes-companion`.
 3. **Optional MCP bridge (`server/`)**: Zero-dependency Python MCP server and integration tests that read the same iCloud files. The skill does not require it.
+4. **App Store & Documentation Web Presence (`website/`)**: Monochrome editorial Marketing URL (`index.html`), Support URL (`support.html`), and Privacy Declaration (`privacy.html`).
 
 ---
 
@@ -164,7 +165,7 @@ hermes-companion-ios/
 
 #### Server & Agent Integration
 - [server/places.py](server/places.py): Place recognition. Matches the fix to a named place in the user's places file (`HERMES_COMPANION_PLACES`, `HERMES_HOME/state/places.json`, or the only Hermes profile that already has one). Internal `context_summary` strings stay for the resolver tests. The skill and MCP tools do not present them as lines to say.
-- [skills/hermes-companion/SKILL.md](skills/hermes-companion/SKILL.md): The single published Hermes skill (version 1.2.0). Replaces `user-location` and `user-health`. Frontmatter follows the skill authoring format (`name`, `description` under 60 characters, `version`, `author`, `license`, `platforms`, `metadata.hermes.tags`, `category: health`, and `config`). The description and the Requires the iPhone app section say the skill works only with this iOS app. Install with `hermes skills install danielmain/hermes-companion/skills/hermes-companion`. The Language section tells the model to answer in the user's language. A pull request into Hermes Agent belongs at `optional-skills/health/hermes-companion/`, which is the skill directory only.
+- [skills/hermes-companion/SKILL.md](skills/hermes-companion/SKILL.md): The single published Hermes skill (version 1.2.0). Replaces `user-location` and `user-health`. Frontmatter follows the skill authoring format (`name`, `description` under 60 characters, `version`, `author`, `license`, `platforms`, `metadata.hermes.tags`, `category: health`, and `config`). The description and the Requires the iPhone app section say the skill works only with this iOS app. Product page: https://hermescompanion.funktional.dev. Install with `hermes skills install danielmain/hermes-companion/skills/hermes-companion`. The Language section tells the model to answer in the user's language. A pull request into Hermes Agent belongs at `optional-skills/health/hermes-companion/`, which is the skill directory only.
 - [skills/hermes-companion/scripts/companion.py](skills/hermes-companion/scripts/companion.py): Stdlib reader. Resolves a known place and prints key/value facts (`place_name`, `still_there`, motion freshness, `movement_reason`, health codes). English prose fields in an older health file are logged and dropped. Logs `INFO` / `WARN` / `ERROR` on stderr.
 - [server/mcp_server.py](server/mcp_server.py): Model Context Protocol (MCP) server communicating over stdio (JSON-RPC). Exposes `get_user_location`, `get_user_health`, `get_user_physical_context`, `get_location_history`, `add_known_place`, and `list_known_places`.
 - [server/client.py](server/client.py): Python helper for direct zero-network reading of location and Apple Health telemetry from the locally synced iCloud/CloudKit files, falling back to the local SQLite cache.
