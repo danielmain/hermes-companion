@@ -58,7 +58,7 @@ This repository has no personal name and no agent persona. Voice and schedule st
 
 ## Install the skill
 
-The skill is `skills/hermes-companion` in this repository. One skill covers place and health.
+The skill is `skills/hermes-companion` in this repository. One skill covers place and health. It reads the files this iPhone app writes. With the app uninstalled, or before iCloud has synced, the script reports that no file exists.
 
 ```bash
 hermes skills install danielmain/hermes-companion/skills/hermes-companion

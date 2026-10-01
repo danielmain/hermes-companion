@@ -1,13 +1,14 @@
 ---
 name: hermes-companion
-description: Live iPhone place, motion, sleep, workouts, and recovery.
-version: 1.1.0
+description: Requires the Companion iPhone app for place and health.
+version: 1.2.0
 author: danielmain
 license: MIT
 platforms: [macos]
 metadata:
   hermes:
     tags: [Location, Health, iPhone, iCloud, Apple]
+    category: health
     config:
       - key: hermes-companion.places_file
         description: JSON file of named places with latitude, longitude, and radius
@@ -21,9 +22,13 @@ metadata:
 
 # Hermes Companion
 
-Read the user's live place, motion, sleep, workout, and recovery from the Hermes Companion iPhone app. The app writes JSON into the user's private iCloud container. This skill reads the files macOS has already synced. It does not call a relay, open a port, or guess a coordinate.
+Read the user's live place, motion, sleep, workout, and recovery. The script prints facts. How to answer is in Language.
 
-The script prints facts. How to answer is in Language.
+## Requires the iPhone app
+
+This skill works only with the Hermes Companion iOS app installed on the user's iPhone: [github.com/danielmain/hermes-companion](https://github.com/danielmain/hermes-companion). The app writes `latest_location.json` and `latest_health.json` into the user's private iCloud container. This skill reads the copies macOS has already synced. It does not call a relay, open a port, or produce a coordinate on its own.
+
+Until that app is installed, Location is set to Always, and iCloud has synced those two files, the script reports that no file exists. Say that the Hermes Companion iPhone app is required and has not synced yet. Do not invent a place, a motion state, or a health number.
 
 ## When to Use
 
@@ -36,8 +41,9 @@ Do not use this skill for a generic map, a route, or weather. Do not invent a pl
 
 ## Prerequisites
 
+- The Hermes Companion iPhone app, from [github.com/danielmain/hermes-companion](https://github.com/danielmain/hermes-companion). The skill has no data source other than that app.
 - macOS, signed into the same Apple ID as the iPhone.
-- Hermes Companion installed, with Location set to Always, Motion & Fitness allowed, and Health access allowed.
+- Location set to Always, Motion & Fitness allowed, and Health access allowed.
 - iCloud Drive has finished downloading `latest_location.json` and `latest_health.json`.
 
 If the skill config block names `hermes-companion.places_file` or `hermes-companion.icloud_dir`, pass those paths as `--places` and `--icloud-dir`. Otherwise the script uses its defaults, including an existing Hermes profile `state/places.json` when exactly one profile has that file.
@@ -90,7 +96,7 @@ This file is English because the model reads it. The user never sees it.
 
 ## Procedure
 
-1. Run `companion.py` for place and motion, `--health` for body metrics, or `--context` when the answer needs both. Completion: the command prints a `place_name:` or `recovery_status:` line, or an explicit "no file yet" line.
+1. Run `companion.py` for place and motion, `--health` for body metrics, or `--context` when the answer needs both. Completion: the command prints a `place_name:` or `recovery_status:` line, or an explicit "no file yet" line. On "no file yet", tell the user the Hermes Companion iPhone app has to be installed and synced, then stop.
 2. Treat `place_name` as where they are now. `minutes_since_last_move` is how long the phone has kept that coordinate. A large number at a known place means they are still there. Say that in the present tense, in the user's language.
 3. Treat `motion_activity` when `motion_fresh` is `yes` as what the body is doing this minute. Walking at a saved place with an old GPS age is still that place, walking around, not lost and not in transit.
 4. Treat a fresh `recorded_at` as an accepted move. It does not say they arrived, left, or came back. Do not announce an arrival unless they said so.
@@ -113,7 +119,7 @@ Field notes live in `references/files.md`. Load that file only when a raw key is
 
 ## Pitfalls
 
-- An iCloud file that has not downloaded yet prints "no file yet". Say the phone has not synced, and do not reuse a place from an earlier conversation as if it were a fresh reading.
+- "No file yet" means the Hermes Companion iPhone app is missing, not yet allowed to run, or iCloud has not downloaded its files. Say that. Do not reuse a place from an earlier conversation as if it were a fresh reading.
 - The simulator has no CoreMotion. `motion_activity: unknown` and `motion_fresh: no` are expected there.
 - Motion & Fitness must be allowed or `motion_activity` stays `unknown`.
 - Coordinates are for saving a place or when the user asks for them. Do not recite them in a normal reply.

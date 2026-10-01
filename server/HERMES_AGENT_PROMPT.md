@@ -1,6 +1,6 @@
 # Reading Hermes Companion
 
-The iPhone app writes `latest_location.json` and `latest_health.json` into the user's private iCloud container. On the Mac, read them with the skill or with the optional MCP server in this directory.
+The Hermes Companion iPhone app is required. It writes `latest_location.json` and `latest_health.json` into the user's private iCloud container. On the Mac, read them with the skill or with the optional MCP server in this directory. Until those files exist, say the app has not synced, and do not invent a place or a health number.
 
 Personal voice, names, and schedules belong in the agent's own profile. This file only describes the data. It names no person and no agent.
 

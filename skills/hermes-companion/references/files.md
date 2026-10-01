@@ -1,6 +1,6 @@
 # Hermes Companion files
 
-The iPhone writes these files into the iCloud ubiquity container. Timestamps are ISO-8601 UTC with a `Z` suffix. Age is `now` in UTC minus that timestamp.
+The Hermes Companion iPhone app writes these files into the iCloud ubiquity container. The skill has no other source. Timestamps are ISO-8601 UTC with a `Z` suffix. Age is `now` in UTC minus that timestamp.
 
 Default directory:
 
