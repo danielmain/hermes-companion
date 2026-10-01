@@ -20,3 +20,7 @@ fastlane/screenshots
 # Python
 __pycache__/
 *.pyc
+
+# Local location cache. Contains personal GPS history; do not publish.
+server/locations.sqlite3
+*.sqlite3

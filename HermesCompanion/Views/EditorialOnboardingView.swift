@@ -52,7 +52,7 @@ struct EditorialOnboardingView: View {
                 VStack(alignment: .leading, spacing: EditorialSpacing.medium) {
                     Text("YOUR CONSENT REMAINS THE CONTROL SURFACE")
                         .font(.editorialUtility)
-                    Text("Location and Health permissions are requested only when their features need them. You can revise access in iOS Settings.")
+                    Text("Hermes does not collect analytics or send logs to us. Your data is stored on this iPhone and synced only to your private iCloud account. You can change Location and Health access at any time in iOS Settings.")
                         .font(.body)
                         .foregroundStyle(EditorialColor.secondaryInk)
 

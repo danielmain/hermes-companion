@@ -22,8 +22,9 @@ DB_PATH = Path(__file__).resolve().parent / "locations.sqlite3"
 LOVE_PROFILE_PLACES = Path.home() / ".hermes/profiles/love/state/places.json"
 PLACES_JSON_PATH = LOVE_PROFILE_PLACES if LOVE_PROFILE_PLACES.parent.is_dir() else Path(__file__).resolve().parent / "places.json"
 
-# GPS is write-on-change: latest_location.json is rewritten only when coordinates move
-# (~10 m). The timestamp is therefore minutes-since-last-move, not "data went stale".
+# GPS is write-on-accepted-move: latest_location.json is rewritten only when
+# GPSPersistDecision accepts a displacement (default 30 m, or 150 m while stationary).
+# The timestamp is therefore minutes-since-last-move, not "data went stale".
 # Sitting still for hours is expected and means he is still at that place (a geofence
 # would have fired if he left). This threshold only labels a long stay, never "lost".
 STALE_FIX_SECONDS = 600
@@ -382,8 +383,8 @@ class PlacesManager:
         Synthesize semantic context: place, activity, movement, and a greeting.
 
         Two independent signals:
-          - GPS (age_seconds): WHERE he is. Write-on-change: the file is rewritten only
-            when coordinates move (~10 m). Age is minutes since last move. He is still
+          - GPS (age_seconds): WHERE he is. The file is rewritten only when a move is
+            accepted (default 30 m, or 150 m while stationary). Age is minutes since last move. He is still
             at that place until GPS writes again (a geofence would fire if he left).
           - CoreMotion (motion_age_seconds): whether he is moving NOW (walking/running/
             driving/stationary), refreshed independently of GPS.

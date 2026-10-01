@@ -248,7 +248,7 @@ private struct AboutSettingsSection: View {
             EditorialRule()
             SettingsValueRow(label: "ARCHITECTURE", value: "CoreLocation / CloudKit / HealthKit", systemImage: "cpu")
             EditorialRule()
-            Text("Designed as a private companion instrument. Records remain in local storage and your private Apple cloud container.")
+            Text("Your data is stored on this device and synced only to your private iCloud account. Hermes does not collect analytics or send logs to us. Apple provides crash reports only if you choose to share them with developers.")
                 .font(.body)
                 .foregroundStyle(EditorialColor.secondaryInk)
         }

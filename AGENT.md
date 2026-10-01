@@ -13,9 +13,10 @@
 
 **Hermes Companion iOS** is an iOS application whose sole purpose is to **reliably transmit the user's live physical location to the Hermes AI Agent framework**, even when the app is in the background, suspended, or **completely closed/terminated by iOS or device reboot**.
 
-The project consists of two tightly coupled components:
+The project consists of three pieces:
 1. **iOS Native Client (`HermesCompanion/`)**: A Swift/SwiftUI application configured with CoreLocation background modes, significant location change monitoring, stationary perimeter geofencing, and automatic **iCloud/CloudKit sync** of location and Apple Health telemetry.
-2. **Hermes Agent Bridge (`server/`)**: Zero-dependency Python MCP server and helpers that read the synced iCloud/CloudKit files on the Mac, plus integration tests.
+2. **Hermes Skill (`skills/hermes-companion/`)**: One published skill for place, motion, sleep, workouts, and recovery. `hermes skills install danielmain/hermes-companion/skills/hermes-companion`.
+3. **Optional MCP bridge (`server/`)**: Zero-dependency Python MCP server and integration tests that read the same iCloud files. The skill does not require it.
 
 ---
 
@@ -40,7 +41,7 @@ Refused ticks do **not** append a `LocationRecord`, rewrite `latest_location.jso
 
 A stored distance filter of exactly `legacyDistanceFilterMeters` (10 m, the old factory default) is raised to 30 m on launch and saved. Any other slider value is left alone. The Settings slider stays `0...50` m in steps of 5.
 
-CoreMotion `motion_activity` remains the signal for whether the user is moving right now. Rukara (profile `love`) must treat a growing GPS age at a known place as **still there** (present tense), never as a lost or unconfirmed fix, and a fresh rewrite as an accepted move rather than an arrival. `server/places.py` and the MCP `get_user_location` tool encode the age rule.
+CoreMotion `motion_activity` remains the signal for whether the user is moving right now. A growing GPS age at a known place means the user is **still there** (present tense). A fresh rewrite is an accepted move, not an arrival. The published skill `skills/hermes-companion` encodes that for the agent. `server/places.py` and the MCP `get_user_location` tool encode the same age rule.
 
 ### Tri-Layer "Always-On Even When Closed" Engine
 1. **Significant Location Change Service (`startMonitoringSignificantLocationChanges`)**:
@@ -116,17 +117,22 @@ hermes-companion-ios/
 │           ├── Contents.json
 │           ├── AccentColor.colorset/Contents.json
 │           └── AppIcon.appiconset/Contents.json
-└── server/                                 # Hermes macOS integration: MCP tools & tests
-    ├── places.py                           # Semantic place & activity recognition engine (known places, geocoding)
-    ├── mcp_server.py                       # Model Context Protocol (MCP) server for Hermes Agent (stdio)
-    ├── client.py                           # Python client module (reads synced iCloud file + local SQLite cache)
+├── skills/hermes-companion/                # Published Hermes skill (place + health, one skill)
+│   ├── SKILL.md                            # Frontmatter description is the skill-index line
+│   ├── references/files.md                 # JSON field notes loaded on demand
+│   └── scripts/
+│       ├── companion.py                    # Stdlib reader for the iCloud files
+│       └── test_companion.py               # Reader checks, no network
+└── server/                                 # Optional MCP bridge and integration tests
+    ├── places.py                           # Semantic place engine used by the MCP tools
+    ├── mcp_server.py                       # MCP server (stdio) for Hermes Agent
+    ├── client.py                           # iCloud file reader with SQLite fallback
     ├── scripts/
-    │   └── rukara_location.py              # CLI helper installed into love profile (scripts/rukara_location.py)
-    ├── skills/
-    │   └── user-location/
-    │       └── SKILL.md                    # Hermes agent skill for location awareness & conversational context
-    ├── HERMES_AGENT_PROMPT.md              # System prompt and Heartbeat protocol specification for Hermes Agent
-    └── test_integration.py                 # Integration test (iCloud parsing + MCP tools, no network)
+    │   ├── rukara_location.py              # Wrapper around skills/hermes-companion
+    │   └── rukara_health.py                # Wrapper; adds --health
+    ├── skills/README.md                    # Points at the single root skill
+    ├── HERMES_AGENT_PROMPT.md              # Heartbeat notes for the love profile
+    └── test_integration.py                 # iCloud parsing + MCP tools, no network
 ```
 
 ### Detailed File Descriptions
@@ -154,10 +160,10 @@ hermes-companion-ios/
 
 #### Server & Agent Integration
 - [server/places.py](file:///Users/daniel/Workspace/hermes-companion-ios/server/places.py): Semantic place & activity recognition engine. Resolves Daniel's physical context (e.g. at the gym, at home, at work, in transit) using radius geofencing over known places stored in `~/.hermes/profiles/love/state/places.json` and cached reverse geocoding with natural conversational greeting generation.
-- [server/scripts/rukara_location.py](file:///Users/daniel/Workspace/hermes-companion-ios/server/scripts/rukara_location.py): CLI tool installed in `~/.hermes/profiles/love/scripts/rukara_location.py` to inspect live physical context and manage places in `~/.hermes/profiles/love/state/places.json`.
-- [server/scripts/rukara_health.py](file:///Users/daniel/Workspace/hermes-companion-ios/server/scripts/rukara_health.py): CLI tool installed in `~/.hermes/profiles/love/scripts/rukara_health.py` to inspect live Apple Health metrics (sleep, workouts, post-workout protein reminders, recovery).
-- [server/skills/user-location/SKILL.md](file:///Users/daniel/Workspace/hermes-companion-ios/server/skills/user-location/SKILL.md): Official Hermes Agent skill installed into `~/.hermes/profiles/love/skills/user-location` enabling natural conversation regarding where Daniel is and what he is doing.
-- [server/skills/user-health/SKILL.md](file:///Users/daniel/Workspace/hermes-companion-ios/server/skills/user-health/SKILL.md): Official Hermes Agent skill installed into `~/.hermes/profiles/love/skills/user-health` enabling natural conversation regarding Daniel's sleep quality, active/recent workouts, tiredness, and post-workout protein reminders.
+- [skills/hermes-companion/SKILL.md](file:///Users/daniel/Workspace/hermes-companion-ios/skills/hermes-companion/SKILL.md): The single published Hermes skill. Replaces `user-location` and `user-health`. Frontmatter follows the skill authoring format (`name`, `description` under 60 characters, `version`, `author`, `license`, `platforms`, `metadata.hermes.tags` and `config`). Install with `hermes skills install danielmain/hermes-companion/skills/hermes-companion`.
+- [skills/hermes-companion/scripts/companion.py](file:///Users/daniel/Workspace/hermes-companion-ios/skills/hermes-companion/scripts/companion.py): Stdlib reader. Resolves a known place, prints `still_there`, motion freshness, `movement_reason`, and the health snapshot. Logs `INFO` / `WARN` / `ERROR` on stderr.
+- [server/scripts/rukara_location.py](file:///Users/daniel/Workspace/hermes-companion-ios/server/scripts/rukara_location.py): Thin wrapper that runs `companion.py` so older profile commands keep working.
+- [server/scripts/rukara_health.py](file:///Users/daniel/Workspace/hermes-companion-ios/server/scripts/rukara_health.py): Thin wrapper that runs `companion.py --health` (or `--context`).
 - [server/mcp_server.py](file:///Users/daniel/Workspace/hermes-companion-ios/server/mcp_server.py): Model Context Protocol (MCP) server communicating over stdio (JSON-RPC). Exposes `get_user_location`, `get_user_health`, `get_user_physical_context`, `get_location_history`, `add_known_place`, and `list_known_places` tools directly to Hermes Agent.
 - [server/client.py](file:///Users/daniel/Workspace/hermes-companion-ios/server/client.py): Python helper for direct zero-network reading of location and Apple Health telemetry from the locally synced iCloud/CloudKit files, falling back to the local SQLite cache.
 - [server/HERMES_AGENT_PROMPT.md](file:///Users/daniel/Workspace/hermes-companion-ios/server/HERMES_AGENT_PROMPT.md): Production-ready system prompt, activity awareness guidelines, Apple Health biometrics integration, and autonomous 6-step Heartbeat protocol specification for Hermes Agent (configured for profile `/Users/daniel/.hermes/profiles/love`).
@@ -189,6 +195,7 @@ xcodebuild -project HermesCompanion.xcodeproj -scheme HermesCompanion -sdk iphon
 ### Run Python Integration Tests (Uses isolated temporary DB)
 ```bash
 python3 server/test_integration.py
+python3 skills/hermes-companion/scripts/test_companion.py
 ```
 
 ---

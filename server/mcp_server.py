@@ -178,14 +178,14 @@ def handle_call_tool(name, arguments):
         minutes_since_move = int(data.get("minutes_since_last_move") or data.get("fix_age_minutes") or age_minutes)
         if data.get("is_moving_now") and not data.get("is_at_known_place"):
             result_text += (
-                f"\nNote: GPS last rewrote {minutes_since_move} min ago (the phone only writes when "
-                "coordinates move ~10 m). CoreMotion says he is moving now; place_name is the last written position."
+                f"\nNote: GPS last rewrote {minutes_since_move} min ago (the phone writes only after an accepted move: "
+                "30 m while moving, 150 m while stationary). CoreMotion says he is moving now; place_name is the last written position."
             )
         elif minutes_since_move >= 1:
             result_text += (
-                f"\nNote: GPS last changed {minutes_since_move} min ago. The iPhone only rewrites "
-                "latest_location.json when he actually moves (~10 m). He is still at this place; "
-                "a growing age means he has been here that long, not that the location is lost."
+                f"\nNote: GPS last changed {minutes_since_move} min ago. The iPhone rewrites "
+                "latest_location.json only after an accepted move (30 m while moving, 150 m while stationary). "
+                "He is still at this place; a growing age means he has been here that long, not that the location is lost."
             )
 
         return {"content": [{"type": "text", "text": result_text}]}
