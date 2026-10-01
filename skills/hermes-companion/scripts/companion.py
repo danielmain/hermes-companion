@@ -223,36 +223,29 @@ def resolve_location(
     known = match_place(latitude, longitude, places)
     label = MOTION_LABELS.get(motion)
     minutes = gps_age // 60
-    stay = f"hasn't moved in ~{minutes} min" if minutes >= 1 else "still there"
 
     if moving_now and known and label in ("walking", "running", "cycling"):
         place_name = str(known.get("name") or "Known place")
         category = str(known.get("category") or "general")
-        summary = f"At {place_name}, {label} now ({stay})"
-        activity = f"{label} at {place_name}"
+        activity = label
         at_known = True
     elif moving_now:
         place_name = "In Transit"
         category = "transit"
-        activity = label or ("driving or transit" if speed_kmh > 35 else "moving")
-        summary = f"Moving now ({activity}); last accepted GPS write {human_age(gps_age)} ago"
+        activity = motion if motion in MOVING_ACTIVITIES else "moving"
         at_known = False
         known = None
     elif known:
         place_name = str(known.get("name") or "Known place")
         category = str(known.get("category") or "general")
-        activity = str(known.get("activity") or f"at {place_name}")
-        summary = f"At {place_name} ({stay})"
+        activity = str(known.get("activity") or category)
         at_known = True
     else:
         place_name = "Unlisted place"
         category = "unlisted"
-        activity = "at an unlisted place"
-        summary = f"At an unlisted place ({stay}). Ask for a name before calling it home, work, or a gym."
+        activity = "unlisted"
         at_known = False
 
-    battery = raw.get("battery_level")
-    battery_percent = int(float(battery) * 100) if isinstance(battery, (int, float)) and float(battery) >= 0 else None
     accuracy = raw.get("horizontal_accuracy", raw.get("accuracy"))
     return {
         "status": "ok",
@@ -271,7 +264,6 @@ def resolve_location(
         "place_name": place_name,
         "place_category": category,
         "activity": activity,
-        "context_summary": summary,
         "is_at_known_place": at_known,
         "known_place_id": known.get("id") if known else None,
         "distance_to_center_meters": known.get("distance_meters") if known else None,
@@ -281,16 +273,43 @@ def resolve_location(
         "motion_fresh": motion_fresh,
         "is_moving_now": moving_now,
         "speed_kmh": speed_kmh,
-        "battery_percent": battery_percent,
-        "battery_state": raw.get("battery_state"),
         "trigger_source": raw.get("source"),
         "app_state": raw.get("app_state"),
+    }
+
+
+PROSE_HEALTH_KEYS = ("sleep_insight", "workout_insight", "nutrition_reminder", "suggested_openers", "suggestedOpeners")
+
+
+def health_facts(raw: Dict[str, Any]) -> Dict[str, Any]:
+    """Numbers and codes only. English sentences in older files are not forwarded."""
+    ctx = raw.get("conversational_context") if isinstance(raw.get("conversational_context"), dict) else {}
+    leftover = [key for key in PROSE_HEALTH_KEYS if ctx.get(key) or raw.get(key)]
+    if leftover:
+        log("INFO", "ignoring health prose fields: " + ", ".join(leftover))
+    sleep = raw.get("sleep") if isinstance(raw.get("sleep"), dict) else None
+    workout = raw.get("workout") if isinstance(raw.get("workout"), dict) else None
+    return {
+        "sleep": None if sleep is None else {
+            "formatted_duration": sleep.get("formatted_duration"),
+            "total_sleep_minutes": sleep.get("total_sleep_minutes"),
+            "quality_rating": sleep.get("quality_rating"),
+        },
+        "workout": None if workout is None else {
+            "workout_type": workout.get("workout_type"),
+            "is_currently_active": workout.get("is_currently_active"),
+            "phase": workout.get("phase"),
+            "duration_minutes": workout.get("duration_minutes"),
+            "minutes_since_completion": workout.get("minutes_since_completion"),
+            "active_calories": workout.get("active_calories"),
+        },
     }
 
 
 def resolve_health(raw: Dict[str, Any], now: datetime, source: str) -> Dict[str, Any]:
     recorded_at = raw.get("timestamp") or raw.get("recorded_at")
     seconds = age_seconds(recorded_at, now) or 0
+    facts = health_facts(raw)
     return {
         "status": "ok",
         "source_file": source,
@@ -303,28 +322,27 @@ def resolve_health(raw: Dict[str, Any], now: datetime, source: str) -> Dict[str,
         "resting_heart_rate_bpm": raw.get("resting_heart_rate_bpm"),
         "current_heart_rate_bpm": raw.get("current_heart_rate_bpm"),
         "heart_rate_variability_sdnn": raw.get("heart_rate_variability_sdnn"),
-        "sleep": raw.get("sleep"),
-        "workout": raw.get("workout"),
-        "conversational_context": raw.get("conversational_context") or {},
+        "sleep": facts["sleep"],
+        "workout": facts["workout"],
     }
 
 
 def format_location(loc: Dict[str, Any]) -> str:
     motion_age = loc.get("motion_age_seconds")
-    motion_age_text = "no sample" if motion_age is None else human_age(motion_age)
-    freshness = "fresh" if loc.get("motion_fresh") else "not fresh"
+    motion_age_text = "none" if motion_age is None else str(motion_age)
     lines = [
-        "Hermes Companion — where",
-        f"place: {loc['place_name']} [{loc['place_category']}]",
-        f"activity: {loc['activity']}",
-        f"summary: {loc['context_summary']}",
+        "facts_only: reply in the user's language; do not quote this block",
+        f"place_name: {loc['place_name']}",
+        f"place_category: {loc['place_category']}",
         f"still_there: yes",
         f"minutes_since_last_move: {loc['minutes_since_last_move']}",
         f"movement_reason: {loc.get('movement_reason') or 'absent'}",
-        f"motion_now: {loc['motion_activity']} ({freshness}, {motion_age_text})",
+        f"motion_activity: {loc['motion_activity']}",
+        f"motion_fresh: {'yes' if loc.get('motion_fresh') else 'no'}",
+        f"motion_age_seconds: {motion_age_text}",
         f"is_moving_now: {'yes' if loc['is_moving_now'] else 'no'}",
-        f"battery: {loc['battery_percent'] if loc['battery_percent'] is not None else 'unknown'}% ({loc.get('battery_state') or 'unknown'})",
-        f"recorded_at: {loc.get('recorded_at')} ({loc['age_human']} since last accepted move)",
+        f"recorded_at: {loc.get('recorded_at')}",
+        f"age_seconds: {loc['age_seconds']}",
         f"coordinates: {loc['coordinates']}",
         f"source: {loc['source_file']}",
     ]
@@ -333,45 +351,33 @@ def format_location(loc: Dict[str, Any]) -> str:
 
 def format_health(health: Dict[str, Any]) -> str:
     lines = [
-        "Hermes Companion — health",
-        f"recovery: {health.get('recovery_status')}",
-        f"recorded_at: {health.get('recorded_at')} ({health.get('age_human')} ago)",
+        "facts_only: reply in the user's language; do not quote this block",
+        f"recovery_status: {health.get('recovery_status')}",
+        f"recorded_at: {health.get('recorded_at')}",
+        f"age_seconds: {health.get('age_seconds')}",
     ]
     sleep = health.get("sleep") or None
     if isinstance(sleep, dict):
-        lines.append(
-            "sleep: {duration} [{quality}]".format(
-                duration=sleep.get("formatted_duration") or sleep.get("total_sleep_minutes"),
-                quality=sleep.get("quality_rating") or "unrated",
-            )
-        )
-        if sleep.get("summary"):
-            lines.append(f"sleep_summary: {sleep['summary']}")
+        lines.append(f"sleep_duration: {sleep.get('formatted_duration') or sleep.get('total_sleep_minutes') or 'unknown'}")
+        lines.append(f"sleep_quality: {sleep.get('quality_rating') or 'unknown'}")
     else:
-        lines.append("sleep: none in this snapshot")
+        lines.append("sleep_duration: none")
     workout = health.get("workout") or None
     if isinstance(workout, dict):
-        state = "in progress" if workout.get("is_currently_active") else f"phase {workout.get('phase') or 'finished'}"
-        lines.append(f"workout: {workout.get('workout_type') or 'workout'} ({state}, {workout.get('duration_minutes')} min)")
+        lines.append(f"workout_type: {workout.get('workout_type') or 'unknown'}")
+        lines.append(f"workout_active: {'yes' if workout.get('is_currently_active') else 'no'}")
+        lines.append(f"workout_phase: {workout.get('phase') or 'unknown'}")
+        lines.append(f"workout_duration_minutes: {workout.get('duration_minutes')}")
         if workout.get("minutes_since_completion") is not None:
             lines.append(f"minutes_since_workout: {workout.get('minutes_since_completion')}")
-        if workout.get("summary"):
-            lines.append(f"workout_summary: {workout['summary']}")
     else:
-        lines.append("workout: none in this snapshot")
-    lines.append(
-        "today: {steps} steps, {cals} kcal".format(
-            steps=health.get("step_count_today") or 0,
-            cals=int(float(health.get("active_calories_today") or 0)),
-        )
-    )
+        lines.append("workout_type: none")
+    lines.append(f"steps_today: {health.get('step_count_today') or 0}")
+    lines.append(f"active_calories_today: {int(float(health.get('active_calories_today') or 0))}")
     if health.get("resting_heart_rate_bpm") is not None:
-        lines.append(f"resting_hr: {health['resting_heart_rate_bpm']} bpm")
+        lines.append(f"resting_heart_rate_bpm: {health['resting_heart_rate_bpm']}")
     if health.get("heart_rate_variability_sdnn") is not None:
-        lines.append(f"hrv_sdnn: {health['heart_rate_variability_sdnn']} ms")
-    context = health.get("conversational_context") or {}
-    if isinstance(context, dict) and context.get("nutrition_reminder"):
-        lines.append(f"nutrition_note: {context['nutrition_reminder']}")
+        lines.append(f"hrv_sdnn_ms: {health['heart_rate_variability_sdnn']}")
     lines.append(f"source: {health['source_file']}")
     return "\n".join(lines)
 
@@ -407,19 +413,17 @@ def command_context(args: argparse.Namespace, now: datetime) -> int:
     directories = icloud_directories(args.icloud_dir)
     loc_raw, loc_path = first_reading(directories, "latest_location.json")
     health_raw, health_path = first_reading(directories, "latest_health.json")
-    loc = (
-        resolve_location(loc_raw, load_places(args.places), now, str(loc_path))
-        if loc_raw and loc_path and "latitude" in loc_raw
-        else None
-    )
+    loc = None
+    if loc_raw and loc_path and "latitude" in loc_raw:
+        loc = resolve_location(loc_raw, load_places(args.places), now, str(loc_path))
     health = resolve_health(health_raw, now, str(health_path)) if health_raw and health_path else None
     payload = {"location": loc, "health": health}
     if args.json:
         print(json.dumps(payload, indent=2, ensure_ascii=False))
         return 0
     parts = []
-    parts.append(format_location(loc) if loc else "Hermes Companion — where\nplace: unavailable")
-    parts.append(format_health(health) if health else "Hermes Companion — health\nrecovery: unavailable")
+    parts.append(format_location(loc) if loc else "facts_only: reply in the user's language; do not quote this block\nplace_name: unavailable")
+    parts.append(format_health(health) if health else "facts_only: reply in the user's language; do not quote this block\nrecovery_status: unavailable")
     print("\n\n".join(parts))
     return 0
 

@@ -44,6 +44,18 @@ No account with us. No analytics. No open port. The files stay in your Apple ID.
 
 Indoor drift of about 10 m while you are still does not rewrite the file. Fresh walking, running, cycling, or driving is stored at 30 m. A fresh stationary reading is stored only past 150 m, or when GPS speed is above 1 m/s and the 30 m filter is also cleared.
 
+Health (sleep, workouts, steps) is written when Apple Health delivers a new sample and on background refresh, not on every GPS tick.
+
+## Language
+
+Skill instructions are English because the model reads them. The agent answers in the language of the conversation: Spanish, German, or any other. A saved place name stays as written (`Casa`, `Home`, `Arbeit`). Codes such as `home`, `walking`, `In Transit`, and `fatigued` are translated in the reply. The script prints facts. It does not hand the agent an English sentence to quote.
+
+## What the agent does not receive
+
+Phone battery stays on the iPhone history screen. New copies of `latest_location.json` omit it, and the skill does not report it. An older file may still contain `battery_level`; the reader ignores that key.
+
+This repository has no personal name and no agent persona. Voice and schedule stay in the agent's own profile.
+
 ## Install the skill
 
 The skill is `skills/hermes-companion` in this repository. One skill covers place and health.
@@ -59,7 +71,7 @@ hermes skills tap add danielmain/hermes-companion
 hermes skills search hermes-companion
 ```
 
-Then ask where you are, how you slept, or whether you are still at the gym. The agent runs:
+Then ask where you are, how you slept, or whether you are still at a place you named. The agent runs:
 
 ```bash
 python3 ${HERMES_SKILL_DIR}/scripts/companion.py

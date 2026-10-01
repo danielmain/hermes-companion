@@ -1,7 +1,7 @@
 ---
 name: hermes-companion
 description: Live iPhone place, motion, sleep, workouts, and recovery.
-version: 1.0.0
+version: 1.1.0
 author: danielmain
 license: MIT
 platforms: [macos]
@@ -23,7 +23,7 @@ metadata:
 
 Read the user's live place, motion, sleep, workout, and recovery from the Hermes Companion iPhone app. The app writes JSON into the user's private iCloud container. This skill reads the files macOS has already synced. It does not call a relay, open a port, or guess a coordinate.
 
-Speak from this turn's script output. The user's own voice and language live in the agent profile, not in this skill.
+The script prints facts. How to answer is in Language.
 
 ## When to Use
 
@@ -69,22 +69,33 @@ Save a place only when the user asks, using the coordinates from the latest scri
 
 | Question | Command | Fields to trust |
 | --- | --- | --- |
-| Where are they? | `companion.py` | `place`, `summary`, `still_there` |
-| Moving right now? | `companion.py` | `motion_now`, `is_moving_now` |
+| Where are they? | `companion.py` | `place_name`, `place_category`, `still_there` |
+| Moving right now? | `companion.py` | `motion_activity`, `motion_fresh`, `is_moving_now` |
 | How long in this place? | `companion.py` | `minutes_since_last_move` |
-| Sleep, workout, recovery | `companion.py --health` | `sleep`, `workout`, `recovery` |
+| Sleep, workout, recovery | `companion.py --health` | `sleep_duration`, `sleep_quality`, `workout_type`, `recovery_status` |
 | Both | `companion.py --context` | the two blocks together |
 
 `movement_reason` is why the phone accepted the last write: `moved`, `distance`, or `no_motion_reading`. `absent` means an older file from before that field existed.
 
+## Language
+
+This file is English because the model reads it. The user never sees it.
+
+- Reply in the user's language, in the agent's own voice. Spanish, German, and every other language use these same fields.
+- Keep a place name exactly as the user saved it (`Casa`, `Home`, `Arbeit`).
+- `In Transit` and `Unlisted place` are codes. Translate them.
+- Translate category, motion, sleep-quality, and recovery codes (`home`, `walking`, `automotive`, `excellent`, `fatigued`). A `workout_type` that is already a name in the user's language stays as written.
+- `minutes_since_last_move`, durations, and heart-rate numbers stay numeric.
+- Do not quote the script. Ignore `suggested_greeting`, `context_summary`, `suggested_openers`, `sleep_insight`, `workout_insight`, `nutrition_reminder`, `sleep.summary`, and `workout.summary` if a raw file still contains them.
+
 ## Procedure
 
-1. Run `companion.py` for place and motion, `--health` for body metrics, or `--context` when the answer needs both. Completion: the command prints a `place:` or `recovery:` line, or an explicit "no file yet" line.
-2. Treat `place` as where they are now. `minutes_since_last_move` is how long the phone has kept that coordinate. A large number at a known place means they are still there. Say that in the present tense.
-3. Treat `motion_now` as what the body is doing this minute. Walking at home with an old GPS age is "at home, walking around", not lost and not in transit.
+1. Run `companion.py` for place and motion, `--health` for body metrics, or `--context` when the answer needs both. Completion: the command prints a `place_name:` or `recovery_status:` line, or an explicit "no file yet" line.
+2. Treat `place_name` as where they are now. `minutes_since_last_move` is how long the phone has kept that coordinate. A large number at a known place means they are still there. Say that in the present tense, in the user's language.
+3. Treat `motion_activity` when `motion_fresh` is `yes` as what the body is doing this minute. Walking at a saved place with an old GPS age is still that place, walking around, not lost and not in transit.
 4. Treat a fresh `recorded_at` as an accepted move. It does not say they arrived, left, or came back. Do not announce an arrival unless they said so.
-5. For health, use only lines present in this run. Sleep is for the morning, or a short night mentioned in the evening. Do not recap last night's hours in the afternoon. A workout in progress gets one short line. A workout finished within about 90 minutes can include how it felt and protein or water as care. Recovery `fatigued` is the only case for urging rest.
-6. If `place` is `Unlisted place`, ask what to call it. Do not name it home, work, or a gym from the coordinates alone.
+5. For health, use only lines present in this run. `age_seconds` is when that snapshot was saved. Steps and calories are from that time. Sleep is for the morning, or a short night mentioned in the evening. Do not recap last night's hours in the afternoon. A workout in progress gets one short line. A workout finished within about 90 minutes can include how it felt and protein or water as care. Recovery `fatigued` is the only case for urging rest.
+6. If `place_name` is `Unlisted place`, ask what to call it. Do not name it home, work, or a gym from the coordinates alone.
 
 ## Place and Motion Rules
 
@@ -103,12 +114,13 @@ Field notes live in `references/files.md`. Load that file only when a raw key is
 ## Pitfalls
 
 - An iCloud file that has not downloaded yet prints "no file yet". Say the phone has not synced, and do not reuse a place from an earlier conversation as if it were a fresh reading.
-- The simulator has no CoreMotion. `motion_now: unknown (not fresh)` is expected there.
+- The simulator has no CoreMotion. `motion_activity: unknown` and `motion_fresh: no` are expected there.
 - Motion & Fitness must be allowed or `motion_activity` stays `unknown`.
 - Coordinates are for saving a place or when the user asks for them. Do not recite them in a normal reply.
+- Ignore `battery_level` and `battery_state` if a file still has them. Phone battery is not part of this skill.
 - Two Macs on the same Apple ID share the container. Read the local file; do not fetch it from the network.
 - The script does not reverse-geocode. An unlisted coordinate stays unlisted until the user names it.
 
 ## Verification
 
-Run `python3 ${HERMES_SKILL_DIR}/scripts/companion.py` again. The `place:` line matches the previous reading when they have not moved, and `source:` is a file under the iCloud container. For a code change, run `python3 ${HERMES_SKILL_DIR}/scripts/test_companion.py` and confirm `ok`.
+Run `python3 ${HERMES_SKILL_DIR}/scripts/companion.py` again. The `place_name:` line matches the previous reading when they have not moved, and `source:` is a file under the iCloud container. For a code change, run `python3 ${HERMES_SKILL_DIR}/scripts/test_companion.py` and confirm `ok`.

@@ -64,7 +64,7 @@ def test_still_home_after_hours() -> None:
 def test_walking_at_home() -> None:
     loc = location(motion_activity="walking", motion_timestamp=iso(12))
     check("walking stays at home", loc["place_name"] == "Home" and loc["is_moving_now"] is True)
-    check("summary names walking", "walking" in loc["context_summary"])
+    check("walking code kept", loc["motion_activity"] == "walking" and loc["activity"] == "walking")
 
 
 def test_driving_is_transit() -> None:
@@ -123,12 +123,43 @@ def test_files_roundtrip() -> None:
         check("sleep duration kept", health["sleep"]["formatted_duration"] == "7h 40m")
 
 
+def test_battery_is_not_reported() -> None:
+    loc = location()
+    text = companion.format_location(loc)
+    blob = json.dumps(loc)
+    check("script omits battery", "battery" not in text and "battery" not in blob)
+
+
+def test_text_has_no_english_script() -> None:
+    loc = location(motion_activity="walking", motion_timestamp=iso(12))
+    text = companion.format_location(loc)
+    check("location text is facts", text.startswith("facts_only:") and "place_name: Home" in text)
+    check("location text is not a sentence", "At Home" not in text and "context_summary" not in text)
+    raw = {
+        "timestamp": iso(60),
+        "recovery_status": "fatigued",
+        "sleep": {"formatted_duration": "7h", "quality_rating": "good", "summary": "Slept wonderfully"},
+        "conversational_context": {
+            "sleep_insight": "wonderful night",
+            "nutrition_reminder": "30-40g of protein",
+        },
+        "suggested_openers": ["Time for your post-workout protein"],
+    }
+    health = companion.resolve_health(raw, NOW, "fixture")
+    blob = json.dumps(health)
+    health_text = companion.format_health(health)
+    check("health payload drops prose", "wonderful" not in blob and "protein" not in blob)
+    check("health text keeps the code", "recovery_status: fatigued" in health_text and "protein" not in health_text)
+
+
 def main() -> int:
     test_still_home_after_hours()
     test_walking_at_home()
     test_driving_is_transit()
     test_unlisted()
     test_files_roundtrip()
+    test_text_has_no_english_script()
+    test_battery_is_not_reported()
     print("ok")
     return 0
 

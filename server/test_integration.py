@@ -98,8 +98,8 @@ def run_test():
         assert parsed is not None
         assert parsed["latitude"] == 48.858844
         assert parsed["accuracy_meters"] == 3.2
-        assert parsed["battery_percent"] == 95
         assert "maps_link" in parsed
+        assert "battery_percent" not in parsed
         assert "suggested_greeting" in parsed
         print(f"   Location format OK: {parsed['coordinates']} -> {parsed.get('place_name')}")
 
@@ -143,14 +143,21 @@ def run_test():
         assert "error" not in loc_res, loc_res
         loc_text = loc_res["content"][0]["text"]
         assert "48.858844" in loc_text
+        assert "facts_only:" in loc_text
+        assert "Suggested" not in loc_text
+        assert "battery" not in loc_text
         print(f"   MCP get_user_location OK:\n{loc_text}")
 
         health_res = mcp_server.process_message({
             "jsonrpc": "2.0", "id": 3, "method": "tools/call",
             "params": {"name": "get_user_health", "arguments": {}},
         })["result"]
-        assert "Strength Training" in health_res["content"][0]["text"]
-        print(f"   MCP get_user_health OK:\n{health_res['content'][0]['text']}")
+        health_text = health_res["content"][0]["text"]
+        assert "Strength Training" in health_text
+        assert "wonderful" not in health_text
+        assert "protein" not in health_text.lower()
+        assert "Suggested" not in health_text
+        print(f"   MCP get_user_health OK:\n{health_text}")
 
         places_res = mcp_server.process_message({
             "jsonrpc": "2.0", "id": 4, "method": "tools/call",

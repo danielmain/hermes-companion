@@ -1,4 +1,7 @@
 import Foundation
+import os
+
+private let healthSnapshotLogger = Logger(subsystem: "com.hermes.HermesCompanion", category: "HealthSnapshot")
 
 // MARK: - Enums & Rich Types
 
@@ -344,65 +347,15 @@ public struct HealthSnapshot: Codable, Equatable, Identifiable {
         latestWorkout: WorkoutRecord?,
         vitals: VitalsRecord
     ) -> HealthConversationalContext {
-        var prompts: [String] = []
-        var sleepPrompt: String? = nil
-        var workoutPrompt: String? = nil
-        var nutritionPrompt: String? = nil
-
-        // 1. Sleep insights
-        if let s = sleep {
-            switch s.qualityRating {
-            case .excellent:
-                sleepPrompt = "I saw you had a wonderful \(s.formattedDuration) of sleep last night with \(s.deepSleepMinutes)m of deep rest! Feeling fully recharged today?"
-            case .good:
-                sleepPrompt = "Looks like you had a solid \(s.formattedDuration) of sleep last night. Hope you're ready for the day!"
-            case .fair:
-                sleepPrompt = "Noticed you got about \(s.formattedDuration) of sleep last night. A bit on the shorter side, take it easy if you feel the afternoon slump."
-            case .poor:
-                sleepPrompt = "You only got \(s.formattedDuration) of sleep last night. Be gentle with yourself today, stay hydrated, and don't push too hard."
-            case .unknown:
-                sleepPrompt = nil
-            }
-            if let sp = sleepPrompt {
-                prompts.append(sp)
-            }
-        }
-
-        // 2. Active workout
-        if let active = activeWorkout {
-            workoutPrompt = "A \(active.workoutType) session is in progress (\(active.durationMinutes)m so far). Keep it short."
-            prompts.append(workoutPrompt!)
-        } else if let recent = latestWorkout {
-            switch recent.phase {
-            case .justFinished:
-                workoutPrompt = "You just wrapped up your \(recent.workoutType) workout (\(recent.durationMinutes)m, \(Int(recent.activeCalories)) kcal)! How are you feeling?"
-                nutritionPrompt = "Time for your post-workout protein! Make sure you get 30-40g of protein (shake, chicken, eggs) and plenty of water in to kickstart muscle repair."
-                prompts.append(workoutPrompt!)
-                prompts.append(nutritionPrompt!)
-            case .recent:
-                workoutPrompt = "Finished your \(recent.workoutType) workout about \(recent.minutesSinceCompletion ?? 45) minutes ago. Feeling that good post-workout exhaustion?"
-                nutritionPrompt = "Don't forget to eat proper protein and refuel your glycogen reserves if you haven't eaten yet."
-                prompts.append(workoutPrompt!)
-                prompts.append(nutritionPrompt!)
-            case .earlierToday:
-                workoutPrompt = "Crushed a \(recent.workoutType) session earlier today (\(recent.durationMinutes)m, \(Int(recent.activeCalories)) kcal)."
-                prompts.append(workoutPrompt!)
-            case .inProgress, .past:
-                break
-            }
-        }
-
-        // 3. Recovery and fatigue
-        if vitals.recoveryStatus == .fatigued {
-            prompts.append("Your vitals (HRV/Resting HR) indicate your body is fatigued. Prioritize rest, good hydration, and quality food.")
-        }
-
+        // Numbers and enums travel in the snapshot. The agent speaks them in the user's language.
+        _ = (sleep, activeWorkout, latestWorkout)
+        healthSnapshotLogger.info("Health snapshot carries codes and numbers; conversational prose is omitted")
         return HealthConversationalContext(
-            sleepInsight: sleepPrompt,
-            workoutInsight: workoutPrompt,
-            nutritionReminder: nutritionPrompt,
-            recoverySummary: vitals.recoveryStatus.title,
-            suggestedOpeners: prompts
+            sleepInsight: nil,
+            workoutInsight: nil,
+            nutritionReminder: nil,
+            recoverySummary: vitals.recoveryStatus.rawValue,
+            suggestedOpeners: []
         )
     }
 
@@ -412,8 +365,7 @@ public struct HealthSnapshot: Codable, Equatable, Identifiable {
             "timestamp": ISO8601DateFormatter().string(from: timestamp),
             "step_count_today": vitals.stepCountToday,
             "active_calories_today": vitals.activeEnergyBurnedKCal,
-            "recovery_status": vitals.recoveryStatus.rawValue,
-            "suggested_openers": conversationalContext.suggestedOpeners
+            "recovery_status": vitals.recoveryStatus.rawValue
         ]
 
         if let rhr = vitals.restingHeartRateBPM {
@@ -436,7 +388,6 @@ public struct HealthSnapshot: Codable, Equatable, Identifiable {
                 "core_sleep_minutes": s.coreSleepMinutes,
                 "awake_minutes": s.awakeMinutes,
                 "quality_rating": s.qualityRating.rawValue,
-                "summary": s.summaryText,
                 "bedtime": s.bedtime.map { ISO8601DateFormatter().string(from: $0) },
                 "wake_time": s.wakeTime.map { ISO8601DateFormatter().string(from: $0) }
             ]
@@ -453,18 +404,10 @@ public struct HealthSnapshot: Codable, Equatable, Identifiable {
                 "is_currently_active": w.isCurrentlyActive,
                 "minutes_since_completion": w.minutesSinceCompletion,
                 "phase": w.phase.rawValue,
-                "summary": w.summaryText,
                 "start_date": ISO8601DateFormatter().string(from: w.startDate),
                 "end_date": ISO8601DateFormatter().string(from: w.endDate)
             ]
         }
-
-        dict["conversational_context"] = [
-            "sleep_insight": conversationalContext.sleepInsight,
-            "workout_insight": conversationalContext.workoutInsight,
-            "nutrition_reminder": conversationalContext.nutritionReminder,
-            "recovery_summary": conversationalContext.recoverySummary
-        ]
 
         return dict
     }

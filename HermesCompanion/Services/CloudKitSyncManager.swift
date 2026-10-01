@@ -316,8 +316,6 @@ public final class CloudKitSyncManager: ObservableObject {
                 "speed_mps": record.speed,
                 "course": record.course,
                 "source": record.source.rawValue,
-                "battery_level": record.batteryLevel,
-                "battery_state": record.batteryState,
                 "app_state": record.appState,
                 "motion_activity": record.motionActivity?.rawValue ?? MotionActivity.unknown.rawValue,
                 "motion_confidence": record.motionConfidence ?? "unknown",
@@ -412,7 +410,6 @@ public final class CloudKitSyncManager: ObservableObject {
         if let sleep = snapshot.sleep {
             healthRecord["sleepDurationMinutes"] = sleep.totalSleepMinutes as NSNumber
             healthRecord["sleepQuality"] = sleep.qualityRating.rawValue as NSString
-            healthRecord["sleepSummary"] = sleep.summaryText as NSString
         }
 
         if let workout = snapshot.activeWorkout ?? snapshot.latestWorkout {
@@ -420,8 +417,9 @@ public final class CloudKitSyncManager: ObservableObject {
             healthRecord["workoutDurationMinutes"] = workout.durationMinutes as NSNumber
             healthRecord["workoutCalories"] = workout.activeCalories as NSNumber
             healthRecord["isWorkoutActive"] = (workout.isCurrentlyActive ? 1 : 0) as NSNumber
-            healthRecord["workoutSummary"] = workout.summaryText as NSString
         }
+
+        logger.info("Health sync stores codes and numbers; English summary strings are not uploaded")
 
         let dict = snapshot.toDictionary()
         if let jsonData = try? JSONSerialization.data(withJSONObject: dict),

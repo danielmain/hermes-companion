@@ -6,7 +6,7 @@ Exposes user location tools directly to Hermes Agent over stdio (JSON-RPC).
 
 Tools Exposed:
   1. get_user_location(max_age_minutes=60)
-     Returns the user's current GPS position, age, accuracy, speed, battery, and motion state.
+     Returns the user's current GPS position, age, accuracy, speed, and motion state.
   2. get_location_history(limit=20)
      Returns recent trajectory and movement history.
 
@@ -24,7 +24,7 @@ from pathlib import Path
 TOOLS_DEFINITION = [
     {
         "name": "get_user_location",
-        "description": "Fetch the user's current physical location, semantic place context (e.g. at the gym, at home, at work, in transit), current activity, movement speed, battery, and data freshness reported by Hermes Companion on iOS.",
+        "description": "Latest place and motion as facts: place_name, motion_activity, minutes_since_last_move. Reply in the user's language. A growing age at a known place means they are still there. The phone rewrites the file only after an accepted move (30 m while moving, 150 m while stationary).",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -92,7 +92,7 @@ TOOLS_DEFINITION = [
     },
     {
         "name": "get_user_health",
-        "description": "Read the latest Apple Health snapshot from Hermes Companion: sleep, workouts, recovery, steps, and heart-rate vitals.",
+        "description": "Latest sleep, workout, recovery, steps, and heart-rate as codes and numbers. Reply in the user's language. Do not recite English sentences stored in the health file.",
         "inputSchema": {
             "type": "object",
             "properties": {}
@@ -150,43 +150,32 @@ def handle_call_tool(name, arguments):
 
         place_name = data.get("place_name", "Unknown location")
         category = data.get("place_category", "general")
-        activity = data.get("activity", "stationary")
-        context_summary = data.get("context_summary", f"{place_name} ({category})")
-        greeting = data.get("suggested_greeting", f"At {place_name}.")
-
-        motion = data.get("motion_activity")
-        if data.get("motion_fresh") and motion and motion != "unknown":
-            movement_line = f"• Movement: {motion} (CoreMotion, live {int(data.get('motion_age_seconds', 0))}s ago)"
-        elif data.get("is_moving_now"):
-            movement_line = f"• Movement: moving at {data.get('speed_kmh')} km/h"
-        else:
-            movement_line = "• Movement: stationary"
+        motion = data.get("motion_activity") or "unknown"
+        motion_age = data.get("motion_age_seconds")
+        motion_age_text = "none" if motion_age is None else str(int(motion_age))
+        minutes_since_move = int(data.get("minutes_since_last_move") or data.get("fix_age_minutes") or age_minutes)
+        accuracy = float(data.get("accuracy_meters") or 0.0)
 
         result_text = (
-            f"User Location & Semantic Context:\n"
-            f"• Current Place: {place_name} ({category.upper()})\n"
-            f"• Activity: {activity}\n"
-            f"• Context Summary: {context_summary}\n"
-            f"• Suggested Conversational Opener: \"{greeting}\"\n"
-            f"{movement_line}\n"
-            f"• Battery: {data.get('battery_percent')}% ({data.get('battery_state')})\n"
-            f"• Coordinates: {data.get('coordinates')} (±{data.get('accuracy_meters', 0.0):.1f}m accuracy)\n"
-            f"• Recorded: {data.get('recorded_at')} ({data.get('age_human')})\n"
-            f"• Reported via: {data.get('trigger_source')} (App state: {data.get('app_state')})\n"
-            f"• Maps Link: {data.get('maps_link')}\n"
+            "facts_only: reply in the user's language; do not quote this block\n"
+            f"place_name: {place_name}\n"
+            f"place_category: {category}\n"
+            f"still_there: yes\n"
+            f"minutes_since_last_move: {minutes_since_move}\n"
+            f"movement_reason: {data.get('movement_reason') or 'absent'}\n"
+            f"motion_activity: {motion}\n"
+            f"motion_fresh: {'yes' if data.get('motion_fresh') else 'no'}\n"
+            f"motion_age_seconds: {motion_age_text}\n"
+            f"is_moving_now: {'yes' if data.get('is_moving_now') else 'no'}\n"
+            f"speed_kmh: {data.get('speed_kmh')}\n"
+            f"coordinates: {data.get('coordinates')}\n"
+            f"accuracy_meters: {accuracy:.1f}\n"
+            f"recorded_at: {data.get('recorded_at')}\n"
+            f"age_seconds: {age_seconds}\n"
+            f"trigger_source: {data.get('trigger_source')}\n"
+            f"app_state: {data.get('app_state')}\n"
+            f"maps_link: {data.get('maps_link')}\n"
         )
-        minutes_since_move = int(data.get("minutes_since_last_move") or data.get("fix_age_minutes") or age_minutes)
-        if data.get("is_moving_now") and not data.get("is_at_known_place"):
-            result_text += (
-                f"\nNote: GPS last rewrote {minutes_since_move} min ago (the phone writes only after an accepted move: "
-                "30 m while moving, 150 m while stationary). CoreMotion says the user is moving now; place_name is the last written position."
-            )
-        elif minutes_since_move >= 1:
-            result_text += (
-                f"\nNote: GPS last changed {minutes_since_move} min ago. The iPhone rewrites "
-                "latest_location.json only after an accepted move (30 m while moving, 150 m while stationary). "
-                "The user is still at this place; a growing age means they have been here that long."
-            )
 
         return {"content": [{"type": "text", "text": result_text}]}
 
@@ -307,42 +296,37 @@ def handle_call_tool(name, arguments):
                 "isError": True
             }
 
-        lines = ["Apple Health:"]
-        sleep = data.get("sleep")
+        lines = ["facts_only: reply in the user's language; do not quote this block"]
+        sleep = data.get("sleep") if isinstance(data.get("sleep"), dict) else None
         if sleep:
-            lines.append(f"• Sleep: {sleep.get('formatted_duration', 'n/a')} ({sleep.get('quality_rating', '').upper()}) — {sleep.get('summary', '')}")
+            lines.append(f"sleep_duration: {sleep.get('formatted_duration') or sleep.get('total_sleep_minutes') or 'unknown'}")
+            lines.append(f"sleep_quality: {sleep.get('quality_rating') or 'unknown'}")
         else:
-            lines.append("• Sleep: No sleep session recorded in the last 24h")
+            lines.append("sleep_duration: none")
 
-        workout = data.get("workout")
+        workout = data.get("workout") if isinstance(data.get("workout"), dict) else None
         if workout:
-            active_str = "ACTIVE NOW" if workout.get("is_currently_active") else f"Finished ({workout.get('phase', 'recent')})"
-            lines.append(f"• Workout: {workout.get('workout_type', 'Workout')} [{active_str}] — {workout.get('summary', '')}")
-            if workout.get("active_calories"):
-                lines.append(f"  Calories Burned: {int(workout['active_calories'])} kcal")
+            lines.append(f"workout_type: {workout.get('workout_type') or 'unknown'}")
+            lines.append(f"workout_active: {'yes' if workout.get('is_currently_active') else 'no'}")
+            lines.append(f"workout_phase: {workout.get('phase') or 'unknown'}")
+            lines.append(f"workout_duration_minutes: {workout.get('duration_minutes')}")
+            if workout.get("active_calories") is not None:
+                lines.append(f"workout_active_calories: {int(workout['active_calories'])}")
+            if workout.get("minutes_since_completion") is not None:
+                lines.append(f"minutes_since_workout: {workout.get('minutes_since_completion')}")
         else:
-            lines.append("• Workout: No workouts recorded today")
+            lines.append("workout_type: none")
 
-        rhr = data.get("resting_heart_rate_bpm")
-        hrv = data.get("heart_rate_variability_sdnn")
-        steps = data.get("step_count_today", 0)
-        cals = data.get("active_calories_today", 0)
-        rec = data.get("recovery_status", "unknown").upper()
-        lines.append(f"• Recovery: {rec} | Steps: {steps:,} | Active Cal: {int(cals)} kcal" + (f" | Resting HR: {int(rhr)} bpm" if rhr else "") + (f" | HRV: {int(hrv)} ms" if hrv else ""))
-
-        ctx = data.get("conversational_context", {})
-        if ctx.get("sleep_insight"):
-            lines.append(f"• Sleep Insight: \"{ctx['sleep_insight']}\"")
-        if ctx.get("workout_insight"):
-            lines.append(f"• Workout Insight: \"{ctx['workout_insight']}\"")
-        if ctx.get("nutrition_reminder"):
-            lines.append(f"• Post-Workout Nutrition: \"{ctx['nutrition_reminder']}\"")
-
-        openers = data.get("suggested_openers", [])
-        if openers:
-            lines.append(f"• Suggested Conversational Opener: \"{openers[0]}\"")
-
-        lines.append(f"• Recorded: {data.get('recorded_at')} ({data.get('age_human')}) via {data.get('source_channel')}")
+        lines.append(f"recovery_status: {data.get('recovery_status') or 'unknown'}")
+        lines.append(f"steps_today: {data.get('step_count_today') or 0}")
+        lines.append(f"active_calories_today: {int(float(data.get('active_calories_today') or 0))}")
+        if data.get("resting_heart_rate_bpm") is not None:
+            lines.append(f"resting_heart_rate_bpm: {int(data['resting_heart_rate_bpm'])}")
+        if data.get("heart_rate_variability_sdnn") is not None:
+            lines.append(f"hrv_sdnn_ms: {int(data['heart_rate_variability_sdnn'])}")
+        lines.append(f"recorded_at: {data.get('recorded_at')}")
+        lines.append(f"age_seconds: {data.get('age_seconds')}")
+        lines.append(f"source: {data.get('source_channel')}")
         return {"content": [{"type": "text", "text": "\n".join(lines)}]}
 
     elif name == "get_user_physical_context":
@@ -352,7 +336,7 @@ def handle_call_tool(name, arguments):
         loc_text = loc_res["content"][0]["text"] if not loc_res.get("isError") else "Location: Unavailable"
         health_text = health_res["content"][0]["text"] if not health_res.get("isError") else "Health: Unavailable"
 
-        combined = f"=== DANIEL'S PHYSICAL & BIOMETRIC CONTEXT ===\n\n{loc_text}\n\n{health_text}"
+        combined = f"{loc_text}\n\n{health_text}"
         return {"content": [{"type": "text", "text": combined}]}
 
     else:

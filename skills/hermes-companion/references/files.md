@@ -21,8 +21,7 @@ Written only after `GPSPersistDecision` accepts a move. Refused indoor drift doe
 | `motion_confidence` | `high`, `medium`, `low` |
 | `motion_timestamp` | When CoreMotion last reported, independent of the GPS write |
 | `source` | What woke the app (`significant`, geofence, visit, standard) |
-| `battery_level` | 0 to 1 |
-| `battery_state` | `unplugged`, `charging`, `full`, `unknown` |
+| `battery_level`, `battery_state` | Omitted from new writes. Older files may still have them. Ignore them. The skill does not report phone battery |
 | `app_state` | `active`, `background`, or the wake state |
 
 ## latest_health.json
@@ -39,7 +38,7 @@ One deduplicated Apple Health snapshot. Sleep duration is the union of Deep, REM
 | `active_calories_today` | Active energy since local midnight |
 | `resting_heart_rate_bpm` | Resting heart rate |
 | `heart_rate_variability_sdnn` | HRV SDNN in milliseconds |
-| `conversational_context` | Optional hints. Facts, not a script to recite |
+| `conversational_context`, `sleep.summary`, `workout.summary` | Optional English sentences from older app builds. Do not say them. Use the numeric fields and reply in the user's language |
 
 ## places.json
 

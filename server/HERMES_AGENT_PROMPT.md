@@ -2,7 +2,15 @@
 
 The iPhone app writes `latest_location.json` and `latest_health.json` into the user's private iCloud container. On the Mac, read them with the skill or with the optional MCP server in this directory.
 
-Personal voice, names, and schedules belong in the agent's own profile. This file only describes the data.
+Personal voice, names, and schedules belong in the agent's own profile. This file only describes the data. It names no person and no agent.
+
+## Language
+
+The skill and this note are English so the model can read them. Reply in the user's language. Keep a place name exactly as it was saved. Translate codes such as `home`, `walking`, `In Transit`, `Unlisted place`, and `fatigued`. Do not quote `suggested_greeting`, `context_summary`, `suggested_openers`, or the English insight fields an older health file may still contain. The script's first line, `facts_only:`, means the block is data.
+
+## Battery
+
+Phone battery is not part of the agent reading. New `latest_location.json` files omit `battery_level` and `battery_state`. If an older file still has those keys, ignore them. The iPhone history screen can still show the level stored with each on-device fix.
 
 ## How to read
 

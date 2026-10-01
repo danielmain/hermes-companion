@@ -436,7 +436,7 @@ class PlacesManager:
 
         fix_moving = is_moving or speed_kmh > 3.0
         # Without fresh motion, GPS speed is only meaningful on a *recent* write
-        # (he just moved). An old write with leftover speed is not "moving now".
+        # (the user just moved). An old write with leftover speed is not "moving now".
         is_moving_now = motion_moving if motion_fresh else (fix_moving and not long_stay)
 
         base = {
@@ -459,7 +459,7 @@ class PlacesManager:
         if is_moving_now:
             if known and motion_label in ("walking", "running", "cycling"):
                 p_name = known["place_name"]
-                act = f"{motion_label} at {p_name}"
+                act = motion_label
                 summary = f"At {p_name}, {motion_label} now{stay_txt}"
                 return {
                     **base,

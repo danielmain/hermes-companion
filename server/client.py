@@ -55,9 +55,6 @@ def format_location_payload(data, channel_name="iCloud / CloudKit"):
     speed_mps = float(data.get("speed_mps", data.get("speed", -1.0)))
     speed_kmh = round(speed_mps * 3.6, 1) if speed_mps > 0 else 0.0
 
-    bat_lvl = float(data.get("battery_level", -1.0))
-    bat_pct = int(bat_lvl * 100) if bat_lvl >= 0 else None
-
     acc = float(data.get("horizontal_accuracy", data.get("accuracy", data.get("accuracy_meters", 0.0))))
 
     # Real motion state from CoreMotion (independent of the GPS fix age).
@@ -90,8 +87,6 @@ def format_location_payload(data, channel_name="iCloud / CloudKit"):
         "motion_timestamp": motion_ts_str,
         "motion_age_seconds": motion_age_sec,
         "trigger_source": data.get("source", channel_name),
-        "battery_percent": bat_pct,
-        "battery_state": data.get("battery_state", "unknown"),
         "app_state": data.get("app_state", "active"),
         "device_name": data.get("device_name", "iPhone"),
         "coordinates": f"{lat:.6f}, {lon:.6f}",
