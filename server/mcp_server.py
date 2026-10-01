@@ -50,13 +50,13 @@ TOOLS_DEFINITION = [
     },
     {
         "name": "add_known_place",
-        "description": "Register a new known place (e.g., gym, home, office, cafe) so Hermes automatically recognizes Daniel when he is there.",
+        "description": "Register a known place (home, work, gym, cafe) so later fixes inside its radius resolve to that name.",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "name": {
                     "type": "string",
-                    "description": "Name of the place, e.g. 'The Gym' or 'John Reed Fitness' or 'Home'."
+                    "description": "Name of the place, for example Home or Gym."
                 },
                 "category": {
                     "type": "string",
@@ -92,7 +92,7 @@ TOOLS_DEFINITION = [
     },
     {
         "name": "get_user_health",
-        "description": "Fetch Daniel's Apple Health telemetry from Hermes Companion iOS: sleep quality & duration, active or recent workouts, post-workout fatigue, protein/nutrition recommendations, and daily vitals (heart rate, HRV, steps).",
+        "description": "Read the latest Apple Health snapshot from Hermes Companion: sleep, workouts, recovery, steps, and heart-rate vitals.",
         "inputSchema": {
             "type": "object",
             "properties": {}
@@ -100,7 +100,7 @@ TOOLS_DEFINITION = [
     },
     {
         "name": "get_user_physical_context",
-        "description": "Fetch Daniel's comprehensive physical context combining live GPS location, place category (e.g. gym, home), with Apple Health telemetry (sleep quality, workout in progress or completed, recovery).",
+        "description": "Read place, motion, and the Apple Health snapshot together.",
         "inputSchema": {
             "type": "object",
             "properties": {}
@@ -152,7 +152,7 @@ def handle_call_tool(name, arguments):
         category = data.get("place_category", "general")
         activity = data.get("activity", "stationary")
         context_summary = data.get("context_summary", f"{place_name} ({category})")
-        greeting = data.get("suggested_greeting", f"Hey Daniel, I see you're at {place_name}, how is it going?")
+        greeting = data.get("suggested_greeting", f"At {place_name}.")
 
         motion = data.get("motion_activity")
         if data.get("motion_fresh") and motion and motion != "unknown":
@@ -179,13 +179,13 @@ def handle_call_tool(name, arguments):
         if data.get("is_moving_now") and not data.get("is_at_known_place"):
             result_text += (
                 f"\nNote: GPS last rewrote {minutes_since_move} min ago (the phone writes only after an accepted move: "
-                "30 m while moving, 150 m while stationary). CoreMotion says he is moving now; place_name is the last written position."
+                "30 m while moving, 150 m while stationary). CoreMotion says the user is moving now; place_name is the last written position."
             )
         elif minutes_since_move >= 1:
             result_text += (
                 f"\nNote: GPS last changed {minutes_since_move} min ago. The iPhone rewrites "
                 "latest_location.json only after an accepted move (30 m while moving, 150 m while stationary). "
-                "He is still at this place; a growing age means he has been here that long, not that the location is lost."
+                "The user is still at this place; a growing age means they have been here that long."
             )
 
         return {"content": [{"type": "text", "text": result_text}]}
@@ -307,7 +307,7 @@ def handle_call_tool(name, arguments):
                 "isError": True
             }
 
-        lines = ["Daniel's Apple Health & Telemetry:"]
+        lines = ["Apple Health:"]
         sleep = data.get("sleep")
         if sleep:
             lines.append(f"• Sleep: {sleep.get('formatted_duration', 'n/a')} ({sleep.get('quality_rating', '').upper()}) — {sleep.get('summary', '')}")

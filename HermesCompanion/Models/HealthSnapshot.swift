@@ -370,7 +370,7 @@ public struct HealthSnapshot: Codable, Equatable, Identifiable {
 
         // 2. Active workout
         if let active = activeWorkout {
-            workoutPrompt = "Daniel is in the middle of a \(active.workoutType) session (\(active.durationMinutes)m so far). Keep it encouraging and don't distract him too much!"
+            workoutPrompt = "A \(active.workoutType) session is in progress (\(active.durationMinutes)m so far). Keep it short."
             prompts.append(workoutPrompt!)
         } else if let recent = latestWorkout {
             switch recent.phase {

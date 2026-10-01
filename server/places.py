@@ -1,7 +1,7 @@
 """
 Hermes Companion Places & Semantic Activity Recognition Engine
 -------------------------------------------------------------
-Identifies Daniel's physical context (e.g. at the gym, at home, at work, in transit)
+Identifies the user's physical context (for example at the gym, at home, at work, in transit)
 using configured known places, radius geofencing, and cached reverse geocoding.
 """
 
@@ -19,18 +19,45 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 DB_PATH = Path(__file__).resolve().parent / "locations.sqlite3"
-LOVE_PROFILE_PLACES = Path.home() / ".hermes/profiles/love/state/places.json"
-PLACES_JSON_PATH = LOVE_PROFILE_PLACES if LOVE_PROFILE_PLACES.parent.is_dir() else Path(__file__).resolve().parent / "places.json"
+
+
+def default_places_path() -> Path:
+    """Places file for this machine, with no profile name baked in.
+
+    Order: HERMES_COMPANION_PLACES, HERMES_HOME/state/places.json, the only
+    Hermes profile that already has state/places.json, then a shared file
+    under ~/.hermes/hermes-companion/, then server/places.json.
+    """
+    env = os.environ.get("HERMES_COMPANION_PLACES", "").strip()
+    if env:
+        return Path(env).expanduser()
+    hermes_home = os.environ.get("HERMES_HOME", "").strip()
+    if hermes_home:
+        home = Path(hermes_home).expanduser()
+        candidate = home / "state" / "places.json"
+        if candidate.is_file() or (home / "state").is_dir():
+            return candidate
+    profiles = Path.home() / ".hermes" / "profiles"
+    found = sorted(profiles.glob("*/state/places.json")) if profiles.is_dir() else []
+    if len(found) == 1:
+        return found[0]
+    shared = Path.home() / ".hermes" / "hermes-companion" / "places.json"
+    if shared.is_file():
+        return shared
+    return Path(__file__).resolve().parent / "places.json"
+
+
+PLACES_JSON_PATH = default_places_path()
 
 # GPS is write-on-accepted-move: latest_location.json is rewritten only when
 # GPSPersistDecision accepts a displacement (default 30 m, or 150 m while stationary).
 # The timestamp is therefore minutes-since-last-move, not "data went stale".
-# Sitting still for hours is expected and means he is still at that place (a geofence
-# would have fired if he left). This threshold only labels a long stay, never "lost".
+# Sitting still for hours is expected and means the user is still at that place (a geofence
+# would have fired on a real departure). This threshold only labels a long stay.
 STALE_FIX_SECONDS = 600
 
 # CoreMotion activity (stationary/walking/running/driving) is refreshed independently of the
-# GPS fix, so a reading younger than this tells what he is doing NOW.
+# GPS fix, so a reading younger than this tells what the user is doing now.
 MOTION_FRESH_SECONDS = 300
 
 
@@ -383,16 +410,16 @@ class PlacesManager:
         Synthesize semantic context: place, activity, movement, and a greeting.
 
         Two independent signals:
-          - GPS (age_seconds): WHERE he is. The file is rewritten only when a move is
-            accepted (default 30 m, or 150 m while stationary). Age is minutes since last move. He is still
-            at that place until GPS writes again (a geofence would fire if he left).
-          - CoreMotion (motion_age_seconds): whether he is moving NOW (walking/running/
-            driving/stationary), refreshed independently of GPS.
+          - GPS (age_seconds): where the user is. The file is rewritten only when a move is
+            accepted (default 30 m, or 150 m while stationary). Age is minutes since the last move. The user is still
+            at that place until GPS writes again (a geofence fires on a real departure).
+          - CoreMotion (motion_age_seconds): whether the user is moving now (walking, running,
+            driving, or stationary), refreshed independently of GPS.
 
         Rules:
           - GPS place is current until a new coordinate is written.
           - Fresh motion is authoritative for moving vs staying *right now*.
-          - A long GPS age while at a place means he has been there that long.
+          - A long GPS age while at a place means the user has been there that long.
         """
         long_stay = age_seconds > STALE_FIX_SECONDS
         minutes_since_last_move = int(age_seconds // 60) if age_seconds else 0
@@ -440,7 +467,7 @@ class PlacesManager:
                     "place_category": known["place_category"],
                     "activity": act,
                     "context_summary": summary,
-                    "suggested_greeting": f"Hey Daniel, I see you're at {p_name} — looks like you're {motion_label}. How is it going?",
+                    "suggested_greeting": f"At {p_name}, {motion_label}.",
                     "is_at_known_place": True,
                     "known_place_id": known["place_id"],
                     "distance_to_center_meters": known["distance_meters"],
@@ -465,7 +492,7 @@ class PlacesManager:
                 "place_category": "transit",
                 "activity": act,
                 "context_summary": summary,
-                "suggested_greeting": "Hey Daniel, looks like you're on the move! Where are you headed?",
+                "suggested_greeting": "On the move.",
                 "is_at_known_place": False,
                 "duration_stationary": None,
                 "was_moving_at_fix": True,
@@ -479,20 +506,16 @@ class PlacesManager:
             act = known["activity"]
 
             if p_cat == "gym":
-                greeting = "Hey Daniel, I see you are at the gym, how is it doing?"
+                greeting = "At the gym."
             elif p_cat == "home":
-                # Sin lenguaje de llegada: la coordenada es write-on-change y la deriva
-                # del GPS la reescribe estando él quieto en casa (medido 30/9: escrituras
-                # 09:22 y 10:34 con él en casa toda la mañana). Un timestamp fresco no es
-                # prueba de que acaba de volver, así que el texto dice dónde está, nunca
-                # cuándo llegó.
-                greeting = "Hey Daniel, you are at home. How are you feeling?"
+                # A fresh timestamp is an accepted move. The text names the place only.
+                greeting = "At home."
             elif p_cat == "work":
-                greeting = f"Hey Daniel, I see you're at work at {p_name}. How is the day going?"
+                greeting = f"At work at {p_name}."
             elif p_cat == "cafe":
-                greeting = f"Hey Daniel, enjoying some time at {p_name}?"
+                greeting = f"At {p_name}."
             else:
-                greeting = f"Hey Daniel, I see you're at {p_name}, how is it going?"
+                greeting = f"At {p_name}."
 
             if stationary_now and minutes_since_last_move >= 1:
                 summary = f"At {p_name} (still there; hasn't moved in ~{minutes_since_last_move} min)"
@@ -514,7 +537,7 @@ class PlacesManager:
                 "was_moving_at_fix": False,
             }
 
-        # Reverse geocoding fallback. Same write-on-change rule: he is still there.
+        # Reverse geocoding fallback. Same write-on-change rule: the user is still there.
         rev = self.reverse_geocode(latitude, longitude)
         cat = rev.get("category", "general")
         disp = rev.get("display_name", "")
@@ -530,16 +553,16 @@ class PlacesManager:
 
         if cat == "gym":
             act = f"working out at {short_name}"
-            greeting = "Hey Daniel, I see you are at the gym, how is it doing?"
+            greeting = "At the gym."
         elif cat == "cafe":
             act = f"at {short_name}"
-            greeting = f"Hey Daniel, I see you're at a cafe ({short_name}), how is it going?"
+            greeting = f"At a cafe ({short_name})."
         elif cat == "residential":
             act = "at a residence"
-            greeting = "Hey Daniel, looks like you're indoors. How are things going?"
+            greeting = "Indoors."
         else:
             act = f"around {short_name}"
-            greeting = f"Hey Daniel, I see you're around {short_name}, how is it going?"
+            greeting = f"Around {short_name}."
 
         if stationary_now and minutes_since_last_move >= 1:
             summary = f"Around {short_name} (still there; hasn't moved in ~{minutes_since_last_move} min)"

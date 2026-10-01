@@ -2,7 +2,7 @@
 name: hermes-companion
 description: Live iPhone place, motion, sleep, workouts, and recovery.
 version: 1.0.0
-author: Daniel Main (danielmain)
+author: danielmain
 license: MIT
 platforms: [macos]
 metadata:

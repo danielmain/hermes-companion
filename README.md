@@ -86,7 +86,7 @@ hermes config set skills.config.hermes-companion.icloud_dir \
 ## Install the iPhone app
 
 1. Open `hermes-companion-ios.xcworkspace` in Xcode.
-2. Select your team and run on your iPhone.
+2. In Signing & Capabilities, choose your own Apple Development team, then run on your iPhone. This repository does not store a team id.
 3. Allow Location, then upgrade it to **Always** from the in-app banner. Background wakes do not run on While Using.
 4. Allow Motion & Fitness and Apple Health.
 5. Use the same Apple ID on the phone and the Mac, with iCloud Drive on.

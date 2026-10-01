@@ -186,7 +186,7 @@ def get_user_location(prefer_icloud=True):
     return data
 
 def add_known_place(name, category, activity, latitude, longitude, radius_meters=150.0, notes=""):
-    """Register a new known place (e.g. Daniel's gym, home, office)."""
+    """Register a known place such as home, work, or a gym."""
     try:
         from server.places import get_places_manager
     except ImportError:

@@ -21,7 +21,7 @@ import os
 import sys
 from pathlib import Path
 
-REPO = "/Users/daniel/Workspace/hermes-companion-ios"
+REPO = str(Path(__file__).resolve().parents[1])
 SERVER = os.path.join(REPO, "server")
 sys.path.insert(0, SERVER)
 
@@ -38,12 +38,12 @@ LOCATION_FIXTURE = {
     "battery_level": 0.95,
     "battery_state": "charging",
     "app_state": "background",
-    "device_name": "Daniel's iPhone",
+    "device_name": "iPhone",
 }
 
 HEALTH_FIXTURE = {
     "id": "ck-health-001",
-    "device_name": "Daniel's iPhone",
+    "device_name": "iPhone",
     "timestamp": "2026-09-29T08:30:00Z",
     "recovery_status": "recovered",
     "step_count_today": 8450,

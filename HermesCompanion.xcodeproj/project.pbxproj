@@ -8,19 +8,18 @@
 
 /* Begin PBXBuildFile section */
 		02A463072A6594D4DFFFA091 /* PermissionBannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AABB5A5B4D8FAAAB0657EB5 /* PermissionBannerView.swift */; };
+		082C30301E16F666593C8122 /* EditorialOnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10F3163AF5FF0449464E85D2 /* EditorialOnboardingView.swift */; };
+		0BC4378EC9D6DA6EF4976726 /* HealthDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DDC170C34A4EF2F9E770624 /* HealthDetailView.swift */; };
 		1B2E78F66602838584AC2864 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD9CCDD8BC1F05D3F64A7992 /* DashboardView.swift */; };
 		2AFDDE94090C3D9B5687B52C /* TrackingConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E346E61B87FBF95529DFA97 /* TrackingConfiguration.swift */; };
 		2E75C045551A8FF00EAB09BF /* LocationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3231767A4F3C749850EDCD51 /* LocationStore.swift */; };
 		391D0DF35B83873766C5DE76 /* MetricTileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 655FC160BE3D9698CE13C341 /* MetricTileView.swift */; };
 		39533FEBD10F0D1AA79BD1FB /* AppDiagnosticEvent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 485A91DA6EC9A98E1AF9027B /* AppDiagnosticEvent.swift */; };
 		3C4B1B6861FEC87882AB44F9 /* LocationRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC4FF56BB8CDA7A346691612 /* LocationRecord.swift */; };
+		4006B37325696A198594068F /* EditorialLoadingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9CA33808A50BEF00B6C2338 /* EditorialLoadingView.swift */; };
 		425C3943A223A2A6B851E29D /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 158496746D6DB3BF103D99F3 /* AppDelegate.swift */; };
 		480E74AD265AED43BD4171C4 /* HealthOverviewCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57511556AE5269E42E5009D8 /* HealthOverviewCard.swift */; };
 		4C558C0FE3B3C778EA833664 /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A76C9B08427B07439AE47D1E /* MainTabView.swift */; };
-		65EEDA8D306D9583001F8FB1 /* HealthDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65EEDA8C306D9583001F8FB1 /* HealthDetailView.swift */; };
-		65FE82DC306D4CCF00B4127D /* EditorialDesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65FE82DB306D4CCF00B4127D /* EditorialDesignSystem.swift */; };
-		65FE82DE306D4D0000B4127D /* EditorialLoadingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65FE82DD306D4D0000B4127D /* EditorialLoadingView.swift */; };
-		65FE82E0306D52DF00B4127D /* EditorialOnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65FE82DF306D52DF00B4127D /* EditorialOnboardingView.swift */; };
 		6FAABD5A3125E1D0FE9A82F0 /* HermesCompanionApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA5FEEEFC2590B1CFF74C949 /* HermesCompanionApp.swift */; };
 		7967632A74989A6A5B219DBF /* BackgroundTaskManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1CCEDA5B4EA8AC59750808B /* BackgroundTaskManager.swift */; };
 		80F8DCBE2B689E3DAB128D47 /* LocationRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70997C2DFDCBB92162F22A42 /* LocationRowView.swift */; };
@@ -30,12 +29,14 @@
 		AF8096125F0073D4D8DB9B82 /* HealthKitManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2187FF074AF20A5A8489B88E /* HealthKitManager.swift */; };
 		C7CD349E260C56EA76CBB3CD /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = ACD3FF5E5C9AE57B0F7C65B5 /* Assets.xcassets */; };
 		DD2E34F805F40022995F2DB8 /* LocationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C691BD9A582EDEE8459543D6 /* LocationManager.swift */; };
+		E29462E6F149BCCD9C12C5F3 /* EditorialDesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 877A2ABB264BA461E7E6175D /* EditorialDesignSystem.swift */; };
 		E49D6E26EADC4F184C331174 /* StatusCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E9910DB1DD2868FFFE04B8F /* StatusCardView.swift */; };
 		E50B06B300899EE43F70AA19 /* HistoryLogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 199001EF17CEBCAEA2655885 /* HistoryLogView.swift */; };
 		F0A80981BBC8B6168E73D9A4 /* CloudKitSyncManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3F837EEC8319BE295D0739B /* CloudKitSyncManager.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		10F3163AF5FF0449464E85D2 /* EditorialOnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorialOnboardingView.swift; sourceTree = "<group>"; };
 		158496746D6DB3BF103D99F3 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		199001EF17CEBCAEA2655885 /* HistoryLogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryLogView.swift; sourceTree = "<group>"; };
 		2187FF074AF20A5A8489B88E /* HealthKitManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitManager.swift; sourceTree = "<group>"; };
@@ -46,13 +47,11 @@
 		482DFD3630EAAC5A5D148E16 /* HermesCompanion.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HermesCompanion.entitlements; sourceTree = "<group>"; };
 		485A91DA6EC9A98E1AF9027B /* AppDiagnosticEvent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDiagnosticEvent.swift; sourceTree = "<group>"; };
 		57511556AE5269E42E5009D8 /* HealthOverviewCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthOverviewCard.swift; sourceTree = "<group>"; };
+		5DDC170C34A4EF2F9E770624 /* HealthDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthDetailView.swift; sourceTree = "<group>"; };
 		655FC160BE3D9698CE13C341 /* MetricTileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetricTileView.swift; sourceTree = "<group>"; };
-		65EEDA8C306D9583001F8FB1 /* HealthDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthDetailView.swift; sourceTree = "<group>"; };
-		65FE82DB306D4CCF00B4127D /* EditorialDesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorialDesignSystem.swift; sourceTree = "<group>"; };
-		65FE82DD306D4D0000B4127D /* EditorialLoadingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorialLoadingView.swift; sourceTree = "<group>"; };
-		65FE82DF306D52DF00B4127D /* EditorialOnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorialOnboardingView.swift; sourceTree = "<group>"; };
 		6E9910DB1DD2868FFFE04B8F /* StatusCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusCardView.swift; sourceTree = "<group>"; };
 		70997C2DFDCBB92162F22A42 /* LocationRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationRowView.swift; sourceTree = "<group>"; };
+		877A2ABB264BA461E7E6175D /* EditorialDesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorialDesignSystem.swift; sourceTree = "<group>"; };
 		8C31DC2507E266A61FD54AAF /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		9AABB5A5B4D8FAAAB0657EB5 /* PermissionBannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionBannerView.swift; sourceTree = "<group>"; };
 		A64856389980D1D73A2DC3C3 /* HermesCompanion.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = HermesCompanion.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -61,6 +60,7 @@
 		C1CCEDA5B4EA8AC59750808B /* BackgroundTaskManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundTaskManager.swift; sourceTree = "<group>"; };
 		C691BD9A582EDEE8459543D6 /* LocationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationManager.swift; sourceTree = "<group>"; };
 		C8F99D2373E2B88B93E58B81 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		C9CA33808A50BEF00B6C2338 /* EditorialLoadingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorialLoadingView.swift; sourceTree = "<group>"; };
 		CC4FF56BB8CDA7A346691612 /* LocationRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationRecord.swift; sourceTree = "<group>"; };
 		CD9CCDD8BC1F05D3F64A7992 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
 		DA5FEEEFC2590B1CFF74C949 /* HermesCompanionApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesCompanionApp.swift; sourceTree = "<group>"; };
@@ -84,14 +84,14 @@
 			isa = PBXGroup;
 			children = (
 				CD9CCDD8BC1F05D3F64A7992 /* DashboardView.swift */,
+				C9CA33808A50BEF00B6C2338 /* EditorialLoadingView.swift */,
+				10F3163AF5FF0449464E85D2 /* EditorialOnboardingView.swift */,
+				5DDC170C34A4EF2F9E770624 /* HealthDetailView.swift */,
 				199001EF17CEBCAEA2655885 /* HistoryLogView.swift */,
 				A76C9B08427B07439AE47D1E /* MainTabView.swift */,
 				C8F99D2373E2B88B93E58B81 /* SettingsView.swift */,
 				427369EA2001B3948EEC457D /* Components */,
-				65FE82DA306D4CCF00B4127D /* DesignSystem */,
-				65FE82DD306D4D0000B4127D /* EditorialLoadingView.swift */,
-				65FE82DF306D52DF00B4127D /* EditorialOnboardingView.swift */,
-				65EEDA8C306D9583001F8FB1 /* HealthDetailView.swift */,
+				761A84BC86AC90CEF676D765 /* DesignSystem */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -134,10 +134,10 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
-		65FE82DA306D4CCF00B4127D /* DesignSystem */ = {
+		761A84BC86AC90CEF676D765 /* DesignSystem */ = {
 			isa = PBXGroup;
 			children = (
-				65FE82DB306D4CCF00B4127D /* EditorialDesignSystem.swift */,
+				877A2ABB264BA461E7E6175D /* EditorialDesignSystem.swift */,
 			);
 			path = DesignSystem;
 			sourceTree = "<group>";
@@ -206,7 +206,6 @@
 				LastUpgradeCheck = 1600;
 				TargetAttributes = {
 					2FCC291CB54A965A8FBCF67F = {
-						DevelopmentTeam = 7H7P2FNJK6;
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -249,10 +248,12 @@
 				425C3943A223A2A6B851E29D /* AppDelegate.swift in Sources */,
 				39533FEBD10F0D1AA79BD1FB /* AppDiagnosticEvent.swift in Sources */,
 				7967632A74989A6A5B219DBF /* BackgroundTaskManager.swift in Sources */,
-				65FE82DE306D4D0000B4127D /* EditorialLoadingView.swift in Sources */,
 				F0A80981BBC8B6168E73D9A4 /* CloudKitSyncManager.swift in Sources */,
-				65FE82DC306D4CCF00B4127D /* EditorialDesignSystem.swift in Sources */,
 				1B2E78F66602838584AC2864 /* DashboardView.swift in Sources */,
+				E29462E6F149BCCD9C12C5F3 /* EditorialDesignSystem.swift in Sources */,
+				4006B37325696A198594068F /* EditorialLoadingView.swift in Sources */,
+				082C30301E16F666593C8122 /* EditorialOnboardingView.swift in Sources */,
+				0BC4378EC9D6DA6EF4976726 /* HealthDetailView.swift in Sources */,
 				AF8096125F0073D4D8DB9B82 /* HealthKitManager.swift in Sources */,
 				480E74AD265AED43BD4171C4 /* HealthOverviewCard.swift in Sources */,
 				8D1C50BEA55F8A9624F06270 /* HealthSnapshot.swift in Sources */,
@@ -261,12 +262,10 @@
 				8E2FEC7B43A3250163CFF287 /* ICloudAccountBannerView.swift in Sources */,
 				DD2E34F805F40022995F2DB8 /* LocationManager.swift in Sources */,
 				3C4B1B6861FEC87882AB44F9 /* LocationRecord.swift in Sources */,
-				65EEDA8D306D9583001F8FB1 /* HealthDetailView.swift in Sources */,
 				80F8DCBE2B689E3DAB128D47 /* LocationRowView.swift in Sources */,
 				2E75C045551A8FF00EAB09BF /* LocationStore.swift in Sources */,
 				4C558C0FE3B3C778EA833664 /* MainTabView.swift in Sources */,
 				391D0DF35B83873766C5DE76 /* MetricTileView.swift in Sources */,
-				65FE82E0306D52DF00B4127D /* EditorialOnboardingView.swift in Sources */,
 				02A463072A6594D4DFFFA091 /* PermissionBannerView.swift in Sources */,
 				AB05082DE43399C35A507360 /* SettingsView.swift in Sources */,
 				E49D6E26EADC4F184C331174 /* StatusCardView.swift in Sources */,
@@ -287,7 +286,6 @@
 				CODE_SIGN_ENTITLEMENTS = HermesCompanion/Resources/HermesCompanion.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = 7H7P2FNJK6;
 				INFOPLIST_FILE = HermesCompanion/Resources/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -311,7 +309,6 @@
 				CODE_SIGN_ENTITLEMENTS = HermesCompanion/Resources/HermesCompanion.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = 7H7P2FNJK6;
 				INFOPLIST_FILE = HermesCompanion/Resources/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
