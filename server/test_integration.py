@@ -86,11 +86,14 @@ def run_test():
 
     temp_loc = "/tmp/hermes_test_latest_location.json"
     temp_health = "/tmp/hermes_test_latest_health.json"
+    temp_history = "/tmp/hermes_test_location_history.json"
 
     saved_loc_paths = list(client.ICLOUD_CONTAINER_PATHS)
     saved_health_paths = list(client.ICLOUD_HEALTH_CONTAINER_PATHS)
+    saved_history_paths = list(client.ICLOUD_HISTORY_CONTAINER_PATHS)
     client.ICLOUD_CONTAINER_PATHS.insert(0, Path(temp_loc))
     client.ICLOUD_HEALTH_CONTAINER_PATHS.insert(0, Path(temp_health))
+    client.ICLOUD_HISTORY_CONTAINER_PATHS.insert(0, Path(temp_history))
 
     try:
         print("1. Formatting a raw CloudKit location payload...")
@@ -115,6 +118,8 @@ def run_test():
             json.dump(LOCATION_FIXTURE, f)
         with open(temp_health, "w", encoding="utf-8") as f:
             json.dump(HEALTH_FIXTURE, f)
+        with open(temp_history, "w", encoding="utf-8") as f:
+            json.dump({"records": [LOCATION_FIXTURE]}, f)
 
         loc = client.get_user_location(prefer_icloud=True)
         assert loc is not None and loc["latitude"] == 48.858844
@@ -167,6 +172,14 @@ def run_test():
         assert "I don't know where you are" not in loc_text
         assert "not as present certainty" not in loc_text
 
+        history_res = mcp_server.process_message({
+            "jsonrpc": "2.0", "id": 5, "method": "tools/call",
+            "params": {"name": "get_location_history", "arguments": {"limit": 5}},
+        })["result"]
+        history_text = history_res["content"][0]["text"]
+        assert "Recent" in history_text or "waypoints" in history_text
+        print(f"   MCP get_location_history OK:\n{history_text}")
+
         print("6. Write-on-change: old GPS at a known place is still there...")
         import places as places_mod
         pm = places_mod.get_places_manager()
@@ -195,7 +208,8 @@ def run_test():
     finally:
         client.ICLOUD_CONTAINER_PATHS[:] = saved_loc_paths
         client.ICLOUD_HEALTH_CONTAINER_PATHS[:] = saved_health_paths
-        for p in (temp_loc, temp_health):
+        client.ICLOUD_HISTORY_CONTAINER_PATHS[:] = saved_history_paths
+        for p in (temp_loc, temp_health, temp_history):
             if os.path.exists(p):
                 os.remove(p)
 

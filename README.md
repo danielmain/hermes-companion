@@ -19,11 +19,12 @@
 
 ---
 
-The phone is in a pocket, often on cellular, often with the app swiped away. Nothing on the internet can open a connection to it. Hermes Companion lets iOS wake the app, writes two JSON files into the app's private iCloud container, and lets the Hermes agent on your Mac read the copies macOS has already synced.
+The phone is in a pocket, often on cellular, often with the app swiped away. Nothing on the internet can open a connection to it. Hermes Companion lets iOS wake the app, writes JSON files into the app's private iCloud container, and lets the Hermes agent on your Mac read the copies macOS has already synced.
 
 ```
 iPhone  →  iCloud Drive  →  Mac disk  →  Hermes skill
                 latest_location.json
+                location_history.json
                 latest_health.json
 ```
 
@@ -37,7 +38,8 @@ No account with us. No analytics. No open port. The files stay in your Apple ID.
 
 | It knows | Because |
 | --- | --- |
-| You are still at Home | The location file is rewritten only when a move is accepted. Hours at the same place means you are still there. |
+| You are still at Home | The location file is rewritten only when a move is accepted. Fresh stationary motion confirms you are still there; if telemetry is silent for hours without pings, it reports unconfirmed. |
+| Visits, dwell times & trips | `location_history.json` records rolling move history, allowing the skill to compute exact arrival, departure, and stay times. |
 | You are walking, not driving | CoreMotion reports `stationary`, `walking`, `running`, `cycling`, or `automotive` on its own clock. |
 | You did not just arrive | A new file means the persist gate accepted a displacement. It does not mean you got home. |
 | How you slept and trained | HealthKit sleep is the union of Deep, REM, and Core, so Watch and iPhone samples are not added twice. |
@@ -77,6 +79,7 @@ Then ask where you are, how you slept, or whether you are still at a place you n
 
 ```bash
 python3 ${HERMES_SKILL_DIR}/scripts/companion.py
+python3 ${HERMES_SKILL_DIR}/scripts/companion.py --timeline
 python3 ${HERMES_SKILL_DIR}/scripts/companion.py --health
 python3 ${HERMES_SKILL_DIR}/scripts/companion.py --context
 ```

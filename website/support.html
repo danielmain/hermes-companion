@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Support & Diagnostics — Hermes Companion iOS & Hermes Skill</title>
+  <meta name="description" content="Technical support, configuration checklists, troubleshooting trees, and diagnostics for Hermes Companion iOS app and Hermes skill.">
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" type="image/png" href="assets/icon-source.png">
+
+  <link rel="canonical" href="https://hermescompanion.funktional.dev/support.html">
+
+  <!-- Open Graph / Rich Social Link Preview -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://hermescompanion.funktional.dev/support.html">
+  <meta property="og:site_name" content="Hermes Companion">
+  <meta property="og:title" content="Support & Diagnostics — Hermes Companion iOS & Hermes Skill">
+  <meta property="og:description" content="Technical support, configuration checklists, troubleshooting trees, and diagnostics for Hermes Companion iOS app and Hermes skill.">
+  <meta property="og:image" content="https://hermescompanion.funktional.dev/assets/lilith-black.png">
+  <meta property="og:image:width" content="1024">
+  <meta property="og:image:height" content="572">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:alt" content="Hermes Companion Support Artwork">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:url" content="https://hermescompanion.funktional.dev/support.html">
+  <meta name="twitter:title" content="Support & Diagnostics — Hermes Companion iOS & Hermes Skill">
+  <meta name="twitter:description" content="Technical support, configuration checklists, troubleshooting trees, and diagnostics for Hermes Companion iOS app and Hermes skill.">
+  <meta name="twitter:image" content="https://hermescompanion.funktional.dev/assets/lilith-black.png">
+  <meta name="twitter:image:alt" content="Hermes Companion Support Artwork">
+</head>
+<body>
+
+  <!-- Archival Institutional Masthead -->
+  <header class="archival-topbar">
+    <div class="page-container">
+      <div class="topbar-meta">
+        <span>ARCHIVAL HELPDESK • REF. HC-SUP-2026</span>
+        <span>STATUS: ACTIVE SUPPORT DESK</span>
+        <span>SECURITY: PRIVATE ICLOUD</span>
+      </div>
+
+      <nav class="topbar-nav" aria-label="Support Navigation">
+        <a href="index.html" class="brand-mark">
+          <div class="brand-icon-box">
+            <img src="assets/icon-source.png" alt="Hermes Symbol">
+          </div>
+          <div>
+            <div class="brand-title">HERMES COMPANION</div>
+          </div>
+          <span class="brand-tag">SUPPORT DESK</span>
+        </a>
+
+        <ul class="nav-links">
+          <li><a href="index.html" class="nav-link">Overview</a></li>
+          <li><a href="#checklist" class="nav-link">Checklist</a></li>
+          <li><a href="#troubleshooting" class="nav-link">Troubleshooting</a></li>
+          <li><a href="#diagnostics" class="nav-link">Diagnostics</a></li>
+          <li><a href="#contact" class="nav-link">Contact</a></li>
+          <li><a href="privacy.html" class="nav-link">Privacy Policy</a></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <!-- SUPPORT HERO -->
+    <section class="hero-section">
+      <div class="page-container">
+        <div class="hero-grid">
+          <div>
+            <div class="hero-meta-kicker">
+              <span class="token inverted">#SUPPORT</span>
+              <span class="editorial-utility">SYSTEM DIAGNOSTICS &amp; ASSISTANCE</span>
+            </div>
+
+            <h1 class="editorial-display-huge">
+              Technical Support<br>
+              &amp; Diagnostics.
+            </h1>
+
+            <p class="editorial-lead">
+              Resolution procedures, configuration verification, and troubleshooting trees for Hermes Companion iOS and the Hermes skill on macOS.
+            </p>
+
+            <div class="hero-actions">
+              <a href="#checklist" class="btn btn-primary">
+                <span>SETUP CHECKLIST</span>
+                <span>↓</span>
+              </a>
+              <a href="#troubleshooting" class="btn btn-secondary">
+                <span>VIEW FAQS &amp; FIXES</span>
+                <span>↓</span>
+              </a>
+              <a href="https://github.com/danielmain/hermes-companion/issues" target="_blank" rel="noopener" class="btn btn-ghost">
+                <span>GITHUB ISSUES</span>
+                <span>↗</span>
+              </a>
+            </div>
+          </div>
+
+          <div>
+            <div class="editorial-card cut-corner" style="border: 2px solid var(--ink); box-shadow: var(--shadow-offset); background: var(--surface);">
+              <div class="editorial-card-header">
+                <span class="editorial-utility">SYSTEM STATUS</span>
+                <span class="token inverted">HEALTHY</span>
+              </div>
+              <div style="font-family: var(--font-display); font-size: 1.25rem; margin-bottom: var(--space-8);">
+                Archival Pipeline Readout
+              </div>
+              <p style="font-size: 0.875rem; color: var(--secondary-ink); line-height: 1.6; margin-bottom: var(--space-16);">
+                Because Hermes Companion uses your native Apple iCloud Drive sandbox, there are no external servers to experience outages. If iCloud Drive is operational on Apple's System Status, synchronization is functional.
+              </p>
+              <div class="editorial-rule"></div>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-12); font-family: var(--font-mono); font-size: 0.6875rem;">
+                <span>SYNC PROTOCOL</span>
+                <span class="token faint">UBIQUITY CONTAINER</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION #01: SETUP CHECKLIST -->
+    <section id="checklist" class="editorial-section">
+      <div class="page-container">
+        <div class="module-header">
+          <div class="module-header-meta">
+            <span class="module-index">#01 VERIFICATION</span>
+            <span class="module-tag">PREREQUISITES &amp; HARDWARE PERMISSIONS</span>
+          </div>
+          <h2 class="editorial-section-title">5-Point Verification Checklist</h2>
+          <p class="editorial-lead">
+            Ensure each prerequisite is satisfied to enable autonomous background synchronization between iOS and your Mac.
+          </p>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr; gap: var(--space-32); align-items: start;" class="support-checklist-grid">
+          <div style="display: grid; grid-template-columns: 1fr; gap: var(--space-16);">
+            <div class="editorial-card">
+              <div class="editorial-card-header">
+                <span class="editorial-utility">STEP 01</span>
+                <span class="token faint">IDENTITY</span>
+              </div>
+              <div class="editorial-card-title">Identical Apple ID</div>
+              <div class="editorial-card-body">
+                Your iPhone and your Mac must be signed into the same Apple ID. The app writes into the private ubiquity container <code>iCloud~com~hermes~HermesCompanion</code> which only synchronizes between devices sharing your account.
+              </div>
+            </div>
+
+            <div class="editorial-card">
+              <div class="editorial-card-header">
+                <span class="editorial-utility">STEP 02</span>
+                <span class="token faint">STORAGE</span>
+              </div>
+              <div class="editorial-card-title">iCloud Drive Enabled</div>
+              <div class="editorial-card-body">
+                On iPhone: <em>Settings → [Your Name] → iCloud → iCloud Drive</em> must be toggled <strong>ON</strong>.<br>
+                On macOS: <em>System Settings → Apple Account → iCloud → iCloud Drive</em> must also be enabled.
+              </div>
+            </div>
+
+            <div class="editorial-card">
+              <div class="editorial-card-header">
+                <span class="editorial-utility">STEP 03</span>
+                <span class="token inverted">CRITICAL</span>
+              </div>
+              <div class="editorial-card-title">Location Permission: "Always"</div>
+              <div class="editorial-card-body">
+                In iOS Settings, location access must be set to <strong>"Always"</strong> (not just "While Using the App"). iOS suspends background wakes, cell-tower monitoring, and stationary geofences if set only to "While Using".
+              </div>
+            </div>
+
+            <div class="editorial-card">
+              <div class="editorial-card-header">
+                <span class="editorial-utility">STEP 04</span>
+                <span class="token faint">HEALTH &amp; MOTION</span>
+              </div>
+              <div class="editorial-card-title">Apple Health Authorization</div>
+              <div class="editorial-card-body">
+                When prompted by the app, authorize read access for <strong>Sleep Analysis</strong> and <strong>Workouts</strong>, plus <strong>Motion &amp; Fitness</strong>. Without this, health snapshots will remain empty.
+              </div>
+            </div>
+          </div>
+
+          <!-- iPhone Mockup of Settings Screen -->
+          <div class="iphone-card-container">
+            <div class="iphone-device">
+              <div class="iphone-island"></div>
+              <div class="iphone-screen">
+                <img src="assets/screenshots/settings.png" alt="iPhone Screen: Hermes Companion Settings Screen">
+                <div class="iphone-home-bar"></div>
+              </div>
+            </div>
+            <div class="iphone-plate">
+              <div class="iphone-plate-meta">
+                <span class="editorial-utility-small">FIG. SUP-01</span>
+                <span class="token faint">VERIFIED PROFILE</span>
+              </div>
+              <div class="iphone-plate-title">Target Settings State</div>
+              <div class="iphone-plate-desc">
+                Verified configuration: Smart Always profile active, dynamic stationary geofence set to 100m, and distance filter set to 30m.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION #02: TROUBLESHOOTING ACCORDION -->
+    <section id="troubleshooting" class="editorial-section">
+      <div class="page-container">
+        <div class="module-header">
+          <div class="module-header-meta">
+            <span class="module-index">#02 RESOLUTION</span>
+            <span class="module-tag">COMMON SCENARIOS &amp; REMEDIES</span>
+          </div>
+          <h2 class="editorial-section-title">Troubleshooting &amp; FAQs</h2>
+          <p class="editorial-lead">
+            Detailed step-by-step diagnostic solutions for typical synchronization and execution situations.
+          </p>
+        </div>
+
+        <div class="faq-list">
+          <!-- Item 1 -->
+          <div class="faq-item active">
+            <button type="button" class="faq-trigger">
+              <span>1. Skill reports: "No location file found" or path does not exist</span>
+              <span class="faq-symbol">+</span>
+            </button>
+            <div class="faq-content">
+              <p>
+                This indicates that macOS has not yet materialized the iCloud container file locally. To resolve:
+              </p>
+              <ol style="margin-left: 20px; margin-top: 8px; display: flex; flex-direction: column; gap: 8px;">
+                <li>Launch the Hermes Companion app on your iPhone and tap <strong>"Force GPS Fix"</strong> or move slightly to record the initial fix.</li>
+                <li>Verify in iPhone Settings that iCloud Drive is enabled for Hermes Companion.</li>
+                <li>On your Mac, run: <code>ls -la ~/Library/Mobile\ Documents/iCloud~com~hermes~HermesCompanion/Documents/</code>.</li>
+                <li>If the directory does not exist yet, allow iCloud Drive 30–60 seconds to perform its initial container provisioning handshake.</li>
+              </ol>
+            </div>
+          </div>
+
+          <!-- Item 2 -->
+          <div class="faq-item">
+            <button type="button" class="faq-trigger">
+              <span>2. Fix age is growing while I am at my desk; is tracking broken?</span>
+              <span class="faq-symbol">+</span>
+            </button>
+            <div class="faq-content">
+              <p>
+                <strong>No, this is by intentional design.</strong> Hermes Companion uses a write-on-change architecture:
+              </p>
+              <p style="margin-top: 8px;">
+                Indoor GPS jitter (10–50 meters) is deliberately refused to prevent battery drain and artificial movement noise. Stationary readings are only recorded if displacement exceeds 150m or speed exceeds 1 m/s.
+              </p>
+              <p style="margin-top: 8px;">
+                When you stay at the office or at home for 4 hours, the timestamp stays anchored at your arrival time. The Hermes agent calculates <code>fix_age_minutes: 240</code> and correctly concludes: <em>"You are still at the office."</em>
+              </p>
+            </div>
+          </div>
+
+          <!-- Item 3 -->
+          <div class="faq-item">
+            <button type="button" class="faq-trigger">
+              <span>3. How do I change Location permission to "Always" if I chose "While Using"?</span>
+              <span class="faq-symbol">+</span>
+            </button>
+            <div class="faq-content">
+              <p>
+                Open your iPhone's native <strong>Settings app</strong> → scroll down to <strong>Privacy &amp; Security</strong> → tap <strong>Location Services</strong> → tap <strong>Hermes Companion</strong> → select <strong>Always</strong>.
+              </p>
+              <p style="margin-top: 8px;">
+                Also ensure <strong>Precise Location</strong> is toggled <strong>ON</strong> and <strong>Background App Refresh</strong> is enabled in <em>Settings → General → Background App Refresh</em>.
+              </p>
+            </div>
+          </div>
+
+          <!-- Item 4 -->
+          <div class="faq-item">
+            <button type="button" class="faq-trigger">
+              <span>4. Health/Sleep telemetry is not appearing in the skill output</span>
+              <span class="faq-symbol">+</span>
+            </button>
+            <div class="faq-content">
+              <p>
+                HealthKit delivers sleep records when you wake up and when your Apple Watch completes sleep stage classification. Note:
+              </p>
+              <ul style="margin-left: 20px; margin-top: 8px; display: flex; flex-direction: column; gap: 8px;">
+                <li>Verify Apple Health permissions in iPhone <em>Settings → Health → Data Access &amp; Devices → Hermes Companion</em>.</li>
+                <li>Make sure Sleep Analysis and Workouts are toggled on.</li>
+                <li>Health snapshots are written when Apple Health emits new samples or on background refresh, not on every GPS tick.</li>
+              </ul>
+            </div>
+          </div>
+
+          <!-- Item 5 -->
+          <div class="faq-item">
+            <button type="button" class="faq-trigger">
+              <span>5. Customizing storage paths or using a non-standard iCloud folder</span>
+              <span class="faq-symbol">+</span>
+            </button>
+            <div class="faq-content">
+              <p>
+                If you keep your container or places configuration in custom directories, configure Hermes via CLI:
+              </p>
+              <div class="terminal-block" style="margin-top: 12px;">
+                <div class="terminal-header">
+                  <span class="terminal-title">CUSTOM CONFIGURATION CLI</span>
+                  <button type="button" class="terminal-copy-btn" data-copy-target="code-config-custom">[ COPY ]</button>
+                </div>
+                <div class="terminal-content">
+                  <pre id="code-config-custom">hermes config set skills.config.hermes-companion.icloud_dir "$HOME/Library/Mobile Documents/iCloud~com~hermes~HermesCompanion/Documents"
+hermes config set skills.config.hermes-companion.places_file "$HOME/places.json"</pre>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION #03: INTERACTIVE DIAGNOSTIC SIMULATOR -->
+    <section id="diagnostics" class="editorial-section">
+      <div class="page-container">
+        <div class="module-header">
+          <div class="module-header-meta">
+            <span class="module-index">#03 DIAGNOSTICS</span>
+            <span class="module-tag">WORKSTATION VERIFICATION SIMULATOR</span>
+          </div>
+          <h2 class="editorial-section-title">Interactive Terminal Diagnostics</h2>
+          <p class="editorial-lead">
+            Select a diagnostic test below to inspect the expected command line output for each stage of the synchronization pipeline.
+          </p>
+        </div>
+
+        <div class="diag-panel">
+          <div class="diag-header">
+            <span>DIAGNOSTIC CONSOLE // TEST RUNNER</span>
+            <span class="token inverted">READY</span>
+          </div>
+
+          <div class="diag-tabs">
+            <button type="button" class="diag-tab active" data-diag-target="diag-1">1. VERIFY ICLOUD SYNC</button>
+            <button type="button" class="diag-tab" data-diag-target="diag-2">2. EXECUTE SKILL</button>
+            <button type="button" class="diag-tab" data-diag-target="diag-3">3. HEALTH SNAPSHOT</button>
+            <button type="button" class="diag-tab" data-diag-target="diag-4">4. RAW JSON INSPECTION</button>
+          </div>
+
+          <div class="diag-body">
+            <!-- Screen 1 -->
+            <div id="diag-1" class="diag-screen">
+              <div class="editorial-utility" style="margin-bottom: var(--space-8);">COMMAND TO RUN ON MAC WORKSTATION:</div>
+              <div class="terminal-block">
+                <div class="terminal-content">
+<pre><span class="cli-prompt">$ </span>python3 skills/hermes-companion/scripts/companion.py</pre>
+                </div>
+              </div>
+              <div class="editorial-utility" style="margin: var(--space-16) 0 var(--space-8);">EXPECTED HEALTHY OUTPUT:</div>
+              <div class="terminal-block">
+                <div class="terminal-content" style="color: var(--ink);">
+<pre>facts_only:
+source: /Users/username/Library/Mobile Documents/iCloud~com~hermes~HermesCompanion/Documents/latest_location.json
+place: Home
+category: home
+motion: stationary
+fix_age_minutes: 18
+status: still_at_place</pre>
+                </div>
+              </div>
+            </div>
+
+            <!-- Screen 2 -->
+            <div id="diag-2" class="diag-screen" style="display: none;">
+              <div class="editorial-utility" style="margin-bottom: var(--space-8);">COMMAND FOR COMBINED PHYSICAL CONTEXT:</div>
+              <div class="terminal-block">
+                <div class="terminal-content">
+<pre><span class="cli-prompt">$ </span>python3 skills/hermes-companion/scripts/companion.py --context</pre>
+                </div>
+              </div>
+              <div class="editorial-utility" style="margin: var(--space-16) 0 var(--space-8);">EXPECTED HEALTHY OUTPUT:</div>
+              <div class="terminal-block">
+                <div class="terminal-content">
+<pre>facts_only:
+place: Home
+motion: stationary
+fix_age_minutes: 24
+sleep_duration_hours: 7.82
+last_workout_type: running
+last_workout_minutes: 45</pre>
+                </div>
+              </div>
+            </div>
+
+            <!-- Screen 3 -->
+            <div id="diag-3" class="diag-screen" style="display: none;">
+              <div class="editorial-utility" style="margin-bottom: var(--space-8);">COMMAND FOR SLEEP &amp; HEALTH ANALYSIS:</div>
+              <div class="terminal-block">
+                <div class="terminal-content">
+<pre><span class="cli-prompt">$ </span>python3 skills/hermes-companion/scripts/companion.py --health</pre>
+                </div>
+              </div>
+              <div class="editorial-utility" style="margin: var(--space-16) 0 var(--space-8);">EXPECTED HEALTHY OUTPUT:</div>
+              <div class="terminal-block">
+                <div class="terminal-content">
+<pre>facts_only:
+sleep_total_hours: 7.82
+sleep_deep_hours: 1.95
+sleep_rem_hours: 2.15
+sleep_core_hours: 3.72
+workout_today: true
+workout_type: running</pre>
+                </div>
+              </div>
+            </div>
+
+            <!-- Screen 4 -->
+            <div id="diag-4" class="diag-screen" style="display: none;">
+              <div class="editorial-utility" style="margin-bottom: var(--space-8);">CHECK RAW CONTAINER METADATA:</div>
+              <div class="terminal-block">
+                <div class="terminal-content">
+<pre><span class="cli-prompt">$ </span>cat "$HOME/Library/Mobile Documents/iCloud~com~hermes~HermesCompanion/Documents/latest_location.json"</pre>
+                </div>
+              </div>
+              <div class="editorial-utility" style="margin: var(--space-16) 0 var(--space-8);">EXPECTED RAW JSON FORMAT:</div>
+              <div class="terminal-block">
+                <div class="terminal-content">
+<pre>{
+  "timestamp": "2026-10-01T13:20:15Z",
+  "latitude": 37.774929,
+  "longitude": -122.419416,
+  "accuracy": 8.4,
+  "motion_activity": "stationary",
+  "movement_reason": "moved"
+}</pre>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION #04: DIRECT SUPPORT & INQUIRIES -->
+    <section id="contact" class="editorial-section last-section">
+      <div class="page-container">
+        <div class="module-header">
+          <div class="module-header-meta">
+            <span class="module-index">#04 CONTACT</span>
+            <span class="module-tag">DIRECT INQUIRIES &amp; BUG REPORTS</span>
+          </div>
+          <h2 class="editorial-section-title">Developer Contact &amp; Issue Submission</h2>
+          <p class="editorial-lead">
+            Encountered an edge case or need technical guidance? Reach out through GitHub or submit your diagnostic report.
+          </p>
+        </div>
+
+        <div class="cards-grid-2">
+          <div>
+            <div class="editorial-card" style="height: 100%;">
+              <div class="editorial-card-header">
+                <span class="editorial-utility">OFFICIAL REPOSITORY</span>
+                <span class="token faint">PUBLIC TRACKER</span>
+              </div>
+              <div class="editorial-card-title">GitHub Issue Tracker</div>
+              <p class="editorial-body" style="margin-bottom: var(--space-16);">
+                For bugs, feature enhancements, or contributing to the Swift codebase and Hermes skill, GitHub Issues is our primary tracking system.
+              </p>
+              <div style="margin-top: auto;">
+                <a href="https://github.com/danielmain/hermes-companion/issues" target="_blank" rel="noopener" class="btn btn-primary">
+                  <span>OPEN GITHUB ISSUES</span>
+                  <span>↗</span>
+                </a>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div class="editorial-card" style="height: 100%;">
+              <div class="editorial-card-header">
+                <span class="editorial-utility">EMAIL DESK</span>
+                <span class="token faint">DIRECT CONTACT</span>
+              </div>
+              <div class="editorial-card-title">Support Inquiries</div>
+              <p class="editorial-body" style="margin-bottom: var(--space-16);">
+                For App Store support inquiries, private security feedback, or direct assistance:
+              </p>
+              <div style="font-family: var(--font-mono); font-size: 0.875rem; margin-bottom: var(--space-16);">
+                Email: <a href="mailto:support@funktional.dev" style="color: var(--ink); text-decoration: underline;">support@funktional.dev</a>
+              </div>
+              <div style="margin-top: auto;">
+                <a href="mailto:support@funktional.dev" class="btn btn-secondary">
+                  <span>SEND EMAIL INQUIRY</span>
+                  <span>✉</span>
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Institutional Colophon Footer -->
+  <footer class="archival-footer">
+    <div class="page-container">
+      <div class="footer-grid">
+        <div>
+          <div style="font-family: var(--font-display); font-size: 1.5rem; margin-bottom: var(--space-8);">
+            HERMES COMPANION
+          </div>
+          <p style="font-size: 0.875rem; color: var(--secondary-ink); max-width: 42ch;">
+            Official Technical Support Portal. Open architecture, zero relay servers, local-first telemetry computing.
+          </p>
+        </div>
+
+        <div>
+          <div class="footer-col-title">NAVIGATION</div>
+          <ul class="footer-links">
+            <li><a href="index.html">Marketing Overview</a></li>
+            <li><a href="support.html">Support &amp; Troubleshooting</a></li>
+            <li><a href="privacy.html">Privacy Policy</a></li>
+            <li><a href="https://github.com/danielmain/hermes-companion" target="_blank" rel="noopener">GitHub Repository ↗</a></li>
+          </ul>
+        </div>
+
+        <div>
+          <div class="footer-col-title">HELP DESK</div>
+          <ul class="footer-links">
+            <li><a href="mailto:support@funktional.dev">support@funktional.dev</a></li>
+            <li><a href="https://github.com/danielmain/hermes-companion/issues" target="_blank" rel="noopener">GitHub Issues ↗</a></li>
+            <li><a href="https://github.com/danielmain/hermes-companion/blob/main/LICENSE" target="_blank" rel="noopener">MIT License ↗</a></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="footer-stamp">
+        <div>HERMES COMPANION ARCHIVAL SYSTEM • ALL RIGHTS RESERVED</div>
+        <div>OFFICIAL APP STORE SUPPORT DESK REF. HC-SUP-2026</div>
+      </div>
+    </div>
+  </footer>
+
+  <script src="main.js"></script>
+</body>
+</html>

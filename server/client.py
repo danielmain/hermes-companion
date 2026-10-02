@@ -35,6 +35,14 @@ ICLOUD_HEALTH_CONTAINER_PATHS = [
     Path("/tmp/hermes_latest_health.json"),
 ]
 
+ICLOUD_HISTORY_CONTAINER_PATHS = [
+    Path.home() / "Library/Mobile Documents/com~apple~CloudDocs/HermesCompanion/location_history.json",
+    Path.home() / "Library/Mobile Documents/com~apple~CloudDocs/Hermes Companion/location_history.json",
+    Path.home() / "Library/Mobile Documents/iCloud~com~hermes~HermesCompanion/Documents/location_history.json",
+    Path.home() / "Library/Mobile Documents/iCloud~com~hermes~HermesCompanion/location_history.json",
+    Path("/tmp/hermes_location_history.json"),
+]
+
 def format_location_payload(data, channel_name="iCloud / CloudKit"):
     """Format raw location data dict to standard Hermes dictionary schema."""
     if not data or "latitude" not in data or "longitude" not in data:
@@ -252,6 +260,20 @@ def get_user_health_from_icloud():
             except Exception:
                 continue
     return None
+
+def get_location_history_from_icloud(limit=100):
+    """Read rolling location history directly from local iCloud container files."""
+    for path in ICLOUD_HISTORY_CONTAINER_PATHS:
+        if path.is_file():
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    raw = json.load(f)
+                    records = raw.get("records") if isinstance(raw, dict) else raw
+                    if isinstance(records, list):
+                        return records[-limit:] if limit else records
+            except Exception:
+                continue
+    return []
 
 def get_user_health_from_sqlite(db_path=None):
     """Read the latest health snapshot directly from local SQLite database."""

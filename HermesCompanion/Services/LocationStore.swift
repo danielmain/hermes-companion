@@ -114,6 +114,16 @@ public final class LocationStore: ObservableObject {
         }
     }
 
+    /// Returns records within a rolling time window (default: 7 days), or at most maxCount.
+    public func recentRecords(withinDays days: Double = 7.0, maxCount: Int = 1000) -> [LocationRecord] {
+        let cutoff = Date().addingTimeInterval(-days * 86400.0)
+        let filtered = records.filter { $0.timestamp >= cutoff }
+        if filtered.isEmpty {
+            return Array(records.prefix(maxCount))
+        }
+        return Array(filtered.prefix(maxCount))
+    }
+
     public func logDiagnostic(title: String, details: String = "", severity: DiagnosticSeverity = .info) {
         let event = AppDiagnosticEvent(title: title, details: details, severity: severity)
         DispatchQueue.main.async {

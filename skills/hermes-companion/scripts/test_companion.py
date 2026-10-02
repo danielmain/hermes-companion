@@ -152,6 +152,69 @@ def test_text_has_no_english_script() -> None:
     check("health text keeps the code", "recovery_status: fatigued" in health_text and "protein" not in health_text)
 
 
+def test_timeline_and_history() -> None:
+    gym = {
+        "id": "gym",
+        "name": "Gym",
+        "category": "gym",
+        "activity": "working out",
+        "latitude": 52.52,
+        "longitude": 13.40,
+        "radius_meters": 150,
+    }
+    places = [HOME, gym]
+
+    records = [
+        {"timestamp": iso(4 * 3600), "latitude": 52.53, "longitude": 13.41, "motion_activity": "stationary"},
+        {"timestamp": iso(3 * 3600), "latitude": 52.53, "longitude": 13.41, "motion_activity": "stationary"},
+        {"timestamp": iso(2 * 3600), "latitude": 52.525, "longitude": 13.405, "motion_activity": "walking"},
+        {"timestamp": iso(3600), "latitude": 52.52, "longitude": 13.40, "motion_activity": "stationary"},
+        {"timestamp": iso(1800), "latitude": 52.52, "longitude": 13.40, "motion_activity": "stationary"},
+        {"timestamp": iso(60), "latitude": 52.53, "longitude": 13.41, "motion_activity": "stationary"},
+    ]
+
+    timeline = companion.build_timeline(records, places, NOW)
+    check("timeline has events", timeline["events_count"] >= 3)
+    check("current place is Home", timeline["current_place"] == "Home")
+
+    # In-memory SQLite check
+    rows = companion.query_history_sqlite(records, places, "SELECT COUNT(*) as c FROM locations WHERE place_name = 'Gym'")
+    check("sqlite found gym records", rows[0]["c"] == 2)
+
+    text = companion.format_timeline(timeline)
+    check("timeline formatting has facts", "facts_only:" in text and "stay: Gym" in text)
+
+
+def test_bug_md_scenario_gap_detection() -> None:
+    places = [
+        {"id": "home", "name": "Home", "category": "home", "latitude": 48.815047, "longitude": 9.232482, "radius_meters": 120},
+        {"id": "cannstatt", "name": "Cannstatt", "category": "general", "latitude": 48.812884, "longitude": 9.221555, "radius_meters": 200},
+    ]
+
+    # Daniel's scenario: Home at 16:48, 89m silence, Cannstatt at 18:29 (850m away)
+    records = [
+        {"timestamp": "2026-10-02T16:48:25Z", "latitude": 48.815159, "longitude": 9.231775, "motion_activity": "stationary"},
+        {"timestamp": "2026-10-02T18:29:06Z", "latitude": 48.812884, "longitude": 9.221555, "motion_activity": "walking"},
+    ]
+    now_moment = companion.parse_utc("2026-10-02T18:40:00Z")
+    timeline = companion.build_timeline(records, places, now_moment)
+
+    cannstatt_event = timeline["events"][-1]
+    check("cannstatt reached", cannstatt_event["place_name"] == "Cannstatt")
+    check("gap detected before cannstatt", "silent for 100m" in str(timeline) or "silent for 101m" in str(timeline) or "silent" in str(cannstatt_event.get("telemetry_gap_before")))
+
+    # At 18:01: fix is from 16:48 (73m old) with NO fresh motion
+    fix_at_1801 = {
+        "latitude": 48.815159,
+        "longitude": 9.231775,
+        "timestamp": "2026-10-02T16:48:25Z",
+        "motion_activity": "stationary",
+        "motion_timestamp": "2026-10-02T16:48:25Z",  # stale motion
+    }
+    resolved = companion.resolve_location(fix_at_1801, places, companion.parse_utc("2026-10-02T18:01:00Z"), "fixture")
+    check("still_there is unconfirmed when old without fresh motion", resolved["still_there"] is False and "unconfirmed" in resolved["still_there_status"])
+
+
 def main() -> int:
     test_still_home_after_hours()
     test_walking_at_home()
@@ -160,6 +223,8 @@ def main() -> int:
     test_files_roundtrip()
     test_text_has_no_english_script()
     test_battery_is_not_reported()
+    test_timeline_and_history()
+    test_bug_md_scenario_gap_detection()
     print("ok")
     return 0
 

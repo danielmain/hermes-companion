@@ -183,18 +183,27 @@ def handle_call_tool(name, arguments):
         limit = min(int(arguments.get("limit", 20)), 100)
         data = {"error": "No location history available."}
         try:
-            import sqlite3
-            db_path = Path(__file__).resolve().parent / "locations.sqlite3"
-            if db_path.is_file():
-                conn = sqlite3.connect(db_path)
-                conn.row_factory = sqlite3.Row
-                cur = conn.cursor()
-                cur.execute("SELECT * FROM locations ORDER BY recorded_at DESC LIMIT ?", (limit,))
-                rows = cur.fetchall()
-                conn.close()
-                data = {"count": len(rows), "locations": [dict(r) for r in rows]}
+            from client import get_location_history_from_icloud
+            icloud_history = get_location_history_from_icloud(limit=limit)
+            if icloud_history:
+                data = {"count": len(icloud_history), "locations": icloud_history}
         except Exception:
             pass
+
+        if "error" in data:
+            try:
+                import sqlite3
+                db_path = Path(__file__).resolve().parent / "locations.sqlite3"
+                if db_path.is_file():
+                    conn = sqlite3.connect(db_path)
+                    conn.row_factory = sqlite3.Row
+                    cur = conn.cursor()
+                    cur.execute("SELECT * FROM locations ORDER BY recorded_at DESC LIMIT ?", (limit,))
+                    rows = cur.fetchall()
+                    conn.close()
+                    data = {"count": len(rows), "locations": [dict(r) for r in rows]}
+            except Exception:
+                pass
 
         if "error" in data:
             return {
@@ -208,9 +217,13 @@ def handle_call_tool(name, arguments):
 
         lines = [f"Recent {len(locations)} location waypoints:"]
         for loc in locations:
+            ts = loc.get("timestamp") or loc.get("recorded_at") or "unknown"
+            acc = float(loc.get("horizontal_accuracy", loc.get("accuracy", 0.0)) or 0.0)
+            src = loc.get("source", "Standard GPS")
+            mot = loc.get("motion_activity", "unknown")
             lines.append(
-                f"- {loc['recorded_at']}: {loc['latitude']:.5f}, {loc['longitude']:.5f} "
-                f"(±{loc['accuracy']:.0f}m, {loc['source']})"
+                f"- {ts}: {float(loc['latitude']):.5f}, {float(loc['longitude']):.5f} "
+                f"(±{acc:.0f}m, {mot}, {src})"
             )
         return {"content": [{"type": "text", "text": "\n".join(lines)}]}
 

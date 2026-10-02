@@ -26,8 +26,9 @@ import argparse
 import json
 import math
 import os
+import sqlite3
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
@@ -247,6 +248,20 @@ def resolve_location(
         at_known = False
 
     accuracy = raw.get("horizontal_accuracy", raw.get("accuracy"))
+    if at_known:
+        if motion_fresh and not motion_moving:
+            still_there = True
+            still_there_txt = "yes"
+        elif gps_age <= 1800:
+            still_there = True
+            still_there_txt = "yes"
+        else:
+            still_there = False
+            still_there_txt = f"unconfirmed (no fresh ping in {human_age(gps_age)})"
+    else:
+        still_there = True
+        still_there_txt = "yes"
+
     return {
         "status": "ok",
         "source_file": source,
@@ -260,7 +275,8 @@ def resolve_location(
         "minutes_since_last_move": minutes,
         "movement_reason": raw.get("movement_reason"),
         "is_stale": long_stay,
-        "still_there": True,
+        "still_there": still_there,
+        "still_there_status": still_there_txt,
         "place_name": place_name,
         "place_category": category,
         "activity": activity,
@@ -330,11 +346,12 @@ def resolve_health(raw: Dict[str, Any], now: datetime, source: str) -> Dict[str,
 def format_location(loc: Dict[str, Any]) -> str:
     motion_age = loc.get("motion_age_seconds")
     motion_age_text = "none" if motion_age is None else str(motion_age)
+    still_there_txt = loc.get("still_there_status") or ("yes" if loc.get("still_there") else "no")
     lines = [
         "facts_only: reply in the user's language; do not quote this block",
         f"place_name: {loc['place_name']}",
         f"place_category: {loc['place_category']}",
-        f"still_there: yes",
+        f"still_there: {still_there_txt}",
         f"minutes_since_last_move: {loc['minutes_since_last_move']}",
         f"movement_reason: {loc.get('movement_reason') or 'absent'}",
         f"motion_activity: {loc['motion_activity']}",
@@ -346,6 +363,14 @@ def format_location(loc: Dict[str, Any]) -> str:
         f"coordinates: {loc['coordinates']}",
         f"source: {loc['source_file']}",
     ]
+    if loc.get("arrived_at"):
+        lines.append(f"arrived_at: {loc['arrived_at']}")
+    if loc.get("dwell_time"):
+        lines.append(f"dwell_time: {loc['dwell_time']}")
+    if loc.get("previous_place"):
+        lines.append(f"previous_place: {loc['previous_place']}")
+    if loc.get("telemetry_gap"):
+        lines.append(f"telemetry_gap: {loc['telemetry_gap']}")
     return "\n".join(lines)
 
 
@@ -382,6 +407,297 @@ def format_health(health: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def read_history(directories: Sequence[Path]) -> tuple[List[Dict[str, Any]], Optional[Path]]:
+    raw, path = first_reading(directories, "location_history.json")
+    if raw is None or path is None:
+        return [], None
+    records = raw.get("records") if isinstance(raw, dict) else raw
+    if not isinstance(records, list):
+        return [], path
+    valid: List[Dict[str, Any]] = []
+    for item in records:
+        if isinstance(item, dict) and "latitude" in item and "longitude" in item:
+            valid.append(item)
+    valid.sort(key=lambda r: str(r.get("timestamp") or r.get("recorded_at") or ""))
+    return valid, path
+
+
+def parse_since(since_str: Optional[str], now: datetime) -> Optional[datetime]:
+    if not since_str:
+        return None
+    val = since_str.strip().lower()
+    if val == "today":
+        return datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
+    if val.endswith("h"):
+        try:
+            return now - timedelta(hours=float(val[:-1]))
+        except ValueError:
+            pass
+    if val.endswith("d"):
+        try:
+            return now - timedelta(days=float(val[:-1]))
+        except ValueError:
+            pass
+    if val.endswith("m"):
+        try:
+            return now - timedelta(minutes=float(val[:-1]))
+        except ValueError:
+            pass
+    return parse_utc(since_str)
+
+
+def build_timeline(
+    records: Sequence[Dict[str, Any]],
+    places: Sequence[Dict[str, Any]],
+    now: datetime,
+    since: Optional[datetime] = None,
+) -> Dict[str, Any]:
+    if since:
+        records = [r for r in records if (parse_utc(r.get("timestamp") or r.get("recorded_at")) or now) >= since]
+
+    if not records:
+        return {"events": [], "count": 0, "status": "no_records"}
+
+    events: List[Dict[str, Any]] = []
+    current_stay: Optional[Dict[str, Any]] = None
+    last_record: Optional[Dict[str, Any]] = None
+
+    for r in records:
+        lat = float(r["latitude"])
+        lon = float(r["longitude"])
+        ts_str = r.get("timestamp") or r.get("recorded_at")
+        ts = parse_utc(ts_str) or now
+        motion = str(r.get("motion_activity") or "unknown")
+        known = match_place(lat, lon, places)
+
+        gap_detected = False
+        gap_minutes = 0
+        if last_record:
+            last_ts = parse_utc(last_record.get("timestamp") or last_record.get("recorded_at")) or now
+            delta_sec = (ts - last_ts).total_seconds()
+            dist = haversine_meters(float(last_record["latitude"]), float(last_record["longitude"]), lat, lon)
+            if delta_sec > 1800 and dist > 100:
+                gap_detected = True
+                gap_minutes = int(delta_sec // 60)
+
+        is_place = known is not None
+        place_name = known["name"] if known else "Unlisted place"
+        place_cat = known["category"] if known else "unlisted"
+
+        if is_place:
+            if current_stay and current_stay["place_name"] == place_name:
+                current_stay["departed_at"] = ts_str
+                current_stay["records_count"] += 1
+                current_stay["last_timestamp"] = ts
+                dwell_sec = max(0, int((ts - current_stay["start_timestamp"]).total_seconds()))
+                current_stay["dwell_minutes"] = dwell_sec // 60
+                current_stay["dwell_human"] = human_age(dwell_sec)
+                if gap_detected:
+                    current_stay["telemetry_gap_before"] = f"silent for {gap_minutes}m before this point"
+            else:
+                if current_stay:
+                    events.append(current_stay)
+                if last_record:
+                    last_known = match_place(float(last_record["latitude"]), float(last_record["longitude"]), places)
+                    from_name = last_known["name"] if last_known else "Transit"
+                    dist = haversine_meters(float(last_record["latitude"]), float(last_record["longitude"]), lat, lon)
+                    if from_name != place_name and dist > 50:
+                        transit_event = {
+                            "type": "transit",
+                            "from_place": from_name,
+                            "to_place": place_name,
+                            "started_at": last_record.get("timestamp") or last_record.get("recorded_at"),
+                            "ended_at": ts_str,
+                            "distance_meters": round(dist, 1),
+                            "duration_minutes": max(1, int((ts - (parse_utc(last_record.get("timestamp") or last_record.get("recorded_at")) or ts)).total_seconds() // 60)),
+                            "activity": motion if motion in MOVING_ACTIVITIES else "moving",
+                            "telemetry_gap": f"silent for {gap_minutes}m during transit" if gap_detected else None,
+                        }
+                        events.append(transit_event)
+
+                current_stay = {
+                    "type": "stay",
+                    "place_name": place_name,
+                    "place_category": place_cat,
+                    "arrived_at": ts_str,
+                    "departed_at": ts_str,
+                    "start_timestamp": ts,
+                    "last_timestamp": ts,
+                    "dwell_minutes": 0,
+                    "dwell_human": "just arrived",
+                    "records_count": 1,
+                    "is_current": False,
+                    "telemetry_gap_before": f"silent for {gap_minutes}m before arrival" if gap_detected else None,
+                }
+        else:
+            if current_stay and current_stay.get("type") == "stay":
+                events.append(current_stay)
+                current_stay = None
+
+            dist = haversine_meters(float(last_record["latitude"]), float(last_record["longitude"]), lat, lon) if last_record else 0
+            if not current_stay:
+                current_stay = {
+                    "type": "transit",
+                    "place_name": "In Transit",
+                    "place_category": "transit",
+                    "from_place": last_record.get("place_name", "Previous place") if last_record else "Unknown",
+                    "to_place": "Moving",
+                    "started_at": ts_str,
+                    "ended_at": ts_str,
+                    "start_timestamp": ts,
+                    "last_timestamp": ts,
+                    "distance_meters": round(dist, 1),
+                    "duration_minutes": 0,
+                    "activity": motion if motion in MOVING_ACTIVITIES else "moving",
+                    "is_current": False,
+                    "telemetry_gap": f"silent for {gap_minutes}m" if gap_detected else None,
+                }
+            else:
+                current_stay["ended_at"] = ts_str
+                current_stay["last_timestamp"] = ts
+                current_stay["distance_meters"] = round(current_stay.get("distance_meters", 0) + dist, 1)
+                current_stay["duration_minutes"] = max(1, int((ts - current_stay["start_timestamp"]).total_seconds() // 60))
+
+        last_record = {**r, "place_name": place_name}
+
+    if current_stay:
+        current_stay["is_current"] = True
+        if current_stay["type"] == "stay":
+            dwell_now = max(0, int((now - current_stay["start_timestamp"]).total_seconds()))
+            current_stay["dwell_minutes"] = dwell_now // 60
+            current_stay["dwell_human"] = human_age(dwell_now)
+            current_stay["departed_at"] = None
+        events.append(current_stay)
+
+    clean_events = []
+    for ev in events:
+        ev_copy = dict(ev)
+        ev_copy.pop("start_timestamp", None)
+        ev_copy.pop("last_timestamp", None)
+        clean_events.append(ev_copy)
+
+    latest = records[-1]
+    latest_lat = float(latest["latitude"])
+    latest_lon = float(latest["longitude"])
+    latest_known = match_place(latest_lat, latest_lon, places)
+    latest_ts = parse_utc(latest.get("timestamp") or latest.get("recorded_at")) or now
+    age_now = int((now - latest_ts).total_seconds())
+
+    return {
+        "status": "ok",
+        "total_records": len(records),
+        "events_count": len(clean_events),
+        "current_place": latest_known["name"] if latest_known else "Unlisted place",
+        "current_category": latest_known["category"] if latest_known else "unlisted",
+        "current_motion": str(latest.get("motion_activity") or "unknown"),
+        "latest_recorded_at": latest.get("timestamp") or latest.get("recorded_at"),
+        "latest_age_seconds": age_now,
+        "latest_age_human": human_age(age_now),
+        "events": clean_events,
+    }
+
+
+def query_history_sqlite(
+    records: Sequence[Dict[str, Any]],
+    places: Sequence[Dict[str, Any]],
+    sql_query: str,
+) -> List[Dict[str, Any]]:
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    cur.execute(
+        """
+        CREATE TABLE locations (
+            id TEXT,
+            timestamp TEXT,
+            latitude REAL,
+            longitude REAL,
+            altitude REAL,
+            horizontal_accuracy REAL,
+            speed_mps REAL,
+            course REAL,
+            source TEXT,
+            app_state TEXT,
+            motion_activity TEXT,
+            motion_confidence TEXT,
+            motion_timestamp TEXT,
+            movement_reason TEXT,
+            device_name TEXT,
+            place_name TEXT,
+            place_category TEXT
+        )
+        """
+    )
+    for r in records:
+        lat = float(r.get("latitude") or 0.0)
+        lon = float(r.get("longitude") or 0.0)
+        known = match_place(lat, lon, places)
+        p_name = known["name"] if known else None
+        p_cat = known["category"] if known else None
+        cur.execute(
+            """
+            INSERT INTO locations VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                str(r.get("id", "")),
+                str(r.get("timestamp") or r.get("recorded_at") or ""),
+                lat,
+                lon,
+                float(r.get("altitude") or 0.0),
+                float(r.get("horizontal_accuracy") or r.get("accuracy") or 0.0),
+                float(r.get("speed_mps") or r.get("speed") or -1.0),
+                float(r.get("course") or -1.0),
+                str(r.get("source") or ""),
+                str(r.get("app_state") or ""),
+                str(r.get("motion_activity") or "unknown"),
+                str(r.get("motion_confidence") or ""),
+                str(r.get("motion_timestamp") or ""),
+                str(r.get("movement_reason") or ""),
+                str(r.get("device_name") or ""),
+                p_name,
+                p_cat,
+            ),
+        )
+    conn.commit()
+    cur.execute(sql_query)
+    rows = cur.fetchall()
+    results = [dict(row) for row in rows]
+    conn.close()
+    return results
+
+
+def format_timeline(timeline: Dict[str, Any]) -> str:
+    lines = [
+        "facts_only: reply in the user's language; do not quote this block",
+        f"current_place: {timeline.get('current_place', 'unknown')}",
+        f"current_motion: {timeline.get('current_motion', 'unknown')}",
+        f"latest_fix_age: {timeline.get('latest_age_human', 'unknown')}",
+        f"events_count: {timeline.get('events_count', 0)}",
+        "timeline_events:",
+    ]
+    events = timeline.get("events", [])
+    if not events:
+        lines.append("  (no events in this time window)")
+    for ev in events:
+        ev_type = ev.get("type", "event")
+        if ev_type == "stay":
+            curr_tag = " [current]" if ev.get("is_current") else ""
+            dep = f" -> departed {ev.get('departed_at')}" if ev.get("departed_at") else " -> now"
+            gap = f" [{ev['telemetry_gap_before']}]" if ev.get("telemetry_gap_before") else ""
+            lines.append(
+                f"  • stay: {ev['place_name']} ({ev.get('place_category', 'general')}) | arrived {ev.get('arrived_at')}{dep} | dwell: {ev.get('dwell_human')}{curr_tag}{gap}"
+            )
+        elif ev_type == "transit":
+            gap = f" [{ev['telemetry_gap']}]" if ev.get("telemetry_gap") else ""
+            dist = f"~{int(ev.get('distance_meters', 0))}m" if ev.get("distance_meters") else "transit"
+            lines.append(
+                f"  • transit: {ev.get('activity', 'moving')} {dist} from {ev.get('from_place')} to {ev.get('to_place')} | {ev.get('started_at')} -> {ev.get('ended_at')} ({ev.get('duration_minutes')}m){gap}"
+            )
+        else:
+            lines.append(f"  • {ev_type}: {ev}")
+    return "\n".join(lines)
+
+
 def emit(payload: Dict[str, Any], as_json: bool, text: str) -> int:
     if as_json:
         print(json.dumps(payload, indent=2, ensure_ascii=False))
@@ -391,13 +707,64 @@ def emit(payload: Dict[str, Any], as_json: bool, text: str) -> int:
 
 
 def command_where(args: argparse.Namespace, now: datetime) -> int:
-    raw, path = first_reading(icloud_directories(args.icloud_dir), "latest_location.json")
+    directories = icloud_directories(args.icloud_dir)
+    raw, path = first_reading(directories, "latest_location.json")
     if raw is None or path is None or "latitude" not in raw or "longitude" not in raw:
         print("No accepted location file from the iPhone yet.")
         return 0
     places = load_places(args.places)
     loc = resolve_location(raw, places, now, str(path))
+
+    # Enrich with history context if location_history.json is available
+    history_records, _ = read_history(directories)
+    if history_records:
+        timeline = build_timeline(history_records, places, now)
+        events = timeline.get("events", [])
+        if events:
+            current_ev = events[-1] if events[-1].get("is_current") else None
+            if current_ev and current_ev.get("type") == "stay":
+                if current_ev.get("arrived_at"):
+                    loc["arrived_at"] = current_ev["arrived_at"]
+                if current_ev.get("dwell_human"):
+                    loc["dwell_time"] = current_ev["dwell_human"]
+                if current_ev.get("telemetry_gap_before"):
+                    loc["telemetry_gap"] = current_ev["telemetry_gap_before"]
+            stays = [ev for ev in events if ev.get("type") == "stay"]
+            if len(stays) >= 2 and stays[-1].get("is_current"):
+                prev = stays[-2]
+                loc["previous_place"] = f"{prev.get('place_name')} (departed {prev.get('departed_at')})"
+
     return emit(loc, args.json, format_location(loc))
+
+
+def command_timeline(args: argparse.Namespace, now: datetime) -> int:
+    directories = icloud_directories(args.icloud_dir)
+    history_records, path = read_history(directories)
+    if not history_records or path is None:
+        print("No location history file from the iPhone yet.")
+        return 0
+    places = load_places(args.places)
+    since_dt = parse_since(args.since, now)
+
+    if args.sql:
+        results = query_history_sqlite(history_records, places, args.sql)
+        payload = {"count": len(results), "query": args.sql, "results": results}
+        if args.json:
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
+            return 0
+        if not results:
+            print("No rows returned by query.")
+            return 0
+        headers = list(results[0].keys())
+        print(f"SQL Results ({len(results)} rows):")
+        print(" | ".join(headers))
+        for row in results:
+            print(" | ".join(str(row.get(h, "")) for h in headers))
+        return 0
+
+    timeline = build_timeline(history_records, places, now, since=since_dt)
+    timeline["source_file"] = str(path)
+    return emit(timeline, args.json, format_timeline(timeline))
 
 
 def command_health(args: argparse.Namespace, now: datetime) -> int:
@@ -505,6 +872,10 @@ def command_remove(args: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Read Hermes Companion location and health from iCloud")
     parser.add_argument("--json", action="store_true", help="Print the raw facts as JSON")
+    parser.add_argument("--timeline", action="store_true", help="Print chronological timeline of visits, stays, and movements")
+    parser.add_argument("--history", action="store_true", help="Alias for --timeline")
+    parser.add_argument("--since", help="Filter history events: 'today', '24h', '7d', '60m', or ISO-8601 UTC")
+    parser.add_argument("--sql", help="Run an in-memory SQL query against history records")
     parser.add_argument("--health", action="store_true", help="Print the Apple Health snapshot")
     parser.add_argument("--context", action="store_true", help="Print place and health together")
     parser.add_argument("--list", action="store_true", help="List known places")
@@ -535,6 +906,8 @@ def main(argv: Optional[Sequence[str]] = None, now: Optional[datetime] = None) -
         return command_remove(args)
     if args.list:
         return command_list(args)
+    if args.timeline or args.history or args.sql:
+        return command_timeline(args, moment)
     if args.context:
         return command_context(args, moment)
     if args.health:

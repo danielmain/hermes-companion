@@ -427,6 +427,31 @@ public struct LocationRecord: Identifiable, Codable, Equatable {
         return toCKRecord(recordType: "LatestLocation", customRecordID: recordID, deviceName: deviceName)
     }
 
+    /// Dictionary payload representation for latest_location.json and location_history.json
+    public func toDictionary(deviceName: String = "iPhone") -> [String: Any] {
+        var dict: [String: Any] = [
+            "id": id.uuidString,
+            "timestamp": ISO8601DateFormatter().string(from: timestamp),
+            "latitude": latitude,
+            "longitude": longitude,
+            "altitude": altitude,
+            "horizontal_accuracy": horizontalAccuracy,
+            "vertical_accuracy": verticalAccuracy,
+            "speed_mps": speed,
+            "course": course,
+            "source": source.rawValue,
+            "app_state": appState,
+            "motion_activity": motionActivity?.rawValue ?? MotionActivity.unknown.rawValue,
+            "motion_confidence": motionConfidence ?? "unknown",
+            "motion_timestamp": motionTimestamp.map { ISO8601DateFormatter().string(from: $0) } ?? "",
+            "device_name": deviceName
+        ]
+        if let movementReason = movementReason?.rawValue {
+            dict["movement_reason"] = movementReason
+        }
+        return dict
+    }
+
     public static func fromCKRecord(_ record: CKRecord) -> LocationRecord? {
         guard let latNum = record["latitude"] as? NSNumber,
               let lonNum = record["longitude"] as? NSNumber else {

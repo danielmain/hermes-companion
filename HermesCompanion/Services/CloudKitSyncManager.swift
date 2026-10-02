@@ -164,6 +164,7 @@ public final class CloudKitSyncManager: ObservableObject {
         if let newest = unsynced.max(by: { $0.timestamp < $1.timestamp }) {
             self.mirrorLatestLocationToFile(record: newest, config: config)
         }
+        self.mirrorLocationHistoryToFile(records: records, config: config)
 
         // Take up to 50 records per batch
         let batch = Array(unsynced.prefix(50))
@@ -305,26 +306,7 @@ public final class CloudKitSyncManager: ObservableObject {
                 return
             }
 
-            var payload: [String: Any] = [
-                "id": record.id.uuidString,
-                "timestamp": ISO8601DateFormatter().string(from: record.timestamp),
-                "latitude": record.latitude,
-                "longitude": record.longitude,
-                "altitude": record.altitude,
-                "horizontal_accuracy": record.horizontalAccuracy,
-                "vertical_accuracy": record.verticalAccuracy,
-                "speed_mps": record.speed,
-                "course": record.course,
-                "source": record.source.rawValue,
-                "app_state": record.appState,
-                "motion_activity": record.motionActivity?.rawValue ?? MotionActivity.unknown.rawValue,
-                "motion_confidence": record.motionConfidence ?? "unknown",
-                "motion_timestamp": record.motionTimestamp.map { ISO8601DateFormatter().string(from: $0) } ?? "",
-                "device_name": config.deviceName
-            ]
-            if let movementReason = record.movementReason?.rawValue {
-                payload["movement_reason"] = movementReason
-            }
+            let payload = record.toDictionary(deviceName: config.deviceName)
 
             guard let data = try? JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted]) else { return }
 
@@ -384,6 +366,41 @@ public final class CloudKitSyncManager: ObservableObject {
             self.lastMirroredCoordinate = record.coordinate
             if !wroteAnyFile {
                 self.logger.info("No GPS files written; coordinates unchanged")
+            }
+        }
+    }
+
+    /// Mirrors rolling location history to location_history.json in the iCloud Documents container.
+    public func mirrorLocationHistoryToFile(records: [LocationRecord], config: TrackingConfiguration) {
+        mirrorQueue.async {
+            guard !records.isEmpty else { return }
+            let recent = records.prefix(1000)
+            let recordsPayload = recent.map { $0.toDictionary(deviceName: config.deviceName) }
+            let payload: [String: Any] = [
+                "updated_at": ISO8601DateFormatter().string(from: Date()),
+                "device_name": config.deviceName,
+                "count": recordsPayload.count,
+                "records": recordsPayload
+            ]
+
+            guard let data = try? JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted]) else { return }
+
+            let tmpURL = URL(fileURLWithPath: "/tmp/hermes_location_history.json")
+            try? data.write(to: tmpURL, options: .atomic)
+
+            let containerId = config.cloudKitContainerIdentifier.trimmingCharacters(in: .whitespaces).isEmpty ? nil : config.cloudKitContainerIdentifier
+            let containerURL = FileManager.default.url(forUbiquityContainerIdentifier: containerId) ?? FileManager.default.url(forUbiquityContainerIdentifier: nil)
+
+            if let containerURL = containerURL {
+                let documentsURL = containerURL.appendingPathComponent("Documents", isDirectory: true)
+                let fileURL = documentsURL.appendingPathComponent("location_history.json")
+                let rootFileURL = containerURL.appendingPathComponent("location_history.json")
+
+                try? FileManager.default.createDirectory(at: documentsURL, withIntermediateDirectories: true, attributes: nil)
+                try? data.write(to: fileURL, options: .atomic)
+                try? data.write(to: rootFileURL, options: .atomic)
+
+                self.logger.info("Mirrored \(recordsPayload.count) history records to location_history.json")
             }
         }
     }

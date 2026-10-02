@@ -24,6 +24,40 @@ Written only after `GPSPersistDecision` accepts a move. Refused indoor drift doe
 | `battery_level`, `battery_state` | Omitted from new writes. Older files may still have them. Ignore them. The skill does not report phone battery |
 | `app_state` | `active`, `background`, or the wake state |
 
+## location_history.json
+
+A rolling history log of accepted move events over the past 7 days (up to 1,000 records). Written atomically to the iCloud Documents container whenever new location records are persisted.
+
+Structure:
+
+```json
+{
+  "updated_at": "2026-10-02T18:29:06Z",
+  "device_name": "iPhone",
+  "count": 42,
+  "records": [
+    {
+      "id": "uuid",
+      "timestamp": "2026-10-02T18:29:06Z",
+      "latitude": 48.812884,
+      "longitude": 9.221555,
+      "altitude": 230.1,
+      "horizontal_accuracy": 3.8,
+      "speed_mps": 0.88,
+      "course": 328.0,
+      "source": "Standard GPS",
+      "app_state": "background",
+      "motion_activity": "walking",
+      "motion_confidence": "high",
+      "motion_timestamp": "2026-10-02T18:29:00Z",
+      "movement_reason": "moved"
+    }
+  ]
+}
+```
+
+The Hermes skill (`companion.py --timeline`) processes this history locally on the Mac to compute exact stay durations, departure times, transit trips, and telemetry gaps without sending raw coordinates to the model.
+
 ## latest_health.json
 
 One deduplicated Apple Health snapshot. Sleep duration is the union of Deep, REM, and Core for the last clustered night, so overlapping Watch and iPhone samples are not added twice.
