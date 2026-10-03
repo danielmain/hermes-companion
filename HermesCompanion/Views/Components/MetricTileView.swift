@@ -62,7 +62,7 @@ struct MetricTileView: View {
         MetricTileView(title: "TRANSMITTED", value: "50", subtitle: "950 queued", icon: "arrow.up.doc")
         MetricTileView(title: "CLOSED WAKES", value: "0", subtitle: "Terminated-state events", icon: "bolt")
         MetricTileView(title: "GPS ACCURACY", value: "±2.6m", subtitle: "Horizontal radius", icon: "scope")
-        MetricTileView(title: "BATTERY", value: "80%", subtitle: "Charging", icon: "battery.75")
+        MetricTileView(title: "TRACKING", value: "Active", subtitle: "CoreLocation Engine", icon: "location")
     }
     .padding(EditorialSpacing.page)
     .background(EditorialColor.paper)

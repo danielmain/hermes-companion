@@ -54,7 +54,7 @@
 		877A2ABB264BA461E7E6175D /* EditorialDesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorialDesignSystem.swift; sourceTree = "<group>"; };
 		8C31DC2507E266A61FD54AAF /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		9AABB5A5B4D8FAAAB0657EB5 /* PermissionBannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionBannerView.swift; sourceTree = "<group>"; };
-		A64856389980D1D73A2DC3C3 /* HermesCompanion.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = HermesCompanion.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A64856389980D1D73A2DC3C3 /* HermesCompanion.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HermesCompanion.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A76C9B08427B07439AE47D1E /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
 		ACD3FF5E5C9AE57B0F7C65B5 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		C1CCEDA5B4EA8AC59750808B /* BackgroundTaskManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundTaskManager.swift; sourceTree = "<group>"; };
@@ -286,6 +286,7 @@
 				CODE_SIGN_ENTITLEMENTS = HermesCompanion/Resources/HermesCompanion.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 7H7P2FNJK6;
 				INFOPLIST_FILE = HermesCompanion/Resources/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -309,6 +310,7 @@
 				CODE_SIGN_ENTITLEMENTS = HermesCompanion/Resources/HermesCompanion.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 7H7P2FNJK6;
 				INFOPLIST_FILE = HermesCompanion/Resources/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (

@@ -52,9 +52,9 @@ Health (sleep, workouts, steps) is written when Apple Health delivers a new samp
 
 Skill instructions are English because the model reads them. The agent answers in the language of the conversation: Spanish, German, or any other. A saved place name stays as written (`Casa`, `Home`, `Arbeit`). Codes such as `home`, `walking`, `In Transit`, and `fatigued` are translated in the reply. The script prints facts. It does not hand the agent an English sentence to quote.
 
-## What the agent does not receive
+## What the agent and app do not track
 
-Phone battery stays on the iPhone history screen. New copies of `latest_location.json` omit it, and the skill does not report it. An older file may still contain `battery_level`; the reader ignores that key.
+Phone battery percentage and speed are neither displayed in the app nor reported to the agent. `latest_location.json` and `location_history.json` omit battery and speed, and the UI contains no battery or speed readouts. Older files that may still contain `battery_level` or `speed_mps` are ignored.
 
 This repository has no personal name and no agent persona. Voice and schedule stay in the agent's own profile.
 
@@ -114,6 +114,8 @@ The app keeps working after you leave it, and after iOS relaunches it, through t
 - A stationary geofence (default 100 m) that fires when you leave.
 - Visit monitoring for arrivals and departures.
 - Standard GPS while the app is allowed to update in the background.
+
+The in-app Archive tab indexes every recorded fix and system event. Tapping any record displays its precise coordinates, instrument telemetry, and an interactive Apple Maps preview frame; tapping the frame launches Apple Maps directly at that coordinate.
 
 Confirm the Mac can see a fix:
 

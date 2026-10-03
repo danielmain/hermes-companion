@@ -1,4 +1,5 @@
 import SwiftUI
+import MapKit
 
 struct HistoryLogView: View {
     @EnvironmentObject private var locationStore: LocationStore
@@ -334,16 +335,127 @@ private struct DetailCoordinateSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: EditorialSpacing.medium) {
-            EditorialSectionHeader(index: "#01", title: "POSITION")
-            Text("\(record.latitude, format: .number.precision(.fractionLength(6)))")
-                .font(.editorialNumber)
-            Text("\(record.longitude, format: .number.precision(.fractionLength(6)))")
-                .font(.editorialNumber)
-            Text("LATITUDE / LONGITUDE")
+            EditorialSectionHeader(index: "#01", title: "POSITION", trailing: "APPLE MAPS")
+
+            AppleMapsPreviewFrame(record: record) {
+                openInAppleMaps()
+            }
+
+            VStack(alignment: .leading, spacing: EditorialSpacing.xSmall) {
+                Text("\(record.latitude, format: .number.precision(.fractionLength(6)))")
+                    .font(.editorialNumber)
+                Text("\(record.longitude, format: .number.precision(.fractionLength(6)))")
+                    .font(.editorialNumber)
+                Text("LATITUDE / LONGITUDE")
+                    .font(.editorialUtilitySmall)
+                    .foregroundStyle(EditorialColor.secondaryInk)
+            }
+
+            Button {
+                openInAppleMaps()
+            } label: {
+                HStack(spacing: EditorialSpacing.small) {
+                    Image(systemName: "map")
+                    Text("OPEN IN APPLE MAPS")
+                    Spacer()
+                    Image(systemName: "arrow.up.right")
+                }
                 .font(.editorialUtilitySmall)
-                .foregroundStyle(EditorialColor.secondaryInk)
+                .padding(EditorialSpacing.small)
+                .background(EditorialColor.paper)
+                .foregroundStyle(EditorialColor.ink)
+                .overlay {
+                    Rectangle().stroke(EditorialColor.ink, lineWidth: EditorialBorder.hairline)
+                }
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Open coordinates in Apple Maps")
         }
         .editorialPanel(emphasized: true, cutCorner: true)
+    }
+
+    private func openInAppleMaps() {
+        let coordinate = record.coordinate
+        let placemark = MKPlacemark(coordinate: coordinate)
+        let mapItem = MKMapItem(placemark: placemark)
+        mapItem.name = "\(record.source.rawValue) Signal"
+
+        LocationStore.shared.logDiagnostic(
+            title: "Apple Maps Opened",
+            details: "Signal at \(record.latitude), \(record.longitude) opened in Maps.",
+            severity: .info
+        )
+
+        let opened = mapItem.openInMaps(launchOptions: [
+            MKLaunchOptionsMapCenterKey: NSValue(mkCoordinate: coordinate),
+            MKLaunchOptionsMapSpanKey: NSValue(mkCoordinateSpan: MKCoordinateSpan(latitudeDelta: 0.008, longitudeDelta: 0.008))
+        ])
+
+        if !opened {
+            if let url = URL(string: "https://maps.apple.com/?ll=\(record.latitude),\(record.longitude)&q=\(record.latitude),\(record.longitude)") {
+                UIApplication.shared.open(url)
+            }
+        }
+    }
+}
+
+private struct AppleMapsPreviewFrame: View {
+    let record: LocationRecord
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            ZStack(alignment: .bottomTrailing) {
+                if CLLocationCoordinate2DIsValid(record.coordinate) && (record.latitude != 0 || record.longitude != 0) {
+                    Map(initialPosition: .region(MKCoordinateRegion(
+                        center: record.coordinate,
+                        span: MKCoordinateSpan(latitudeDelta: 0.006, longitudeDelta: 0.006)
+                    ))) {
+                        Marker(
+                            record.source.rawValue,
+                            coordinate: record.coordinate
+                        )
+                        .tint(EditorialColor.ink)
+                    }
+                    .mapStyle(.standard(elevation: .realistic))
+                    .frame(height: 160)
+                    .clipShape(CutCornerShape(cut: 10))
+                    .overlay {
+                        CutCornerShape(cut: 10)
+                            .stroke(EditorialColor.hairline, lineWidth: EditorialBorder.hairline)
+                    }
+                    .allowsHitTesting(false)
+                } else {
+                    Rectangle()
+                        .fill(EditorialColor.surface)
+                        .frame(height: 160)
+                        .clipShape(CutCornerShape(cut: 10))
+                        .overlay {
+                            Text("COORDINATES UNAVAILABLE")
+                                .font(.editorialUtilitySmall)
+                                .foregroundStyle(EditorialColor.secondaryInk)
+                        }
+                }
+
+                HStack(spacing: EditorialSpacing.xSmall) {
+                    Image(systemName: "arrow.up.right.square")
+                        .imageScale(.small)
+                    Text("OPEN IN MAPS")
+                        .font(.editorialUtilitySmall)
+                }
+                .padding(.horizontal, EditorialSpacing.small)
+                .padding(.vertical, EditorialSpacing.xSmall)
+                .background(EditorialColor.paper.opacity(0.92))
+                .foregroundStyle(EditorialColor.ink)
+                .overlay {
+                    Rectangle().stroke(EditorialColor.ink, lineWidth: EditorialBorder.hairline)
+                }
+                .padding(EditorialSpacing.small)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Open signal location in Apple Maps")
+        .accessibilityHint("Opens Apple Maps centered at this recorded coordinate")
     }
 }
 
@@ -358,7 +470,6 @@ private struct DetailMetadataSection: View {
             DetailRow(label: "CAPTURED", value: record.timestamp.formatted(.dateTime.year().month().day().hour().minute().second()))
             DetailRow(label: "ACCURACY", value: record.formattedAccuracy)
             DetailRow(label: "ALTITUDE", value: record.altitude.formatted(.number.precision(.fractionLength(1))) + " m")
-            DetailRow(label: "SPEED", value: record.formattedSpeed)
             DetailRow(label: "APP STATE", value: record.appState)
             DetailRow(label: "ARCHIVE", value: record.synced ? "Filed in iCloud" : "Queued locally")
         }

@@ -8,9 +8,9 @@ Personal voice, names, and schedules belong in the agent's own profile. This fil
 
 The skill and this note are English so the model can read them. Reply in the user's language. Keep a place name exactly as it was saved. Translate codes such as `home`, `walking`, `In Transit`, `Unlisted place`, and `fatigued`. Do not quote `suggested_greeting`, `context_summary`, `suggested_openers`, or the English insight fields an older health file may still contain. The script's first line, `facts_only:`, means the block is data.
 
-## Battery
+## Battery and Speed
 
-Phone battery is not part of the agent reading. New `latest_location.json` files omit `battery_level` and `battery_state`. If an older file still has those keys, ignore them. The iPhone history screen can still show the level stored with each on-device fix.
+Neither battery percentage nor speed are tracked or reported to the agent or displayed in the app. New `latest_location.json` and `location_history.json` files omit `battery_level`, `battery_state`, and `speed_mps`. If an older file still has those keys, ignore them.
 
 ## How to read
 

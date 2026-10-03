@@ -216,8 +216,6 @@ public final class LocationStore: ObservableObject {
                     "timestamp": isoFormatter.string(from: p.timestamp),
                     "source": p.source.rawValue,
                     "accuracy": p.horizontalAccuracy,
-                    "speed": p.speedKmH,
-                    "battery": p.batteryLevel,
                     "appState": p.appState
                 ]
             ]
@@ -238,10 +236,10 @@ public final class LocationStore: ObservableObject {
     }
 
     public func exportCSV() -> URL? {
-        var csv = "timestamp,latitude,longitude,altitude,accuracy,speed_kmh,source,battery_percent,app_state\n"
+        var csv = "timestamp,latitude,longitude,altitude,accuracy,source,app_state\n"
         let isoFormatter = ISO8601DateFormatter()
         for p in records {
-            let line = "\(isoFormatter.string(from: p.timestamp)),\(p.latitude),\(p.longitude),\(p.altitude),\(p.horizontalAccuracy),\(p.speedKmH),\(p.source.rawValue),\(Int(p.batteryLevel * 100)),\(p.appState)\n"
+            let line = "\(isoFormatter.string(from: p.timestamp)),\(p.latitude),\(p.longitude),\(p.altitude),\(p.horizontalAccuracy),\(p.source.rawValue),\(p.appState)\n"
             csv += line
         }
         let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("hermes_locations_\(Date().timeIntervalSince1970).csv")

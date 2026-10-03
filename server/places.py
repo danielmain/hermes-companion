@@ -11,14 +11,78 @@ import json
 import math
 import os
 import sqlite3
-import urllib.request
 import urllib.error
+import urllib.request
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import (
+    Final,
+    List,
+    Mapping,
+    Optional,
+    Sequence,
+    Tuple,
+    TypedDict,
+    Union,
+)
 
-DB_PATH = Path(__file__).resolve().parent / "locations.sqlite3"
+DB_PATH: Final[Path] = Path(__file__).resolve().parent / "locations.sqlite3"
+
+
+# ==============================================================================
+# Typed Structures (no Any)
+# ==============================================================================
+
+class PlaceDict(TypedDict, total=False):
+    id: str
+    name: str
+    category: str
+    activity: str
+    latitude: float
+    longitude: float
+    radius_meters: float
+    notes: str
+
+
+class MatchedPlaceDict(TypedDict, total=False):
+    matched: bool
+    place_id: str
+    place_name: str
+    place_category: str
+    activity: str
+    distance_meters: float
+    radius_meters: float
+
+
+class ReverseGeocodeResult(TypedDict, total=False):
+    display_name: str
+    category: str
+    address: Mapping[str, object]
+    source: str
+    error: str
+
+
+class PlaceContextDict(TypedDict, total=False):
+    is_stale: bool
+    fix_age_minutes: int
+    minutes_since_last_move: int
+    motion_activity: str
+    motion_age_seconds: int
+    motion_fresh: bool
+    is_moving_now: bool
+    place_name: str
+    place_category: str
+    activity: str
+    context_summary: str
+    suggested_greeting: str
+    is_at_known_place: bool
+    known_place_id: Optional[str]
+    distance_to_center_meters: Optional[float]
+    was_moving_at_fix: bool
+    duration_stationary: Optional[int]
+    full_address: str
+    address_parts: Mapping[str, object]
 
 
 def default_places_path() -> Path:
@@ -33,10 +97,8 @@ def default_places_path() -> Path:
         return Path(env).expanduser()
     hermes_home = os.environ.get("HERMES_HOME", "").strip()
     if hermes_home:
-        home = Path(hermes_home).expanduser()
-        candidate = home / "state" / "places.json"
-        if candidate.is_file() or (home / "state").is_dir():
-            return candidate
+        # Strictly stay within HERMES_HOME without falling through if state/ is fresh
+        return Path(hermes_home).expanduser() / "state" / "places.json"
     profiles = Path.home() / ".hermes" / "profiles"
     found = sorted(profiles.glob("*/state/places.json")) if profiles.is_dir() else []
     if len(found) == 1:
@@ -47,25 +109,22 @@ def default_places_path() -> Path:
     return Path(__file__).resolve().parent / "places.json"
 
 
-PLACES_JSON_PATH = default_places_path()
+PLACES_JSON_PATH: Final[Path] = default_places_path()
 
 # GPS is write-on-accepted-move: latest_location.json is rewritten only when
 # GPSPersistDecision accepts a displacement (default 30 m, or 150 m while stationary).
 # The timestamp is therefore minutes-since-last-move, not "data went stale".
-# Sitting still for hours is expected and means the user is still at that place (a geofence
-# would have fired on a real departure). This threshold only labels a long stay.
-STALE_FIX_SECONDS = 600
+STALE_FIX_SECONDS: Final[int] = 600
 
 # CoreMotion activity (stationary/walking/running/driving) is refreshed independently of the
 # GPS fix, so a reading younger than this tells what the user is doing now.
-MOTION_FRESH_SECONDS = 300
+MOTION_FRESH_SECONDS: Final[int] = 300
 
 
 def haversine_distance_meters(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Calculate great-circle distance between two GPS points in meters."""
-    R = 6371000.0  # Earth radius in meters
-    phi1 = math.radians(lat1)
-    phi2 = math.radians(lat2)
+    radius = 6_371_000.0  # Earth radius in meters
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
     delta_phi = math.radians(lat2 - lat1)
     delta_lambda = math.radians(lon2 - lon1)
 
@@ -74,7 +133,7 @@ def haversine_distance_meters(lat1: float, lon1: float, lat2: float, lon2: float
         + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda / 2.0) ** 2
     )
     c = 2.0 * math.atan2(math.sqrt(a), math.sqrt(1.0 - a))
-    return R * c
+    return radius * c
 
 
 @dataclass(frozen=True)
@@ -88,12 +147,21 @@ class KnownPlace:
     radius_meters: float = 150.0
     notes: str = ""
 
-    def to_dict(self) -> Dict[str, Any]:
-        return asdict(self)
+    def to_dict(self) -> PlaceDict:
+        return {
+            "id": self.id,
+            "name": self.name,
+            "category": self.category,
+            "activity": self.activity,
+            "latitude": self.latitude,
+            "longitude": self.longitude,
+            "radius_meters": self.radius_meters,
+            "notes": self.notes,
+        }
 
 
 # Default initial places
-DEFAULT_PLACES: List[KnownPlace] = [
+DEFAULT_PLACES: Final[Tuple[KnownPlace, ...]] = (
     KnownPlace(
         id="sample_gym",
         name="The Gym",
@@ -114,7 +182,7 @@ DEFAULT_PLACES: List[KnownPlace] = [
         radius_meters=120.0,
         notes="Primary residence",
     ),
-]
+)
 
 
 class PlacesManager:
@@ -167,7 +235,6 @@ class PlacesManager:
 
     def _ensure_default_places(self) -> None:
         """Seed default places if table is empty."""
-        # If places.json exists, always sync from it
         if self.places_file.is_file():
             try:
                 data = json.loads(self.places_file.read_text(encoding="utf-8"))
@@ -190,8 +257,6 @@ class PlacesManager:
             cur = conn.execute("SELECT COUNT(*) as cnt FROM known_places")
             cnt = cur.fetchone()["cnt"]
             if cnt == 0:
-
-                # Otherwise insert default places
                 now_str = datetime.now(timezone.utc).isoformat()
                 for p in DEFAULT_PLACES:
                     conn.execute(
@@ -219,8 +284,9 @@ class PlacesManager:
         """Mirror known places to places.json for easy user inspection."""
         places = self.list_places()
         try:
+            self.places_file.parent.mkdir(parents=True, exist_ok=True)
             self.places_file.write_text(
-                json.dumps([p.to_dict() for p in places], indent=2, ensure_ascii=False),
+                json.dumps([p.to_dict() for p in places], indent=2, ensure_ascii=False) + "\n",
                 encoding="utf-8",
             )
         except Exception:
@@ -289,31 +355,31 @@ class PlacesManager:
                 for r in rows
             ]
 
-    def match_known_place(self, latitude: float, longitude: float) -> Optional[Dict[str, Any]]:
-        """Check if coordinates fall inside any known place radius."""
+    def match_known_place(self, latitude: float, longitude: float) -> Optional[MatchedPlaceDict]:
+        """Check if coordinates fall inside any known place radius using functional selection."""
         places = self.list_places()
-        closest_match: Optional[KnownPlace] = None
-        min_dist = float("inf")
+        matches = [
+            (dist, place)
+            for place in places
+            for dist in [haversine_distance_meters(latitude, longitude, place.latitude, place.longitude)]
+            if dist <= place.radius_meters
+        ]
 
-        for place in places:
-            dist = haversine_distance_meters(latitude, longitude, place.latitude, place.longitude)
-            if dist <= place.radius_meters and dist < min_dist:
-                min_dist = dist
-                closest_match = place
+        if not matches:
+            return None
 
-        if closest_match:
-            return {
-                "matched": True,
-                "place_id": closest_match.id,
-                "place_name": closest_match.name,
-                "place_category": closest_match.category,
-                "activity": closest_match.activity,
-                "distance_meters": round(min_dist, 1),
-                "radius_meters": closest_match.radius_meters,
-            }
-        return None
+        best_dist, best_place = min(matches, key=lambda item: item[0])
+        return {
+            "matched": True,
+            "place_id": best_place.id,
+            "place_name": best_place.name,
+            "place_category": best_place.category,
+            "activity": best_place.activity,
+            "distance_meters": round(best_dist, 1),
+            "radius_meters": best_place.radius_meters,
+        }
 
-    def reverse_geocode(self, latitude: float, longitude: float) -> Dict[str, Any]:
+    def reverse_geocode(self, latitude: float, longitude: float) -> ReverseGeocodeResult:
         """
         Reverse geocode coordinates using local SQLite cache with OSM Nominatim fallback.
         Cached by rounded coordinate (~30-50m grid) to minimize external network requests.
@@ -324,7 +390,7 @@ class PlacesManager:
             row = cur.fetchone()
             if row:
                 try:
-                    addr = json.loads(row["address_json"]) if row["address_json"] else {}
+                    addr: Mapping[str, object] = json.loads(row["address_json"]) if row["address_json"] else {}
                     return {
                         "display_name": row["display_name"],
                         "category": row["place_category"],
@@ -334,20 +400,17 @@ class PlacesManager:
                 except Exception:
                     pass
 
-        # Query Nominatim API with 3s timeout
         url = f"https://nominatim.openstreetmap.org/reverse?lat={latitude}&lon={longitude}&format=json&extratags=1&addressdetails=1"
         req = urllib.request.Request(url, headers={"User-Agent": "HermesCompanion/1.0 (Hermes Location Agent)"})
         try:
             with urllib.request.urlopen(req, timeout=3.5) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
-                display_name = data.get("display_name", "")
-                addr = data.get("address", {})
-                extratags = data.get("extratags", {})
+                display_name = str(data.get("display_name", ""))
+                addr = data.get("address", {}) if isinstance(data.get("address"), dict) else {}
 
-                # Determine category & activity
                 category = "general"
-                amenity = data.get("amenity", "").lower()
-                leisure = data.get("leisure", "").lower()
+                amenity = str(data.get("amenity", "")).lower()
+                leisure = str(data.get("leisure", "")).lower()
                 name_low = display_name.lower()
 
                 gym_keywords = ["gym", "fitness", "crossfit", "boulder", "workout", "kraftsport", "mcfit", "fitx", "john reed", "sports_centre"]
@@ -400,26 +463,13 @@ class PlacesManager:
         self,
         latitude: float,
         longitude: float,
-        speed_kmh: float = 0.0,
         is_moving: bool = False,
         age_seconds: int = 0,
         motion_activity: str = "unknown",
         motion_age_seconds: int = 999999,
-    ) -> Dict[str, Any]:
+    ) -> PlaceContextDict:
         """
-        Synthesize semantic context: place, activity, movement, and a greeting.
-
-        Two independent signals:
-          - GPS (age_seconds): where the user is. The file is rewritten only when a move is
-            accepted (default 30 m, or 150 m while stationary). Age is minutes since the last move. The user is still
-            at that place until GPS writes again (a geofence fires on a real departure).
-          - CoreMotion (motion_age_seconds): whether the user is moving now (walking, running,
-            driving, or stationary), refreshed independently of GPS.
-
-        Rules:
-          - GPS place is current until a new coordinate is written.
-          - Fresh motion is authoritative for moving vs staying *right now*.
-          - A long GPS age while at a place means the user has been there that long.
+        Synthesize semantic context: place, activity, movement, and greeting.
         """
         long_stay = age_seconds > STALE_FIX_SECONDS
         minutes_since_last_move = int(age_seconds // 60) if age_seconds else 0
@@ -434,12 +484,10 @@ class PlacesManager:
             "automotive": "driving",
         }.get(motion_activity)
 
-        fix_moving = is_moving or speed_kmh > 3.0
-        # Without fresh motion, GPS speed is only meaningful on a *recent* write
-        # (the user just moved). An old write with leftover speed is not "moving now".
+        fix_moving = is_moving
         is_moving_now = motion_moving if motion_fresh else (fix_moving and not long_stay)
 
-        base = {
+        base: PlaceContextDict = {
             "is_stale": long_stay,
             "fix_age_minutes": minutes_since_last_move,
             "minutes_since_last_move": minutes_since_last_move,
@@ -450,12 +498,8 @@ class PlacesManager:
         }
 
         known = self.match_known_place(latitude, longitude)
+        stay_txt = f" (hasn't moved in ~{minutes_since_last_move} min)" if minutes_since_last_move >= 1 else ""
 
-        stay_txt = ""
-        if minutes_since_last_move >= 1:
-            stay_txt = f" (hasn't moved in ~{minutes_since_last_move} min)"
-
-        # 1) Moving now. GPS still answers WHERE (last written coordinate).
         if is_moving_now:
             if known and motion_label in ("walking", "running", "cycling"):
                 p_name = known["place_name"]
@@ -474,18 +518,8 @@ class PlacesManager:
                     "was_moving_at_fix": True,
                 }
 
-            if motion_fresh and motion_label:
-                act = motion_label
-                summary = f"Moving now ({act}); last GPS write {minutes_since_last_move} min ago"
-            elif speed_kmh > 35.0:
-                act = "driving or transit"
-                summary = f"In transit (driving) at {speed_kmh:.1f} km/h"
-            elif speed_kmh > 12.0:
-                act = "cycling or fast transit"
-                summary = f"In transit (cycling) at {speed_kmh:.1f} km/h"
-            else:
-                act = "walking or running"
-                summary = f"In transit (walking/running) at {speed_kmh:.1f} km/h"
+            act = motion_label if (motion_fresh and motion_label) else "in transit"
+            summary = f"Moving now ({act}); last GPS write {minutes_since_last_move} min ago" if (motion_fresh and motion_label) else f"In transit; last GPS write {minutes_since_last_move} min ago"
             return {
                 **base,
                 "place_name": "In Transit",
@@ -505,17 +539,13 @@ class PlacesManager:
             p_cat = known["place_category"]
             act = known["activity"]
 
-            if p_cat == "gym":
-                greeting = "At the gym."
-            elif p_cat == "home":
-                # A fresh timestamp is an accepted move. The text names the place only.
-                greeting = "At home."
-            elif p_cat == "work":
-                greeting = f"At work at {p_name}."
-            elif p_cat == "cafe":
-                greeting = f"At {p_name}."
-            else:
-                greeting = f"At {p_name}."
+            greetings = {
+                "gym": "At the gym.",
+                "home": "At home.",
+                "work": f"At work at {p_name}.",
+                "cafe": f"At {p_name}.",
+            }
+            greeting = greetings.get(p_cat, f"At {p_name}.")
 
             if stationary_now and minutes_since_last_move >= 1:
                 summary = f"At {p_name} (still there; hasn't moved in ~{minutes_since_last_move} min)"
@@ -537,32 +567,32 @@ class PlacesManager:
                 "was_moving_at_fix": False,
             }
 
-        # Reverse geocoding fallback. Same write-on-change rule: the user is still there.
         rev = self.reverse_geocode(latitude, longitude)
         cat = rev.get("category", "general")
         disp = rev.get("display_name", "")
         addr = rev.get("address", {})
 
         short_name = (
-            addr.get("amenity")
-            or addr.get("road")
-            or addr.get("suburb")
-            or addr.get("city")
-            or f"{latitude:.4f}, {longitude:.4f}"
+            str(addr.get("amenity"))
+            if addr.get("amenity")
+            else (
+                str(addr.get("road"))
+                if addr.get("road")
+                else (
+                    str(addr.get("suburb"))
+                    if addr.get("suburb")
+                    else (str(addr.get("city")) if addr.get("city") else f"{latitude:.4f}, {longitude:.4f}")
+                )
+            )
         )
 
-        if cat == "gym":
-            act = f"working out at {short_name}"
-            greeting = "At the gym."
-        elif cat == "cafe":
-            act = f"at {short_name}"
-            greeting = f"At a cafe ({short_name})."
-        elif cat == "residential":
-            act = "at a residence"
-            greeting = "Indoors."
-        else:
-            act = f"around {short_name}"
-            greeting = f"Around {short_name}."
+        greetings_map = {
+            "gym": ("working out at {name}", "At the gym."),
+            "cafe": ("at {name}", f"At a cafe ({short_name})."),
+            "residential": ("at a residence", "Indoors."),
+        }
+        act_tmpl, greeting = greetings_map.get(cat, (f"around {short_name}", f"Around {short_name}."))
+        act = act_tmpl.format(name=short_name)
 
         if stationary_now and minutes_since_last_move >= 1:
             summary = f"Around {short_name} (still there; hasn't moved in ~{minutes_since_last_move} min)"
@@ -587,6 +617,7 @@ class PlacesManager:
 
 # Singleton accessor
 _manager: Optional[PlacesManager] = None
+
 
 def get_places_manager() -> PlacesManager:
     global _manager

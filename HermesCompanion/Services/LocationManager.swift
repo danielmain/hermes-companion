@@ -57,7 +57,6 @@ public final class LocationManager: NSObject, ObservableObject {
 
         super.init()
 
-        UIDevice.current.isBatteryMonitoringEnabled = true
         locationManager.delegate = self
         locationManager.desiredAccuracy = kCLLocationAccuracyBest
         locationManager.distanceFilter = configuration.distanceFilterMeters
@@ -344,21 +343,6 @@ public final class LocationManager: NSObject, ObservableObject {
         }
     }
 
-    // MARK: - Battery Info
-    private var currentBatteryLevel: Float {
-        UIDevice.current.batteryLevel
-    }
-
-    private var currentBatteryStateString: String {
-        switch UIDevice.current.batteryState {
-        case .unknown: return "unknown"
-        case .unplugged: return "unplugged"
-        case .charging: return "charging"
-        case .full: return "full"
-        @unknown default: return "unknown"
-        }
-    }
-
     private var currentAppStateString: String {
         if wasLaunchedFromTerminated {
             return "resumed_terminated"
@@ -406,8 +390,6 @@ public final class LocationManager: NSObject, ObservableObject {
             location: location,
             source: source,
             appState: currentAppStateString,
-            batteryLevel: currentBatteryLevel,
-            batteryState: currentBatteryStateString,
             motionActivity: currentMotionActivity,
             motionTimestamp: motionUpdatedAt,
             motionConfidence: currentMotionConfidence,

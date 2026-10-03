@@ -66,12 +66,6 @@ struct LocationRowView: View {
     @ViewBuilder
     private var metadata: some View {
         Label(record.formattedAccuracy, systemImage: "scope")
-        if record.speed >= 0 {
-            Label(record.formattedSpeed, systemImage: "speedometer")
-        }
-        if record.batteryLevel >= 0 {
-            Label("\(Int(record.batteryLevel * 100))%", systemImage: "battery.75")
-        }
         if record.synced {
             Label("Filed", systemImage: "checkmark")
         }

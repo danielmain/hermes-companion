@@ -1,0 +1,1 @@
+"""Hermes Companion server package."""

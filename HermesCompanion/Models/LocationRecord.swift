@@ -194,11 +194,8 @@ public struct LocationRecord: Identifiable, Codable, Equatable {
     public let altitude: Double
     public let horizontalAccuracy: Double
     public let verticalAccuracy: Double
-    public let speed: Double // in m/s, negative if invalid
     public let course: Double // in degrees 0-360, negative if invalid
     public let source: LocationTriggerSource
-    public let batteryLevel: Float
-    public let batteryState: String
     public let appState: String
     // Real motion state from CoreMotion (CMMotionActivity), independent of the GPS fix age.
     public let motionActivity: MotionActivity?
@@ -241,15 +238,6 @@ public struct LocationRecord: Identifiable, Codable, Equatable {
         Self.isUnchangedGPS(from: other.coordinate, to: coordinate, thresholdMeters: thresholdMeters)
     }
 
-    public var speedKmH: Double {
-        speed > 0 ? (speed * 3.6) : 0
-    }
-
-    public var formattedSpeed: String {
-        if speed < 0 { return "0.0 km/h" }
-        return String(format: "%.1f km/h", speedKmH)
-    }
-
     public var formattedAccuracy: String {
         String(format: "±%.1fm", horizontalAccuracy)
     }
@@ -262,11 +250,8 @@ public struct LocationRecord: Identifiable, Codable, Equatable {
         altitude: Double = 0,
         horizontalAccuracy: Double = 0,
         verticalAccuracy: Double = 0,
-        speed: Double = -1,
         course: Double = -1,
         source: LocationTriggerSource = .standardGPS,
-        batteryLevel: Float = -1,
-        batteryState: String = "unknown",
         appState: String = "active",
         motionActivity: MotionActivity? = nil,
         motionTimestamp: Date? = nil,
@@ -281,11 +266,8 @@ public struct LocationRecord: Identifiable, Codable, Equatable {
         self.altitude = altitude
         self.horizontalAccuracy = horizontalAccuracy
         self.verticalAccuracy = verticalAccuracy
-        self.speed = speed
         self.course = course
         self.source = source
-        self.batteryLevel = batteryLevel
-        self.batteryState = batteryState
         self.appState = appState
         self.motionActivity = motionActivity
         self.motionTimestamp = motionTimestamp
@@ -298,8 +280,6 @@ public struct LocationRecord: Identifiable, Codable, Equatable {
         location: CLLocation,
         source: LocationTriggerSource,
         appState: String,
-        batteryLevel: Float,
-        batteryState: String,
         motionActivity: MotionActivity? = nil,
         motionTimestamp: Date? = nil,
         motionConfidence: String? = nil,
@@ -312,11 +292,8 @@ public struct LocationRecord: Identifiable, Codable, Equatable {
         self.altitude = location.altitude
         self.horizontalAccuracy = location.horizontalAccuracy
         self.verticalAccuracy = location.verticalAccuracy
-        self.speed = location.speed
         self.course = location.course
         self.source = source
-        self.batteryLevel = batteryLevel
-        self.batteryState = batteryState
         self.appState = appState
         self.motionActivity = motionActivity
         self.motionTimestamp = motionTimestamp
@@ -333,11 +310,8 @@ public struct LocationRecord: Identifiable, Codable, Equatable {
         case altitude
         case horizontalAccuracy
         case verticalAccuracy
-        case speed
         case course
         case source
-        case batteryLevel
-        case batteryState
         case appState
         case motionActivity
         case motionTimestamp
@@ -348,26 +322,21 @@ public struct LocationRecord: Identifiable, Codable, Equatable {
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        try self.init(
-            id: container.decode(UUID.self, forKey: .id),
-            timestamp: container.decode(Date.self, forKey: .timestamp),
-            latitude: container.decode(Double.self, forKey: .latitude),
-            longitude: container.decode(Double.self, forKey: .longitude),
-            altitude: container.decodeIfPresent(Double.self, forKey: .altitude) ?? 0,
-            horizontalAccuracy: container.decodeIfPresent(Double.self, forKey: .horizontalAccuracy) ?? 0,
-            verticalAccuracy: container.decodeIfPresent(Double.self, forKey: .verticalAccuracy) ?? 0,
-            speed: container.decodeIfPresent(Double.self, forKey: .speed) ?? -1,
-            course: container.decodeIfPresent(Double.self, forKey: .course) ?? -1,
-            source: container.decodeIfPresent(LocationTriggerSource.self, forKey: .source) ?? .standardGPS,
-            batteryLevel: container.decodeIfPresent(Float.self, forKey: .batteryLevel) ?? -1,
-            batteryState: container.decodeIfPresent(String.self, forKey: .batteryState) ?? "unknown",
-            appState: container.decodeIfPresent(String.self, forKey: .appState) ?? "active",
-            motionActivity: container.decodeIfPresent(MotionActivity.self, forKey: .motionActivity),
-            motionTimestamp: container.decodeIfPresent(Date.self, forKey: .motionTimestamp),
-            motionConfidence: container.decodeIfPresent(String.self, forKey: .motionConfidence),
-            movementReason: container.decodeIfPresent(MovementReason.self, forKey: .movementReason),
-            synced: container.decodeIfPresent(Bool.self, forKey: .synced) ?? false
-        )
+        self.id = try container.decode(UUID.self, forKey: .id)
+        self.timestamp = try container.decode(Date.self, forKey: .timestamp)
+        self.latitude = try container.decode(Double.self, forKey: .latitude)
+        self.longitude = try container.decode(Double.self, forKey: .longitude)
+        self.altitude = try container.decodeIfPresent(Double.self, forKey: .altitude) ?? 0
+        self.horizontalAccuracy = try container.decodeIfPresent(Double.self, forKey: .horizontalAccuracy) ?? 0
+        self.verticalAccuracy = try container.decodeIfPresent(Double.self, forKey: .verticalAccuracy) ?? 0
+        self.course = try container.decodeIfPresent(Double.self, forKey: .course) ?? -1
+        self.source = try container.decodeIfPresent(LocationTriggerSource.self, forKey: .source) ?? .standardGPS
+        self.appState = try container.decodeIfPresent(String.self, forKey: .appState) ?? "active"
+        self.motionActivity = try container.decodeIfPresent(MotionActivity.self, forKey: .motionActivity)
+        self.motionTimestamp = try container.decodeIfPresent(Date.self, forKey: .motionTimestamp)
+        self.motionConfidence = try container.decodeIfPresent(String.self, forKey: .motionConfidence)
+        self.movementReason = try container.decodeIfPresent(MovementReason.self, forKey: .movementReason)
+        self.synced = try container.decodeIfPresent(Bool.self, forKey: .synced) ?? false
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -379,11 +348,8 @@ public struct LocationRecord: Identifiable, Codable, Equatable {
         try container.encode(altitude, forKey: .altitude)
         try container.encode(horizontalAccuracy, forKey: .horizontalAccuracy)
         try container.encode(verticalAccuracy, forKey: .verticalAccuracy)
-        try container.encode(speed, forKey: .speed)
         try container.encode(course, forKey: .course)
         try container.encode(source, forKey: .source)
-        try container.encode(batteryLevel, forKey: .batteryLevel)
-        try container.encode(batteryState, forKey: .batteryState)
         try container.encode(appState, forKey: .appState)
         try container.encodeIfPresent(motionActivity, forKey: .motionActivity)
         try container.encodeIfPresent(motionTimestamp, forKey: .motionTimestamp)
@@ -401,11 +367,8 @@ public struct LocationRecord: Identifiable, Codable, Equatable {
         record["altitude"] = altitude as NSNumber
         record["horizontalAccuracy"] = horizontalAccuracy as NSNumber
         record["verticalAccuracy"] = verticalAccuracy as NSNumber
-        record["speed"] = speed as NSNumber
         record["course"] = course as NSNumber
         record["source"] = source.rawValue as NSString
-        record["batteryLevel"] = Double(batteryLevel) as NSNumber
-        record["batteryState"] = batteryState as NSString
         record["appState"] = appState as NSString
         record["timestamp"] = timestamp as NSDate
         record["deviceName"] = deviceName as NSString
@@ -437,7 +400,6 @@ public struct LocationRecord: Identifiable, Codable, Equatable {
             "altitude": altitude,
             "horizontal_accuracy": horizontalAccuracy,
             "vertical_accuracy": verticalAccuracy,
-            "speed_mps": speed,
             "course": course,
             "source": source.rawValue,
             "app_state": appState,
@@ -465,12 +427,9 @@ public struct LocationRecord: Identifiable, Codable, Equatable {
         let altitude = (record["altitude"] as? NSNumber)?.doubleValue ?? 0.0
         let horizontalAccuracy = (record["horizontalAccuracy"] as? NSNumber)?.doubleValue ?? 0.0
         let verticalAccuracy = (record["verticalAccuracy"] as? NSNumber)?.doubleValue ?? 0.0
-        let speed = (record["speed"] as? NSNumber)?.doubleValue ?? -1.0
         let course = (record["course"] as? NSNumber)?.doubleValue ?? -1.0
         let sourceRaw = (record["source"] as? String) ?? LocationTriggerSource.standardGPS.rawValue
         let source = LocationTriggerSource(rawValue: sourceRaw) ?? .standardGPS
-        let batteryLevel = Float((record["batteryLevel"] as? NSNumber)?.doubleValue ?? -1.0)
-        let batteryState = (record["batteryState"] as? String) ?? "unknown"
         let appState = (record["appState"] as? String) ?? "unknown"
         let motionActivity = (record["motionActivity"] as? String).flatMap { MotionActivity(rawValue: $0) }
         let motionTimestamp = record["motionTimestamp"] as? Date
@@ -485,11 +444,8 @@ public struct LocationRecord: Identifiable, Codable, Equatable {
             altitude: altitude,
             horizontalAccuracy: horizontalAccuracy,
             verticalAccuracy: verticalAccuracy,
-            speed: speed,
             course: course,
             source: source,
-            batteryLevel: batteryLevel,
-            batteryState: batteryState,
             appState: appState,
             motionActivity: motionActivity,
             motionTimestamp: motionTimestamp,

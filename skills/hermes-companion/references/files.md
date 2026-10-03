@@ -15,13 +15,12 @@ Written only after `GPSPersistDecision` accepts a move. Refused indoor drift doe
 | `latitude`, `longitude` | Last accepted coordinate |
 | `timestamp` | When that move was accepted, UTC |
 | `horizontal_accuracy` | Meters |
-| `speed_mps` | Speed at that fix. Negative means unknown |
 | `movement_reason` | `moved`, `distance`, or `no_motion_reading`. Optional on older files |
 | `motion_activity` | `stationary`, `walking`, `running`, `cycling`, `automotive`, `unknown` |
 | `motion_confidence` | `high`, `medium`, `low` |
 | `motion_timestamp` | When CoreMotion last reported, independent of the GPS write |
 | `source` | What woke the app (`significant`, geofence, visit, standard) |
-| `battery_level`, `battery_state` | Omitted from new writes. Older files may still have them. Ignore them. The skill does not report phone battery |
+| `battery_level`, `battery_state`, `speed_mps` | Omitted from data. Neither the agent nor the app tracks or reports battery percentage or speed |
 | `app_state` | `active`, `background`, or the wake state |
 
 ## location_history.json
@@ -43,7 +42,6 @@ Structure:
       "longitude": 9.221555,
       "altitude": 230.1,
       "horizontal_accuracy": 3.8,
-      "speed_mps": 0.88,
       "course": 328.0,
       "source": "Standard GPS",
       "app_state": "background",

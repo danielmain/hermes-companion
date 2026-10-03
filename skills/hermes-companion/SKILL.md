@@ -124,7 +124,7 @@ Field notes live in `references/files.md`. Load that file only when a raw key is
 - The simulator has no CoreMotion. `motion_activity: unknown` and `motion_fresh: no` are expected there.
 - Motion & Fitness must be allowed or `motion_activity` stays `unknown`.
 - Coordinates are for saving a place or when the user asks for them. Do not recite them in a normal reply.
-- Ignore `battery_level` and `battery_state` if a file still has them. Phone battery is not part of this skill.
+- Ignore `battery_level`, `battery_state`, and `speed` if an older file still has them. Battery percentage and speed are omitted from data and are not part of this app or skill.
 - Two Macs on the same Apple ID share the container. Read the local file; do not fetch it from the network.
 - The script does not reverse-geocode. An unlisted coordinate stays unlisted until the user names it.
 

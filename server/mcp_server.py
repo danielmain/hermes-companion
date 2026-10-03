@@ -6,9 +6,17 @@ Exposes user location tools directly to Hermes Agent over stdio (JSON-RPC).
 
 Tools Exposed:
   1. get_user_location(max_age_minutes=60)
-     Returns the user's current GPS position, age, accuracy, speed, and motion state.
+     Returns the user's current GPS position, age, accuracy, and motion state.
   2. get_location_history(limit=20)
      Returns recent trajectory and movement history.
+  3. add_known_place(...)
+     Register a known place (home, work, gym, cafe).
+  4. list_known_places()
+     List all registered known places.
+  5. get_user_health()
+     Latest sleep, workout, recovery, steps, and heart-rate as codes and numbers.
+  6. get_user_physical_context()
+     Read place, motion, and Apple Health snapshot together.
 
 Data source: the Hermes Companion iOS app writes JSON into its iCloud/CloudKit
 ubiquity container, which macOS syncs down to
@@ -17,22 +25,101 @@ This server reads that local synced copy (no relay, no TCP, no inbound
 connection to the phone).
 """
 
-import sys
+from __future__ import annotations
+
 import json
+import sys
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import (
+    Final,
+    List,
+    Mapping,
+    Optional,
+    Sequence,
+    TypedDict,
+    Union,
+    cast,
+)
 from zoneinfo import ZoneInfo
 
-_LOCAL_TZ = ZoneInfo("Europe/Berlin")
+_LOCAL_TZ: Final[ZoneInfo] = ZoneInfo("Europe/Berlin")
 
 
-def _workout_when(workout: dict) -> str:
+# ==============================================================================
+# Typed Structures (no Any)
+# ==============================================================================
+
+class MCPContentItem(TypedDict):
+    type: str
+    text: str
+
+
+class MCPCallResult(TypedDict, total=False):
+    content: List[MCPContentItem]
+    isError: bool
+
+
+class JSONRPCError(TypedDict):
+    code: int
+    message: str
+
+
+class JSONRPCResponse(TypedDict, total=False):
+    jsonrpc: str
+    id: Optional[Union[str, int]]
+    result: object
+    error: JSONRPCError
+
+
+class MCPToolProperty(TypedDict, total=False):
+    type: str
+    description: str
+
+
+class MCPToolSchema(TypedDict, total=False):
+    type: str
+    properties: Mapping[str, MCPToolProperty]
+    required: Sequence[str]
+
+
+class MCPToolDefinition(TypedDict):
+    name: str
+    description: str
+    inputSchema: MCPToolSchema
+
+
+def _to_float(val: object, default: float = 0.0) -> float:
+    if isinstance(val, (int, float)):
+        return float(val)
+    if isinstance(val, str):
+        try:
+            return float(val)
+        except ValueError:
+            pass
+    return default
+
+
+def _to_int(val: object, default: int = 0) -> int:
+    if isinstance(val, (int, float)):
+        return int(val)
+    if isinstance(val, str):
+        try:
+            return int(float(val))
+        except ValueError:
+            pass
+    return default
+
+
+def _workout_when(workout: Optional[Mapping[str, object]]) -> str:
     """Cuándo fue el entreno, en claro — para no atribuir a hoy uno de ayer.
 
     Usa ``end_date``/``start_date`` (ISO) y los pasa a hora de Berlín con un
     rótulo relativo ('hoy', 'ayer') o la fecha. Si no hay fecha, cae a
     ``minutes_since_completion``. Devuelve 'desconocido' si no hay dato.
     """
+    if not workout:
+        return "desconocido"
     end = workout.get("end_date") or workout.get("start_date")
     if end:
         try:
@@ -46,7 +133,7 @@ def _workout_when(workout: dict) -> str:
     mins = workout.get("minutes_since_completion")
     if mins is not None:
         try:
-            m = int(mins)
+            m = _to_int(mins)
             if m < 60:
                 return f"hace {m} min"
             if m < 24 * 60:
@@ -57,10 +144,10 @@ def _workout_when(workout: dict) -> str:
     return "desconocido"
 
 
-TOOLS_DEFINITION = [
+TOOLS_DEFINITION: Final[List[MCPToolDefinition]] = [
     {
         "name": "get_user_location",
-        "description": "Latest place and motion as facts: place_name, motion_activity, minutes_since_last_move. Reply in the user's language. A growing age at a known place means they are still there. The phone rewrites the file only after an accepted move (30 m while moving, 150 m while stationary).",
+        "description": "Latest place and motion as facts: place_name, motion_activity, minutes_since_last_move. Reply in the user's language. A growing age at a known place means they are still there only when confirmed by fresh motion. The phone rewrites the file only after an accepted move (30 m while moving, 150 m while stationary).",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -144,89 +231,98 @@ TOOLS_DEFINITION = [
     }
 ]
 
-def handle_call_tool(name, arguments):
+
+def handle_call_tool(name: str, arguments: Mapping[str, object]) -> MCPCallResult:
     if name == "get_user_location":
-        max_age = arguments.get("max_age_minutes", 60)
-        data = None
+        data: Optional[Mapping[str, object]] = None
         try:
             here = Path(__file__).resolve().parent
             if str(here) not in sys.path:
                 sys.path.insert(0, str(here))
-            from client import get_user_location as client_get_location
+            try:
+                from server.client import get_user_location as client_get_location
+            except ImportError:
+                from client import get_user_location as client_get_location  # type: ignore[import-not-found,import-untyped,no-redef]
             data = client_get_location()
         except Exception:
             pass
 
         if not data or "error" in data:
-            err_msg = data.get("error") if data else "No location records available from Hermes Companion yet."
+            err_msg = str(data.get("error")) if data else "No location records available from Hermes Companion yet."
             return {
                 "content": [{"type": "text", "text": f"Unable to fetch user location: {err_msg}"}],
                 "isError": True
             }
 
-        # Ensure context resolution is present
-        if "suggested_greeting" not in data and "latitude" in data:
+        # Context resolution
+        resolved_data = dict(data)
+        if "suggested_greeting" not in resolved_data and "latitude" in resolved_data:
             try:
                 try:
                     from server.places import get_places_manager
                 except ImportError:
-                    from places import get_places_manager
-                lat = float(data["latitude"])
-                lon = float(data["longitude"])
-                speed = float(data.get("speed_kmh", 0.0))
-                moving = bool(data.get("is_moving", speed > 3.0))
-                age = int(data.get("age_seconds", 0))
-                ctx = get_places_manager().resolve_context(lat, lon, speed_kmh=speed, is_moving=moving, age_seconds=age)
-                data.update(ctx)
+                    from places import get_places_manager  # type: ignore[import-not-found,import-untyped,no-redef]
+                lat = _to_float(resolved_data.get("latitude"))
+                lon = _to_float(resolved_data.get("longitude"))
+                moving = bool(resolved_data.get("is_moving", False))
+                age = _to_int(resolved_data.get("age_seconds"))
+                ctx = get_places_manager().resolve_context(lat, lon, is_moving=moving, age_seconds=age)
+                resolved_data.update(ctx)
             except Exception:
                 pass
 
-        age_seconds = data.get("age_seconds", 0)
-        age_minutes = age_seconds / 60.0
+        age_seconds_val = resolved_data.get("age_seconds")
+        age_seconds_text = "unknown" if age_seconds_val is None else str(age_seconds_val)
+        age_minutes = (_to_int(age_seconds_val) / 60.0) if age_seconds_val is not None else 0.0
 
-        place_name = data.get("place_name", "Unknown location")
-        category = data.get("place_category", "general")
-        motion = data.get("motion_activity") or "unknown"
-        motion_age = data.get("motion_age_seconds")
-        motion_age_text = "none" if motion_age is None else str(int(motion_age))
-        minutes_since_move = int(data.get("minutes_since_last_move") or data.get("fix_age_minutes") or age_minutes)
-        accuracy = float(data.get("accuracy_meters") or 0.0)
+        place_name = str(resolved_data.get("place_name", "Unknown location"))
+        category = str(resolved_data.get("place_category", "general"))
+        still_there_txt = str(resolved_data.get("still_there_status") or ("yes" if resolved_data.get("still_there") else "no"))
+        motion = str(resolved_data.get("motion_activity") or "unknown")
+        motion_age = resolved_data.get("motion_age_seconds")
+        motion_age_text = "none" if motion_age is None else str(_to_int(motion_age))
+        min_move = resolved_data.get("minutes_since_last_move")
+        minutes_text = str(min_move) if min_move is not None else str(int(age_minutes))
+        raw_accuracy = resolved_data.get("accuracy_meters")
+        accuracy = _to_float(raw_accuracy)
 
         result_text = (
             "facts_only: reply in the user's language; do not quote this block\n"
             f"place_name: {place_name}\n"
             f"place_category: {category}\n"
-            f"still_there: yes\n"
-            f"minutes_since_last_move: {minutes_since_move}\n"
-            f"movement_reason: {data.get('movement_reason') or 'absent'}\n"
+            f"still_there: {still_there_txt}\n"
+            f"minutes_since_last_move: {minutes_text}\n"
+            f"movement_reason: {resolved_data.get('movement_reason') or 'absent'}\n"
             f"motion_activity: {motion}\n"
-            f"motion_fresh: {'yes' if data.get('motion_fresh') else 'no'}\n"
+            f"motion_fresh: {'yes' if resolved_data.get('motion_fresh') else 'no'}\n"
             f"motion_age_seconds: {motion_age_text}\n"
-            f"is_moving_now: {'yes' if data.get('is_moving_now') else 'no'}\n"
-            f"speed_kmh: {data.get('speed_kmh')}\n"
-            f"coordinates: {data.get('coordinates')}\n"
+            f"is_moving_now: {'yes' if resolved_data.get('is_moving_now') else 'no'}\n"
+            f"coordinates: {resolved_data.get('coordinates')}\n"
             f"accuracy_meters: {accuracy:.1f}\n"
-            f"recorded_at: {data.get('recorded_at')}\n"
-            f"age_seconds: {age_seconds}\n"
-            f"trigger_source: {data.get('trigger_source')}\n"
-            f"app_state: {data.get('app_state')}\n"
-            f"maps_link: {data.get('maps_link')}\n"
+            f"recorded_at: {resolved_data.get('recorded_at')}\n"
+            f"age_seconds: {age_seconds_text}\n"
+            f"trigger_source: {resolved_data.get('trigger_source')}\n"
+            f"app_state: {resolved_data.get('app_state')}\n"
+            f"maps_link: {resolved_data.get('maps_link')}\n"
         )
 
         return {"content": [{"type": "text", "text": result_text}]}
 
     elif name == "get_location_history":
-        limit = min(int(arguments.get("limit", 20)), 100)
-        data = {"error": "No location history available."}
+        raw_limit = arguments.get("limit", 20)
+        limit = min(_to_int(raw_limit, 20), 100)
+        locations: List[Mapping[str, object]] = []
+
         try:
-            from client import get_location_history_from_icloud
-            icloud_history = get_location_history_from_icloud(limit=limit)
-            if icloud_history:
-                data = {"count": len(icloud_history), "locations": icloud_history}
+            try:
+                from server.client import get_location_history_from_icloud
+            except ImportError:
+                from client import get_location_history_from_icloud  # type: ignore[import-not-found,import-untyped,no-redef]
+            locations = get_location_history_from_icloud(limit=limit)
         except Exception:
             pass
 
-        if "error" in data:
+        if not locations:
             try:
                 import sqlite3
                 db_path = Path(__file__).resolve().parent / "locations.sqlite3"
@@ -237,36 +333,30 @@ def handle_call_tool(name, arguments):
                     cur.execute("SELECT * FROM locations ORDER BY recorded_at DESC LIMIT ?", (limit,))
                     rows = cur.fetchall()
                     conn.close()
-                    data = {"count": len(rows), "locations": [dict(r) for r in rows]}
+                    locations = [dict(r) for r in rows]
             except Exception:
                 pass
 
-        if "error" in data:
-            return {
-                "content": [{"type": "text", "text": f"Unable to fetch location history: {data['error']}"}],
-                "isError": True
-            }
-
-        locations = data.get("locations", [])
         if not locations:
             return {"content": [{"type": "text", "text": "No location history available."}]}
 
         lines = [f"Recent {len(locations)} location waypoints:"]
         for loc in locations:
             ts = loc.get("timestamp") or loc.get("recorded_at") or "unknown"
-            acc = float(loc.get("horizontal_accuracy", loc.get("accuracy", 0.0)) or 0.0)
+            acc = _to_float(loc.get("horizontal_accuracy", loc.get("accuracy", 0.0)))
             src = loc.get("source", "Standard GPS")
             mot = loc.get("motion_activity", "unknown")
+            lat_f = _to_float(loc.get("latitude"))
+            lon_f = _to_float(loc.get("longitude"))
             lines.append(
-                f"- {ts}: {float(loc['latitude']):.5f}, {float(loc['longitude']):.5f} "
-                f"(±{acc:.0f}m, {mot}, {src})"
+                f"- {ts}: {lat_f:.5f}, {lon_f:.5f} (±{acc:.0f}m, {mot}, {src})"
             )
         return {"content": [{"type": "text", "text": "\n".join(lines)}]}
 
     elif name == "add_known_place":
         name_val = arguments.get("name")
-        cat_val = arguments.get("category", "general")
-        act_val = arguments.get("activity") or f"at {name_val}"
+        cat_val = str(arguments.get("category", "general"))
+        act_val = str(arguments.get("activity") or f"at {name_val}")
         lat_val = arguments.get("latitude")
         lon_val = arguments.get("longitude")
         radius_val = arguments.get("radius_meters", 150.0)
@@ -281,14 +371,14 @@ def handle_call_tool(name, arguments):
             try:
                 from server.places import get_places_manager
             except ImportError:
-                from places import get_places_manager
+                from places import get_places_manager  # type: ignore[import-not-found,import-untyped,no-redef]
             p = get_places_manager().add_place(
-                name=name_val,
+                name=str(name_val),
                 category=cat_val,
                 activity=act_val,
-                latitude=float(lat_val),
-                longitude=float(lon_val),
-                radius_meters=float(radius_val),
+                latitude=_to_float(lat_val),
+                longitude=_to_float(lon_val),
+                radius_meters=_to_float(radius_val, 150.0),
             )
             return {
                 "content": [
@@ -309,7 +399,7 @@ def handle_call_tool(name, arguments):
             try:
                 from server.places import get_places_manager
             except ImportError:
-                from places import get_places_manager
+                from places import get_places_manager  # type: ignore[import-not-found,import-untyped,no-redef]
             places = get_places_manager().list_places()
             if not places:
                 return {"content": [{"type": "text", "text": "No known places registered yet."}]}
@@ -328,32 +418,37 @@ def handle_call_tool(name, arguments):
             }
 
     elif name == "get_user_health":
-        data = None
+        data_h: Optional[Mapping[str, object]] = None
         try:
             here = Path(__file__).resolve().parent
             if str(here) not in sys.path:
                 sys.path.insert(0, str(here))
-            from client import get_user_health as client_get_health
-            data = client_get_health()
+            try:
+                from server.client import get_user_health as client_get_health
+            except ImportError:
+                from client import get_user_health as client_get_health  # type: ignore[import-not-found,import-untyped,no-redef]
+            data_h = client_get_health()
         except Exception:
             pass
 
-        if not data or "error" in data:
-            err_msg = data.get("error") if data else "No Apple Health records available from Hermes Companion yet."
+        if not data_h or "error" in data_h:
+            err_msg = str(data_h.get("error")) if data_h else "No Apple Health records available from Hermes Companion yet."
             return {
                 "content": [{"type": "text", "text": f"Unable to fetch health data: {err_msg}"}],
                 "isError": True
             }
 
         lines = ["facts_only: reply in the user's language; do not quote this block"]
-        sleep = data.get("sleep") if isinstance(data.get("sleep"), dict) else None
+        raw_sleep = data_h.get("sleep")
+        sleep: Optional[Mapping[str, object]] = raw_sleep if isinstance(raw_sleep, Mapping) else None
         if sleep:
             lines.append(f"sleep_duration: {sleep.get('formatted_duration') or sleep.get('total_sleep_minutes') or 'unknown'}")
             lines.append(f"sleep_quality: {sleep.get('quality_rating') or 'unknown'}")
         else:
             lines.append("sleep_duration: none")
 
-        workout = data.get("workout") if isinstance(data.get("workout"), dict) else None
+        raw_workout = data_h.get("workout")
+        workout: Optional[Mapping[str, object]] = raw_workout if isinstance(raw_workout, Mapping) else None
         if workout:
             lines.append(f"workout_type: {workout.get('workout_type') or 'unknown'}")
             lines.append(f"workout_active: {'yes' if workout.get('is_currently_active') else 'no'}")
@@ -361,22 +456,22 @@ def handle_call_tool(name, arguments):
             lines.append(f"workout_when: {_workout_when(workout)}")
             lines.append(f"workout_duration_minutes: {workout.get('duration_minutes')}")
             if workout.get("active_calories") is not None:
-                lines.append(f"workout_active_calories: {int(workout['active_calories'])}")
+                lines.append(f"workout_active_calories: {_to_int(workout['active_calories'])}")
             if workout.get("minutes_since_completion") is not None:
                 lines.append(f"minutes_since_workout: {workout.get('minutes_since_completion')}")
         else:
             lines.append("workout_type: none")
 
-        lines.append(f"recovery_status: {data.get('recovery_status') or 'unknown'}")
-        lines.append(f"steps_today: {data.get('step_count_today') or 0}")
-        lines.append(f"active_calories_today: {int(float(data.get('active_calories_today') or 0))}")
-        if data.get("resting_heart_rate_bpm") is not None:
-            lines.append(f"resting_heart_rate_bpm: {int(data['resting_heart_rate_bpm'])}")
-        if data.get("heart_rate_variability_sdnn") is not None:
-            lines.append(f"hrv_sdnn_ms: {int(data['heart_rate_variability_sdnn'])}")
-        lines.append(f"recorded_at: {data.get('recorded_at')}")
-        lines.append(f"age_seconds: {data.get('age_seconds')}")
-        lines.append(f"source: {data.get('source_channel')}")
+        lines.append(f"recovery_status: {data_h.get('recovery_status') or 'unknown'}")
+        lines.append(f"steps_today: {_to_int(data_h.get('step_count_today'))}")
+        lines.append(f"active_calories_today: {_to_int(data_h.get('active_calories_today'))}")
+        if data_h.get("resting_heart_rate_bpm") is not None:
+            lines.append(f"resting_heart_rate_bpm: {_to_int(data_h['resting_heart_rate_bpm'])}")
+        if data_h.get("heart_rate_variability_sdnn") is not None:
+            lines.append(f"hrv_sdnn_ms: {_to_int(data_h['heart_rate_variability_sdnn'])}")
+        lines.append(f"recorded_at: {data_h.get('recorded_at')}")
+        lines.append(f"age_seconds: {data_h.get('age_seconds')}")
+        lines.append(f"source: {data_h.get('source_channel')}")
         return {"content": [{"type": "text", "text": "\n".join(lines)}]}
 
     elif name == "get_user_physical_context":
@@ -395,12 +490,13 @@ def handle_call_tool(name, arguments):
             "isError": True
         }
 
-def process_message(msg):
+
+def process_message(msg: Mapping[str, object]) -> Optional[JSONRPCResponse]:
     method = msg.get("method")
-    msg_id = msg.get("id")
+    msg_id = cast(Optional[Union[str, int]], msg.get("id"))
 
     if method == "initialize":
-        return {
+        init_res: JSONRPCResponse = {
             "jsonrpc": "2.0",
             "id": msg_id,
             "result": {
@@ -414,56 +510,65 @@ def process_message(msg):
                 }
             }
         }
+        return init_res
     elif method == "tools/list":
-        return {
+        tools_res: JSONRPCResponse = {
             "jsonrpc": "2.0",
             "id": msg_id,
             "result": {
                 "tools": TOOLS_DEFINITION
             }
         }
+        return tools_res
     elif method == "tools/call":
-        params = msg.get("params", {})
-        name = params.get("name")
-        arguments = params.get("arguments", {})
-        result = handle_call_tool(name, arguments)
-        return {
+        raw_params = msg.get("params")
+        params: Mapping[str, object] = raw_params if isinstance(raw_params, Mapping) else {}
+        name = str(params.get("name", ""))
+        raw_arguments = params.get("arguments")
+        arguments: Mapping[str, object] = raw_arguments if isinstance(raw_arguments, Mapping) else {}
+        call_res = handle_call_tool(name, arguments)
+        wrapped_res: JSONRPCResponse = {
             "jsonrpc": "2.0",
             "id": msg_id,
-            "result": result
+            "result": call_res
         }
+        return wrapped_res
     elif method == "notifications/initialized":
         return None
     elif method == "ping":
-        return {"jsonrpc": "2.0", "id": msg_id, "result": {}}
+        ping_res: JSONRPCResponse = {"jsonrpc": "2.0", "id": msg_id, "result": {}}
+        return ping_res
     else:
         if msg_id is not None:
-            return {
+            err_res: JSONRPCResponse = {
                 "jsonrpc": "2.0",
                 "id": msg_id,
                 "error": {"code": -32601, "message": f"Method not found: {method}"}
             }
+            return err_res
         return None
 
-def main():
+
+def main() -> None:
     for line in sys.stdin:
-        line = line.strip()
-        if not line:
+        stripped = line.strip()
+        if not stripped:
             continue
         try:
-            msg = json.loads(line)
+            msg: Mapping[str, object] = json.loads(stripped)
             response = process_message(msg)
             if response:
                 sys.stdout.write(json.dumps(response) + "\n")
                 sys.stdout.flush()
         except Exception as e:
-            err_resp = {
+            err_resp: JSONRPCResponse = {
                 "jsonrpc": "2.0",
                 "id": None,
                 "error": {"code": -32700, "message": str(e)}
             }
             sys.stdout.write(json.dumps(err_resp) + "\n")
             sys.stdout.flush()
+
 
 if __name__ == "__main__":
     main()
