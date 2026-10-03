@@ -19,7 +19,43 @@ connection to the phone).
 
 import sys
 import json
+from datetime import datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
+
+_LOCAL_TZ = ZoneInfo("Europe/Berlin")
+
+
+def _workout_when(workout: dict) -> str:
+    """Cuándo fue el entreno, en claro — para no atribuir a hoy uno de ayer.
+
+    Usa ``end_date``/``start_date`` (ISO) y los pasa a hora de Berlín con un
+    rótulo relativo ('hoy', 'ayer') o la fecha. Si no hay fecha, cae a
+    ``minutes_since_completion``. Devuelve 'desconocido' si no hay dato.
+    """
+    end = workout.get("end_date") or workout.get("start_date")
+    if end:
+        try:
+            dt = datetime.fromisoformat(str(end).replace("Z", "+00:00")).astimezone(_LOCAL_TZ)
+            today = datetime.now(_LOCAL_TZ).date()
+            d = dt.date()
+            rel = "hoy" if d == today else ("ayer" if d == today - timedelta(days=1) else d.isoformat())
+            return f"{rel} {dt.strftime('%H:%M')}"
+        except Exception:
+            pass
+    mins = workout.get("minutes_since_completion")
+    if mins is not None:
+        try:
+            m = int(mins)
+            if m < 60:
+                return f"hace {m} min"
+            if m < 24 * 60:
+                return f"hace {m // 60} h"
+            return f"hace {m // (24 * 60)} días"
+        except Exception:
+            pass
+    return "desconocido"
+
 
 TOOLS_DEFINITION = [
     {
@@ -322,6 +358,7 @@ def handle_call_tool(name, arguments):
             lines.append(f"workout_type: {workout.get('workout_type') or 'unknown'}")
             lines.append(f"workout_active: {'yes' if workout.get('is_currently_active') else 'no'}")
             lines.append(f"workout_phase: {workout.get('phase') or 'unknown'}")
+            lines.append(f"workout_when: {_workout_when(workout)}")
             lines.append(f"workout_duration_minutes: {workout.get('duration_minutes')}")
             if workout.get("active_calories") is not None:
                 lines.append(f"workout_active_calories: {int(workout['active_calories'])}")
