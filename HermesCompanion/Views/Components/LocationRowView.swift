@@ -48,6 +48,12 @@ struct LocationRowView: View {
                 }
             }
 
+            if let placemark = record.placemarkName {
+                Text(placemark)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(EditorialColor.ink)
+            }
+
             Text("\(record.latitude, format: .number.precision(.fractionLength(4))), \(record.longitude, format: .number.precision(.fractionLength(4)))")
                 .font(.system(.callout, design: .monospaced, weight: .regular))
                 .foregroundStyle(EditorialColor.secondaryInk)

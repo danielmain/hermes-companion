@@ -20,6 +20,8 @@
 		425C3943A223A2A6B851E29D /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 158496746D6DB3BF103D99F3 /* AppDelegate.swift */; };
 		480E74AD265AED43BD4171C4 /* HealthOverviewCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57511556AE5269E42E5009D8 /* HealthOverviewCard.swift */; };
 		4C558C0FE3B3C778EA833664 /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A76C9B08427B07439AE47D1E /* MainTabView.swift */; };
+		5BD3F7A90AC5977112B1565E /* PlacesStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3598323BB305AA350E1DCC0E /* PlacesStore.swift */; };
+		5DF60949E493F4422C547FE3 /* PlacesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0EFE0931FA7D1F772DF2DA51 /* PlacesView.swift */; };
 		6FAABD5A3125E1D0FE9A82F0 /* HermesCompanionApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA5FEEEFC2590B1CFF74C949 /* HermesCompanionApp.swift */; };
 		7967632A74989A6A5B219DBF /* BackgroundTaskManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1CCEDA5B4EA8AC59750808B /* BackgroundTaskManager.swift */; };
 		80F8DCBE2B689E3DAB128D47 /* LocationRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70997C2DFDCBB92162F22A42 /* LocationRowView.swift */; };
@@ -31,16 +33,19 @@
 		DD2E34F805F40022995F2DB8 /* LocationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C691BD9A582EDEE8459543D6 /* LocationManager.swift */; };
 		E29462E6F149BCCD9C12C5F3 /* EditorialDesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 877A2ABB264BA461E7E6175D /* EditorialDesignSystem.swift */; };
 		E49D6E26EADC4F184C331174 /* StatusCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E9910DB1DD2868FFFE04B8F /* StatusCardView.swift */; };
+		E4CC7A7DDD493988799DE7E8 /* Place.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6EE1AA760E50DB0121FFAFC3 /* Place.swift */; };
 		E50B06B300899EE43F70AA19 /* HistoryLogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 199001EF17CEBCAEA2655885 /* HistoryLogView.swift */; };
 		F0A80981BBC8B6168E73D9A4 /* CloudKitSyncManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3F837EEC8319BE295D0739B /* CloudKitSyncManager.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		0EFE0931FA7D1F772DF2DA51 /* PlacesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlacesView.swift; sourceTree = "<group>"; };
 		10F3163AF5FF0449464E85D2 /* EditorialOnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorialOnboardingView.swift; sourceTree = "<group>"; };
 		158496746D6DB3BF103D99F3 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		199001EF17CEBCAEA2655885 /* HistoryLogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryLogView.swift; sourceTree = "<group>"; };
 		2187FF074AF20A5A8489B88E /* HealthKitManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitManager.swift; sourceTree = "<group>"; };
 		3231767A4F3C749850EDCD51 /* LocationStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationStore.swift; sourceTree = "<group>"; };
+		3598323BB305AA350E1DCC0E /* PlacesStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlacesStore.swift; sourceTree = "<group>"; };
 		3D31B68B16CFA0619FB293A5 /* HealthSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthSnapshot.swift; sourceTree = "<group>"; };
 		3E346E61B87FBF95529DFA97 /* TrackingConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackingConfiguration.swift; sourceTree = "<group>"; };
 		41936FF57240EAB288E175C2 /* ICloudAccountBannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ICloudAccountBannerView.swift; sourceTree = "<group>"; };
@@ -50,6 +55,7 @@
 		5DDC170C34A4EF2F9E770624 /* HealthDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthDetailView.swift; sourceTree = "<group>"; };
 		655FC160BE3D9698CE13C341 /* MetricTileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetricTileView.swift; sourceTree = "<group>"; };
 		6E9910DB1DD2868FFFE04B8F /* StatusCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusCardView.swift; sourceTree = "<group>"; };
+		6EE1AA760E50DB0121FFAFC3 /* Place.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Place.swift; sourceTree = "<group>"; };
 		70997C2DFDCBB92162F22A42 /* LocationRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationRowView.swift; sourceTree = "<group>"; };
 		877A2ABB264BA461E7E6175D /* EditorialDesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorialDesignSystem.swift; sourceTree = "<group>"; };
 		8C31DC2507E266A61FD54AAF /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -76,6 +82,7 @@
 				2187FF074AF20A5A8489B88E /* HealthKitManager.swift */,
 				C691BD9A582EDEE8459543D6 /* LocationManager.swift */,
 				3231767A4F3C749850EDCD51 /* LocationStore.swift */,
+				3598323BB305AA350E1DCC0E /* PlacesStore.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -89,6 +96,7 @@
 				5DDC170C34A4EF2F9E770624 /* HealthDetailView.swift */,
 				199001EF17CEBCAEA2655885 /* HistoryLogView.swift */,
 				A76C9B08427B07439AE47D1E /* MainTabView.swift */,
+				0EFE0931FA7D1F772DF2DA51 /* PlacesView.swift */,
 				C8F99D2373E2B88B93E58B81 /* SettingsView.swift */,
 				427369EA2001B3948EEC457D /* Components */,
 				761A84BC86AC90CEF676D765 /* DesignSystem */,
@@ -170,6 +178,7 @@
 				485A91DA6EC9A98E1AF9027B /* AppDiagnosticEvent.swift */,
 				3D31B68B16CFA0619FB293A5 /* HealthSnapshot.swift */,
 				CC4FF56BB8CDA7A346691612 /* LocationRecord.swift */,
+				6EE1AA760E50DB0121FFAFC3 /* Place.swift */,
 				3E346E61B87FBF95529DFA97 /* TrackingConfiguration.swift */,
 			);
 			path = Models;
@@ -267,6 +276,9 @@
 				4C558C0FE3B3C778EA833664 /* MainTabView.swift in Sources */,
 				391D0DF35B83873766C5DE76 /* MetricTileView.swift in Sources */,
 				02A463072A6594D4DFFFA091 /* PermissionBannerView.swift in Sources */,
+				E4CC7A7DDD493988799DE7E8 /* Place.swift in Sources */,
+				5BD3F7A90AC5977112B1565E /* PlacesStore.swift in Sources */,
+				5DF60949E493F4422C547FE3 /* PlacesView.swift in Sources */,
 				AB05082DE43399C35A507360 /* SettingsView.swift in Sources */,
 				E49D6E26EADC4F184C331174 /* StatusCardView.swift in Sources */,
 				2AFDDE94090C3D9B5687B52C /* TrackingConfiguration.swift in Sources */,

@@ -6,6 +6,7 @@
 > 3. **Type-Driven Safety:** Use expressive, rich types (exhaustive enums, structs, Result types) so the compiler surfaces potential bugs early and prevents illegal states.
 > 4. **Mandatory Logging:** Implement comprehensive, structured diagnostic logging on every change, state transition, and error.
 > 5. **Documentation Maintenance Rule:** On **every change**, you **MUST** update this file (`AGENT.md`) and/or `README.md` if the change warrants it.
+> 6. **Mandatory Upstream Fork Sync & Push Rule:** Any modification to the skill files in `skills/hermes-companion/` (`SKILL.md`, `references/`, `scripts/`) **MUST** be synchronized to the official hermes-agent fork at `/Users/daniel/Workspace/hermes-agent/optional-skills/health/hermes-companion/`, verified with tests, and **committed and pushed** to origin `feat/hermes-companion-skill`. Always run `./scripts/sync_hermes_agent.sh "commit message"` to automate this.
 
 ---
 
@@ -45,7 +46,9 @@ A stored distance filter of exactly `legacyDistanceFilterMeters` (10 m, the old 
 CoreMotion `motion_activity` remains the signal for whether the user is moving right now. A growing GPS age at a known place indicates the user was stationary there, provided motion or location telemetry is fresh.
 - **Freshness & Staleness Verification:** If the last location fix is older than 30 minutes and no fresh CoreMotion activity has verified stationary status within 30 minutes, `still_there` is set to `False` (`still_there_status: unconfirmed (no fresh ping in Xm)`). This prevents falsely concluding the user is still at a previous location when the iOS app is suspended or delayed in triggering a background update (as documented in `bug.md`).
 - **Rolling Location History (`location_history.json`):** Along with `latest_location.json`, the iOS app synchronizes a rolling 7-day archive (up to 1,000 points) to the iCloud container. This stores coordinates, timestamps, accuracy, motion activity, and trigger reasons.
+- **Apple Maps Native Reverse Geocoding (`CLGeocoder`):** When movement is persisted, the iOS client reverse-geocodes the coordinates asynchronously using Apple Maps on-device (`CLGeocoder`). Points of interest (POI) and street/city data are written to `placemark_name`, `placemark_locality`, and `placemark_thoroughfare` in `latest_location.json` and `location_history.json`. When a location has no custom match in `places.json`, the Hermes skill automatically falls back to this Apple Maps placemark (tagged as `apple_maps` category). User-configured places in `places.json` always take precedence.
 - **Distilled Timeline & In-Memory SQLite:** Raw history JSON is never fed directly to the LLM. Instead, `companion.py --timeline` (or `--sql`) aggregates raw fixes into visits, dwell durations, and detected transit intervals, flagging any telemetry gaps (>30m silence during transit).
+- **Bidirectional Known Places Synchronization (`places.json`):** Places created or edited in the iOS app (via the `Places` tab) are written locally and synced to iCloud `Documents/places.json`. Both the Hermes skill (`companion.py`) and the MCP server (`server/places.py`) automatically detect and merge places from the iCloud container with any existing profile places (`state/places.json`). New places configured on the iPhone are instantly available to the AI agent.
 
 ### What the agent is told
 The repository stays generic: no personal name, no agent persona, no home path, no device id. Voice stays in the agent's own profile.
@@ -102,16 +105,20 @@ hermes-companion-ios/
 │   │   ├── AppDiagnosticEvent.swift        # Diagnostic log model (severity, timestamp, message)
 │   │   ├── HealthSnapshot.swift            # Apple Health metrics snapshot (workouts, heart rate, sleep, steps)
 │   │   ├── LocationRecord.swift            # Core location model (coords, accuracy, motion, triggers)
+│   │   ├── Place.swift                     # Known place model (name, category, radius, coordinates, activity)
 │   │   └── TrackingConfiguration.swift     # Profiles (Smart, Ultra, Battery) and server sync parameters
 │   ├── Services/
 │   │   ├── BackgroundTaskManager.swift     # BGTaskScheduler registration for refresh & processing
 │   │   ├── CloudKitSyncManager.swift       # Apple CloudKit Private DB & Ubiquity container synchronizer
 │   │   ├── HealthKitManager.swift          # HealthKit manager querying workouts, sleep, resting HR, and steps
 │   │   ├── LocationManager.swift           # CoreLocation manager (significant, geofence, visits, wakeups)
-│   │   └── LocationStore.swift             # Thread-safe persistent JSON store with GPX/GeoJSON/CSV export
+│   │   ├── LocationStore.swift             # Thread-safe persistent JSON store with synchronous loading & iCloud rehydration
+│   │   └── PlacesStore.swift               # Known places store synchronized with iCloud places.json
 │   ├── Views/
-│   │   ├── MainTabView.swift               # 3-tab layout (Transmitter, Transmissions, Hermes Config)
+│   │   ├── MainTabView.swift               # 5-tab layout (Today, Health, Places, Archive, Settings)
 │   │   ├── DashboardView.swift             # Primary transmitter telemetry UI and architecture guides
+│   │   ├── HealthDetailView.swift          # Deep-dive Apple Health telemetry view
+│   │   ├── PlacesView.swift                # Places management UI: register/edit home, gym, work with geofences
 │   │   ├── HistoryLogView.swift            # Historical transmission stream and diagnostic event logs
 │   │   ├── SettingsView.swift              # Pipeline selector (CloudKit), container ID, iOS settings link
 │   │   └── Components/
@@ -136,7 +143,7 @@ hermes-companion-ios/
 │       └── test_companion.py               # Reader checks, no network
 └── server/                                 # Optional MCP bridge and integration tests
     ├── places.py                           # Semantic place engine used by the MCP tools
-    ├── mcp_server.py                       # MCP server (stdio) for Hermes Agent
+    ├── mcp_server.py                       # MCP server (stdio) resolving places in location & history
     ├── client.py                           # iCloud file reader with SQLite fallback
     ├── skills/README.md                    # Points at the single root skill
     ├── HERMES_AGENT_PROMPT.md              # Generic notes for an agent that reads the files
@@ -149,7 +156,11 @@ hermes-companion-ios/
 - [HermesCompanion/App/AppDelegate.swift](HermesCompanion/App/AppDelegate.swift): Crucial entry point. Checks `launchOptions?[.location]` when iOS relaunches the app after termination, immediately binds `LocationManager.shared`, and registers background tasks.
 - [HermesCompanion/App/HermesCompanionApp.swift](HermesCompanion/App/HermesCompanionApp.swift): Initializes SwiftUI environment objects and mounts `AppDelegate`.
 - [HermesCompanion/Services/LocationManager.swift](HermesCompanion/Services/LocationManager.swift): Central CoreLocation orchestrator. Implements `CLLocationManagerDelegate`. Manages permission state, significant location change monitoring, stationary perimeter geofencing, visit callbacks, and triggers auto-sync. Also runs a `CMMotionActivityManager` for real motion state (stationary/walking/running/cycling/automotive), refreshed independently of the GPS fix. `ingestLocation` persists and syncs a fix only when `GPSPersistDecision` accepts the displacement. Each decision logs one line: displacement, threshold, motion state and age, horizontal accuracy, and whether the gate was movement or distance.
-- [HermesCompanion/Services/LocationStore.swift](HermesCompanion/Services/LocationStore.swift): Serializes location records and diagnostic events to JSON files in `Application Support`. `saveRecord` is a no-op (no file write) when the latest stored coordinate is unchanged. Provides `recentRecords(withinDays:maxCount:)` with rolling 7-day or 1,000-point retention. Supports exporting to GPX, GeoJSON, and CSV.
+- [HermesCompanion/Services/LocationStore.swift](HermesCompanion/Services/LocationStore.swift): Serializes location records and diagnostic events to JSON files in `Application Support`. Loads data synchronously on initialization (`loadDataSynchronously()`) to prevent race conditions where early location fixes overwrite historical records, and rehydrates from iCloud container `location_history.json` if local store is empty. Provides `recentRecords(withinDays:maxCount:)` with rolling 7-day or 1,000-point retention. Supports exporting to GPX, GeoJSON, and CSV.
+- [HermesCompanion/Models/Place.swift](HermesCompanion/Models/Place.swift): Codable model for known user locations (name, extensible `PlaceCategory` struct conforming to `RawRepresentable` and `ExpressibleByStringLiteral`, `tags: [String]` list, custom activity description, coordinates, geofence radius in meters, optional notes). Backwards-compatible with `places.json` schema.
+- [HermesCompanion/Services/PlacesStore.swift](HermesCompanion/Services/PlacesStore.swift): Observable store managing user-defined places with immutable functional updates. Synchronizes changes both locally and to iCloud container `Documents/places.json`.
+- [HermesCompanion/Views/PlacesView.swift](HermesCompanion/Views/PlacesView.swift): Editorial monochrome UI view for listing, adding, and deleting known places. Features a responsive, multi-line `EditorialFlowLayout` for flexible tag selection, extensible presets (Home, Work, Gym, Café, Outdoors, Park, School, Shop, Transit, General), an inline custom tag creator (e.g. library, parents, bouldering), and "Use Current Fix" coordinate autofill.
+- [HermesCompanion/Services/HealthKitManager.swift](HermesCompanion/Services/HealthKitManager.swift): Apple Health orchestrator. Queries workouts, sleep analysis, heart rate, resting heart rate, HRV, active energy, and daily steps. Implements background delivery (`enableBackgroundDelivery`) and `HKObserverQuery`. Features intelligent sleep deduplication: merges overlapping time intervals (`mergeIntervals`), prioritizes Apple Watch hardware stage sources over coarse phone estimates, clusters backward from latest wake time with a 4-hour session gap cutoff, and calculates total sleep as the mathematical union of all sleep stages ($\text{Deep} \cup \text{REM} \cup \text{Core}$) to guarantee zero double-counting across sources.
 - [HermesCompanion/Services/HealthKitManager.swift](HermesCompanion/Services/HealthKitManager.swift): Apple Health orchestrator. Queries workouts, sleep analysis, heart rate, resting heart rate, HRV, active energy, and daily steps. Implements background delivery (`enableBackgroundDelivery`) and `HKObserverQuery`. Features intelligent sleep deduplication: merges overlapping time intervals (`mergeIntervals`), prioritizes Apple Watch hardware stage sources over coarse phone estimates, clusters backward from latest wake time with a 4-hour session gap cutoff, and calculates total sleep as the mathematical union of all sleep stages ($\text{Deep} \cup \text{REM} \cup \text{Core}$) to guarantee zero double-counting across sources.
 - [HermesCompanion/Models/HealthSnapshot.swift](HermesCompanion/Models/HealthSnapshot.swift): Codable health snapshot: `SleepRecord`, `WorkoutRecord`, and `VitalsRecord`. The file written for the agent carries codes and numbers. English insight sentences are not generated.
 - [HermesCompanion/Views/Components/HealthOverviewCard.swift](HermesCompanion/Views/Components/HealthOverviewCard.swift): Visual SwiftUI card mounted on `DashboardView` displaying live sleep hours, workout status, heart rate, recovery pills, HealthKit authorization triggers, and manual refresh sync.
@@ -171,7 +182,7 @@ hermes-companion-ios/
 - [skills/hermes-companion/SKILL.md](skills/hermes-companion/SKILL.md): The single published Hermes skill (version 1.2.0). Replaces `user-location` and `user-health`. Frontmatter follows the skill authoring format (`name`, `description` under 60 characters, `version`, `author`, `license`, `platforms`, `metadata.hermes.tags`, `category: health`, and `config`). The description and the Requires the iPhone app section say the skill works only with this iOS app. Product page: https://hermescompanion.funktional.dev. Install with `hermes skills install danielmain/hermes-companion/skills/hermes-companion`. The Language section tells the model to answer in the user's language. A pull request into Hermes Agent belongs at `optional-skills/health/hermes-companion/`, which is the skill directory only.
 - [skills/hermes-companion/scripts/companion.py](skills/hermes-companion/scripts/companion.py): Stdlib reader. Resolves known places, checks freshness, and prints key/value facts (`place_name`, `still_there`, motion freshness, `movement_reason`, health codes). Flags stale fixes without fresh motion as `still_there: unconfirmed`. Reads rolling history via `--timeline` (summarizing stays, dwell times, transits, and telemetry gaps) or executes in-memory SQL queries via `--sql`. Logs `INFO` / `WARN` / `ERROR` on stderr.
 - [server/mcp_server.py](server/mcp_server.py): Model Context Protocol (MCP) server communicating over stdio (JSON-RPC). Exposes `get_user_location`, `get_user_health`, `get_user_physical_context`, `get_location_history`, `add_known_place`, and `list_known_places`. Reads from both local SQLite cache and iCloud `location_history.json`.
-- [server/client.py](server/client.py): Python helper for direct zero-network reading of location, rolling location history, and Apple Health telemetry from the locally synced iCloud/CloudKit files, falling back to the local SQLite cache.
+- [server/client.py](server/client.py): Python helper for direct zero-network reading of location, rolling location history (sorted descending by timestamp, returning the newest waypoints up to `limit`), and Apple Health telemetry from the locally synced iCloud/CloudKit files, falling back to the local SQLite cache.
 - [server/HERMES_AGENT_PROMPT.md](server/HERMES_AGENT_PROMPT.md): Generic notes for an agent that reads location and health. Personal voice stays in the agent's own profile, not in this repository.
 - [server/test_integration.py](server/test_integration.py): Integration test verifying iCloud/CloudKit file parsing (location + health) and MCP tool execution with place resolution, with no relay or network.
 
@@ -250,7 +261,7 @@ To ensure the codebase is robust, easily testable, and catches bugs at compile-t
 9. **Keep the repository generic:** Do not commit personal names, home directory paths, device UDIDs, Apple Team IDs, or certificate identifiers. Signing stays in Xcode on each machine. Agent voice stays in the agent's own profile.
 10. **Any language, no quoted English, no battery or speed for agent or app:** Skill text stays English. Replies are in the user's language. Do not add English sentences (`suggested_greeting`, insights, openers, summaries) for the agent to recite. Neither the agent nor the app tracks or displays battery percentage or speed. Do not reintroduce `battery_level`, `battery_state`, `speed_mps`, or `speed_kmh` into `latest_location.json`, `location_history.json`, `LocationRecord`, or UI screens.
 11. **Mandatory Synchronization with Hermes Agent Fork:** Any changes made to the Hermes Companion skill files in `skills/hermes-companion/` (`SKILL.md`, `references/files.md`, `scripts/companion.py`, `scripts/test_companion.py`) **MUST** be synced and committed to the corresponding folder in the `hermes-agent` fork located at `/Users/daniel/Workspace/hermes-agent/optional-skills/health/hermes-companion/`.
-    - Run `./scripts/sync_hermes_agent.sh` (or `rsync -av --delete --exclude="__pycache__" --exclude=".DS_Store" skills/hermes-companion/ /Users/daniel/Workspace/hermes-agent/optional-skills/health/hermes-companion/`).
-    - Verify tests in the target repo: `python3 /Users/daniel/Workspace/hermes-agent/optional-skills/health/hermes-companion/scripts/test_companion.py`.
-    - Commit and push the changes in `/Users/daniel/Workspace/hermes-agent` so the `feat/hermes-companion-skill` branch stays in lockstep with this repository.
+    - Run `./scripts/sync_hermes_agent.sh "feat(skills): ..."` to automate syncing, test execution in the fork, and git commit/push to origin `feat/hermes-companion-skill`.
+    - Always ensure the fork branch `feat/hermes-companion-skill` stays in lockstep with every skill change in this repository.
+
 

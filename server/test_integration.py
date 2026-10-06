@@ -22,7 +22,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Final, Mapping
+from typing import Final, List, Mapping
 
 REPO: Final[str] = str(Path(__file__).resolve().parents[1])
 SERVER: Final[str] = os.path.join(REPO, "server")
@@ -40,6 +40,19 @@ LOCATION_FIXTURE: Final[Mapping[str, object]] = {
     "app_state": "background",
     "device_name": "iPhone",
 }
+
+HISTORY_FIXTURES: Final[List[Mapping[str, object]]] = [
+    {
+        "id": f"ck-hist-{i:03d}",
+        "timestamp": f"2026-10-06T14:{i:02d}:00Z",
+        "latitude": 48.8588 + (i * 0.001),
+        "longitude": 2.2943 + (i * 0.001),
+        "horizontal_accuracy": 3.0,
+        "source": "Standard GPS",
+        "motion_activity": "walking",
+    }
+    for i in (50, 40, 30, 20, 10)  # 5 records: 14:50 (newest) down to 14:10 (oldest)
+]
 
 HEALTH_FIXTURE: Final[Mapping[str, object]] = {
     "id": "ck-health-001",
@@ -122,7 +135,34 @@ def run_test() -> None:
         with open(temp_health, "w", encoding="utf-8") as f:
             json.dump(dict(HEALTH_FIXTURE), f)
         with open(temp_history, "w", encoding="utf-8") as f:
-            json.dump({"records": [dict(LOCATION_FIXTURE)]}, f)
+            json.dump({"count": len(HISTORY_FIXTURES), "records": [dict(r) for r in HISTORY_FIXTURES]}, f)
+
+        print("   Focused unit test for get_location_history_from_icloud...")
+        # (a) length N
+        hist_3 = client.get_location_history_from_icloud(limit=3)
+        assert len(hist_3) == 3, f"Expected 3 records, got {len(hist_3)}"
+        # (b) newest timestamps
+        ts_3 = [r.get("timestamp") for r in hist_3]
+        expected_newest_3 = [
+            "2026-10-06T14:50:00Z",
+            "2026-10-06T14:40:00Z",
+            "2026-10-06T14:30:00Z",
+        ]
+        assert ts_3 == expected_newest_3, f"Expected {expected_newest_3}, got {ts_3}"
+        # (c) does not return tail of array
+        tail_timestamps = {"2026-10-06T14:20:00Z", "2026-10-06T14:10:00Z"}
+        assert not any(ts in tail_timestamps for ts in ts_3), f"Returned tail items: {ts_3}"
+
+        # (d) Ordering normalization: even if written oldest-first on disk, returns newest-first
+        with open(temp_history, "w", encoding="utf-8") as f:
+            json.dump({"records": [dict(r) for r in reversed(HISTORY_FIXTURES)]}, f)
+        hist_rev = client.get_location_history_from_icloud(limit=3)
+        assert [r.get("timestamp") for r in hist_rev] == expected_newest_3, "Failed to normalize oldest-first disk records"
+
+        # Restore newest-first fixture for subsequent MCP server step
+        with open(temp_history, "w", encoding="utf-8") as f:
+            json.dump({"count": len(HISTORY_FIXTURES), "records": [dict(r) for r in HISTORY_FIXTURES]}, f)
+        print("   get_location_history_from_icloud OK: newest-first ordering, limit, and tail rejection verified")
 
         loc = client.get_user_location(prefer_icloud=True)
         assert loc is not None and loc["latitude"] == 48.858844
@@ -186,12 +226,21 @@ def run_test() -> None:
 
         raw_history_call = mcp_server.process_message({
             "jsonrpc": "2.0", "id": 5, "method": "tools/call",
-            "params": {"name": "get_location_history", "arguments": {"limit": 5}},
+            "params": {"name": "get_location_history", "arguments": {"limit": 3}},
         })
         assert raw_history_call is not None
         history_res = raw_history_call["result"]  # type: ignore[index]
         history_text = history_res["content"][0]["text"]
-        assert "Recent" in history_text or "waypoints" in history_text
+        assert "Recent 3 location waypoints:" in history_text
+        assert "2026-10-06T14:50:00Z" in history_text
+        assert "2026-10-06T14:40:00Z" in history_text
+        assert "2026-10-06T14:30:00Z" in history_text
+        assert "2026-10-06T14:20:00Z" not in history_text
+        assert "2026-10-06T14:10:00Z" not in history_text
+        idx_50 = history_text.index("2026-10-06T14:50:00Z")
+        idx_40 = history_text.index("2026-10-06T14:40:00Z")
+        idx_30 = history_text.index("2026-10-06T14:30:00Z")
+        assert idx_50 < idx_40 < idx_30, "Waypoints must be formatted in newest-first descending order"
         print(f"   MCP get_location_history OK:\n{history_text}")
 
         print("6. Write-on-change: old GPS at a known place is still there...")
@@ -225,6 +274,49 @@ def run_test() -> None:
         for p in (temp_loc, temp_health, temp_history):
             if os.path.exists(p):
                 os.remove(p)
+
+
+import unittest
+
+
+class LocationHistoryUnitTests(unittest.TestCase):
+    def setUp(self) -> None:
+        import client  # type: ignore[import-not-found,import-untyped]
+        self.client = client
+        self.temp_history = Path("/tmp/hermes_unit_test_location_history.json")
+        self.saved_history_paths = list(client.ICLOUD_HISTORY_CONTAINER_PATHS)
+        client.ICLOUD_HISTORY_CONTAINER_PATHS.insert(0, self.temp_history)
+
+    def tearDown(self) -> None:
+        self.client.ICLOUD_HISTORY_CONTAINER_PATHS[:] = self.saved_history_paths
+        if self.temp_history.exists():
+            self.temp_history.unlink()
+
+    def test_get_location_history_returns_newest_first_and_respects_limit(self) -> None:
+        self.temp_history.write_text(
+            json.dumps({"count": len(HISTORY_FIXTURES), "records": [dict(r) for r in HISTORY_FIXTURES]}),
+            encoding="utf-8",
+        )
+        res = self.client.get_location_history_from_icloud(limit=3)
+        self.assertEqual(len(res), 3)
+        self.assertEqual(
+            [r.get("timestamp") for r in res],
+            ["2026-10-06T14:50:00Z", "2026-10-06T14:40:00Z", "2026-10-06T14:30:00Z"],
+        )
+        self.assertNotIn("2026-10-06T14:20:00Z", [r.get("timestamp") for r in res])
+        self.assertNotIn("2026-10-06T14:10:00Z", [r.get("timestamp") for r in res])
+
+    def test_get_location_history_normalizes_oldest_first_file(self) -> None:
+        self.temp_history.write_text(
+            json.dumps({"records": [dict(r) for r in reversed(HISTORY_FIXTURES)]}),
+            encoding="utf-8",
+        )
+        res = self.client.get_location_history_from_icloud(limit=3)
+        self.assertEqual(len(res), 3)
+        self.assertEqual(
+            [r.get("timestamp") for r in res],
+            ["2026-10-06T14:50:00Z", "2026-10-06T14:40:00Z", "2026-10-06T14:30:00Z"],
+        )
 
 
 if __name__ == "__main__":

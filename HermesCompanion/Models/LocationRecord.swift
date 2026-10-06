@@ -203,6 +203,12 @@ public struct LocationRecord: Identifiable, Codable, Equatable {
     public let motionConfidence: String?
     /// Why this coordinate was written. Nil on records saved before the field existed.
     public let movementReason: MovementReason?
+    // Apple Maps reverse-geocoded placemark metadata
+    public let placemarkName: String?
+    public let placemarkLocality: String?
+    public let placemarkThoroughfare: String?
+    public let placemarkSubThoroughfare: String?
+    public let placemarkAreasOfInterest: [String]?
     public var synced: Bool
 
     public var coordinate: CLLocationCoordinate2D {
@@ -257,7 +263,12 @@ public struct LocationRecord: Identifiable, Codable, Equatable {
         motionTimestamp: Date? = nil,
         motionConfidence: String? = nil,
         movementReason: MovementReason? = nil,
-        synced: Bool = false
+        synced: Bool = false,
+        placemarkName: String? = nil,
+        placemarkLocality: String? = nil,
+        placemarkThoroughfare: String? = nil,
+        placemarkSubThoroughfare: String? = nil,
+        placemarkAreasOfInterest: [String]? = nil
     ) {
         self.id = id
         self.timestamp = timestamp
@@ -274,6 +285,11 @@ public struct LocationRecord: Identifiable, Codable, Equatable {
         self.motionConfidence = motionConfidence
         self.movementReason = movementReason
         self.synced = synced
+        self.placemarkName = placemarkName
+        self.placemarkLocality = placemarkLocality
+        self.placemarkThoroughfare = placemarkThoroughfare
+        self.placemarkSubThoroughfare = placemarkSubThoroughfare
+        self.placemarkAreasOfInterest = placemarkAreasOfInterest
     }
 
     public init(
@@ -283,7 +299,12 @@ public struct LocationRecord: Identifiable, Codable, Equatable {
         motionActivity: MotionActivity? = nil,
         motionTimestamp: Date? = nil,
         motionConfidence: String? = nil,
-        movementReason: MovementReason? = nil
+        movementReason: MovementReason? = nil,
+        placemarkName: String? = nil,
+        placemarkLocality: String? = nil,
+        placemarkThoroughfare: String? = nil,
+        placemarkSubThoroughfare: String? = nil,
+        placemarkAreasOfInterest: [String]? = nil
     ) {
         self.id = UUID()
         self.timestamp = location.timestamp
@@ -300,6 +321,37 @@ public struct LocationRecord: Identifiable, Codable, Equatable {
         self.motionConfidence = motionConfidence
         self.movementReason = movementReason
         self.synced = false
+        self.placemarkName = placemarkName
+        self.placemarkLocality = placemarkLocality
+        self.placemarkThoroughfare = placemarkThoroughfare
+        self.placemarkSubThoroughfare = placemarkSubThoroughfare
+        self.placemarkAreasOfInterest = placemarkAreasOfInterest
+    }
+
+    /// Functional copy of this record enriched with an Apple Maps CLPlacemark
+    public func withPlacemark(_ placemark: CLPlacemark) -> LocationRecord {
+        LocationRecord(
+            id: self.id,
+            timestamp: self.timestamp,
+            latitude: self.latitude,
+            longitude: self.longitude,
+            altitude: self.altitude,
+            horizontalAccuracy: self.horizontalAccuracy,
+            verticalAccuracy: self.verticalAccuracy,
+            course: self.course,
+            source: self.source,
+            appState: self.appState,
+            motionActivity: self.motionActivity,
+            motionTimestamp: self.motionTimestamp,
+            motionConfidence: self.motionConfidence,
+            movementReason: self.movementReason,
+            synced: false,
+            placemarkName: placemark.name,
+            placemarkLocality: placemark.locality,
+            placemarkThoroughfare: placemark.thoroughfare,
+            placemarkSubThoroughfare: placemark.subThoroughfare,
+            placemarkAreasOfInterest: placemark.areasOfInterest
+        )
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -318,6 +370,11 @@ public struct LocationRecord: Identifiable, Codable, Equatable {
         case motionConfidence
         case movementReason
         case synced
+        case placemarkName
+        case placemarkLocality
+        case placemarkThoroughfare
+        case placemarkSubThoroughfare
+        case placemarkAreasOfInterest
     }
 
     public init(from decoder: Decoder) throws {
@@ -337,6 +394,11 @@ public struct LocationRecord: Identifiable, Codable, Equatable {
         self.motionConfidence = try container.decodeIfPresent(String.self, forKey: .motionConfidence)
         self.movementReason = try container.decodeIfPresent(MovementReason.self, forKey: .movementReason)
         self.synced = try container.decodeIfPresent(Bool.self, forKey: .synced) ?? false
+        self.placemarkName = try container.decodeIfPresent(String.self, forKey: .placemarkName)
+        self.placemarkLocality = try container.decodeIfPresent(String.self, forKey: .placemarkLocality)
+        self.placemarkThoroughfare = try container.decodeIfPresent(String.self, forKey: .placemarkThoroughfare)
+        self.placemarkSubThoroughfare = try container.decodeIfPresent(String.self, forKey: .placemarkSubThoroughfare)
+        self.placemarkAreasOfInterest = try container.decodeIfPresent([String].self, forKey: .placemarkAreasOfInterest)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -356,6 +418,11 @@ public struct LocationRecord: Identifiable, Codable, Equatable {
         try container.encodeIfPresent(motionConfidence, forKey: .motionConfidence)
         try container.encodeIfPresent(movementReason, forKey: .movementReason)
         try container.encode(synced, forKey: .synced)
+        try container.encodeIfPresent(placemarkName, forKey: .placemarkName)
+        try container.encodeIfPresent(placemarkLocality, forKey: .placemarkLocality)
+        try container.encodeIfPresent(placemarkThoroughfare, forKey: .placemarkThoroughfare)
+        try container.encodeIfPresent(placemarkSubThoroughfare, forKey: .placemarkSubThoroughfare)
+        try container.encodeIfPresent(placemarkAreasOfInterest, forKey: .placemarkAreasOfInterest)
     }
 
     // MARK: - CloudKit Serialization
@@ -381,6 +448,15 @@ public struct LocationRecord: Identifiable, Codable, Equatable {
         }
         if let movementReason = movementReason {
             record["movementReason"] = movementReason.rawValue as NSString
+        }
+        if let placemarkName = placemarkName {
+            record["placemarkName"] = placemarkName as NSString
+        }
+        if let placemarkLocality = placemarkLocality {
+            record["placemarkLocality"] = placemarkLocality as NSString
+        }
+        if let placemarkThoroughfare = placemarkThoroughfare {
+            record["placemarkThoroughfare"] = placemarkThoroughfare as NSString
         }
         return record
     }
@@ -411,6 +487,21 @@ public struct LocationRecord: Identifiable, Codable, Equatable {
         if let movementReason = movementReason?.rawValue {
             dict["movement_reason"] = movementReason
         }
+        if let placemarkName = placemarkName {
+            dict["placemark_name"] = placemarkName
+        }
+        if let placemarkLocality = placemarkLocality {
+            dict["placemark_locality"] = placemarkLocality
+        }
+        if let placemarkThoroughfare = placemarkThoroughfare {
+            dict["placemark_thoroughfare"] = placemarkThoroughfare
+        }
+        if let placemarkSubThoroughfare = placemarkSubThoroughfare {
+            dict["placemark_sub_thoroughfare"] = placemarkSubThoroughfare
+        }
+        if let placemarkAreasOfInterest = placemarkAreasOfInterest, !placemarkAreasOfInterest.isEmpty {
+            dict["areas_of_interest"] = placemarkAreasOfInterest
+        }
         return dict
     }
 
@@ -435,6 +526,9 @@ public struct LocationRecord: Identifiable, Codable, Equatable {
         let motionTimestamp = record["motionTimestamp"] as? Date
         let motionConfidence = record["motionConfidence"] as? String
         let movementReason = (record["movementReason"] as? String).flatMap { MovementReason(rawValue: $0) }
+        let placemarkName = record["placemarkName"] as? String
+        let placemarkLocality = record["placemarkLocality"] as? String
+        let placemarkThoroughfare = record["placemarkThoroughfare"] as? String
 
         return LocationRecord(
             id: id,
@@ -451,7 +545,11 @@ public struct LocationRecord: Identifiable, Codable, Equatable {
             motionTimestamp: motionTimestamp,
             motionConfidence: motionConfidence,
             movementReason: movementReason,
-            synced: true
+            synced: true,
+            placemarkName: placemarkName,
+            placemarkLocality: placemarkLocality,
+            placemarkThoroughfare: placemarkThoroughfare
         )
     }
 }
+

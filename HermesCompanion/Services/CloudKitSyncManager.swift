@@ -23,6 +23,7 @@ public final class CloudKitSyncManager: ObservableObject {
     private let mirrorQueue = DispatchQueue(label: "com.hermes.cloudkit.mirror", qos: .utility)
     /// Last coordinates actually written to `latest_location.json`. Identical GPS is never rewritten.
     private var lastMirroredCoordinate: CLLocationCoordinate2D?
+    private var lastMirroredHasPlacemark: Bool = false
     private static let identicalCoordinateThresholdMeters: Double = 1.0
 
     private init() {
@@ -293,15 +294,31 @@ public final class CloudKitSyncManager: ObservableObject {
         )
     }
 
-    private func fileHasIdenticalGPS(at url: URL, record: LocationRecord) -> Bool {
-        guard let existing = coordinatesInLocationFile(at: url) else { return false }
-        return isIdenticalGPS(existing, record.coordinate)
+    private func fileNeedsUpdate(at url: URL, record: LocationRecord) -> Bool {
+        guard FileManager.default.fileExists(atPath: url.path),
+              let data = try? Data(contentsOf: url),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let lat = json["latitude"] as? NSNumber,
+              let lon = json["longitude"] as? NSNumber else {
+            return true
+        }
+        let existing = CLLocationCoordinate2D(latitude: lat.doubleValue, longitude: lon.doubleValue)
+        let identical = isIdenticalGPS(existing, record.coordinate)
+        if !identical {
+            return true
+        }
+        // If coordinate is identical but file is missing placemark and record now has one, rewrite it
+        if record.placemarkName != nil && json["placemark_name"] == nil {
+            return true
+        }
+        return false
     }
 
-    /// Writes `latest_location.json` only when the GPS coordinate has changed. Identical positions never update mtime.
+    /// Writes `latest_location.json` only when the GPS coordinate has changed or placemark was enriched.
     private func mirrorLatestLocationToFile(record: LocationRecord, config: TrackingConfiguration) {
         mirrorQueue.async {
-            if let last = self.lastMirroredCoordinate, self.isIdenticalGPS(last, record.coordinate) {
+            let placemarkEnrichment = (record.placemarkName != nil) && !self.lastMirroredHasPlacemark
+            if let last = self.lastMirroredCoordinate, self.isIdenticalGPS(last, record.coordinate), !placemarkEnrichment {
                 self.logger.info("Skipped latest_location.json rewrite: GPS coordinates unchanged")
                 return
             }
@@ -310,8 +327,8 @@ public final class CloudKitSyncManager: ObservableObject {
 
             guard let data = try? JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted]) else { return }
 
-            func writeIfCoordinateChanged(to url: URL) -> Bool {
-                if self.fileHasIdenticalGPS(at: url, record: record) {
+            func writeIfChanged(to url: URL) -> Bool {
+                if !self.fileNeedsUpdate(at: url, record: record) {
                     return false
                 }
                 try? data.write(to: url, options: .atomic)
@@ -321,7 +338,7 @@ public final class CloudKitSyncManager: ObservableObject {
             var wroteAnyFile = false
 
             let tmpURL = URL(fileURLWithPath: "/tmp/hermes_latest_location.json")
-            if writeIfCoordinateChanged(to: tmpURL) {
+            if writeIfChanged(to: tmpURL) {
                 wroteAnyFile = true
             }
 
@@ -333,16 +350,16 @@ public final class CloudKitSyncManager: ObservableObject {
                 let fileURL = documentsURL.appendingPathComponent("latest_location.json")
                 let rootFileURL = containerURL.appendingPathComponent("latest_location.json")
 
-                let documentsNeedsWrite = !self.fileHasIdenticalGPS(at: fileURL, record: record)
-                let rootNeedsWrite = !self.fileHasIdenticalGPS(at: rootFileURL, record: record)
+                let documentsNeedsWrite = self.fileNeedsUpdate(at: fileURL, record: record)
+                let rootNeedsWrite = self.fileNeedsUpdate(at: rootFileURL, record: record)
 
                 if documentsNeedsWrite {
                     try? FileManager.default.createDirectory(at: documentsURL, withIntermediateDirectories: true, attributes: nil)
-                    if writeIfCoordinateChanged(to: fileURL) {
+                    if writeIfChanged(to: fileURL) {
                         wroteAnyFile = true
                     }
                 }
-                if rootNeedsWrite, writeIfCoordinateChanged(to: rootFileURL) {
+                if rootNeedsWrite, writeIfChanged(to: rootFileURL) {
                     wroteAnyFile = true
                 }
 
@@ -364,6 +381,7 @@ public final class CloudKitSyncManager: ObservableObject {
             }
 
             self.lastMirroredCoordinate = record.coordinate
+            self.lastMirroredHasPlacemark = (record.placemarkName != nil)
             if !wroteAnyFile {
                 self.logger.info("No GPS files written; coordinates unchanged")
             }

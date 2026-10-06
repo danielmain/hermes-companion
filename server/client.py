@@ -433,7 +433,12 @@ def get_location_history_from_icloud(limit: int = 100) -> List[Mapping[str, obje
                 raw = json.loads(path.read_text(encoding="utf-8"))
                 records = raw.get("records") if isinstance(raw, dict) else raw
                 if isinstance(records, list):
-                    return records[-limit:] if limit else records
+                    dict_records = [r for r in records if isinstance(r, dict)]
+                    dict_records.sort(
+                        key=lambda r: str(r.get("timestamp") or r.get("recorded_at") or ""),
+                        reverse=True,
+                    )
+                    return dict_records[:limit] if limit else dict_records
             except Exception:
                 continue
     return []

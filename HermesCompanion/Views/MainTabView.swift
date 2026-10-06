@@ -17,17 +17,23 @@ struct MainTabView: View {
                 }
                 .tag(1)
 
+            PlacesView()
+                .tabItem {
+                    Label("Places", systemImage: "mappin.and.ellipse")
+                }
+                .tag(2)
+
             HistoryLogView()
                 .tabItem {
                     Label("Archive", systemImage: "archivebox")
                 }
-                .tag(2)
+                .tag(3)
 
             SettingsView()
                 .tabItem {
                     Label("Settings", systemImage: "slider.horizontal.3")
                 }
-                .tag(3)
+                .tag(4)
         }
         .tint(EditorialColor.ink)
         .toolbarBackground(EditorialColor.paper, for: .tabBar)

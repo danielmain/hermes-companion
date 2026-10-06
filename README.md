@@ -84,7 +84,7 @@ python3 ${HERMES_SKILL_DIR}/scripts/companion.py --health
 python3 ${HERMES_SKILL_DIR}/scripts/companion.py --context
 ```
 
-Name the places you care about once. After that, coordinates stay off-screen and the reply says Home, Work, or the gym.
+Name the places you care about once. You can register and edit places directly from the iPhone app's **Places** tab (with 1-tap "Use Current Fix", custom tags, and geofence radius) or via the CLI. Both sync automatically via iCloud:
 
 ```bash
 python3 ${HERMES_SKILL_DIR}/scripts/companion.py --list

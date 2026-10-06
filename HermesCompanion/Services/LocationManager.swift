@@ -41,6 +41,11 @@ public final class LocationManager: NSObject, ObservableObject {
     private var motionSampleReceivedAt: Date?
     private let didMigrateLegacyDistanceFilter: Bool
 
+    // MARK: - Apple Maps Reverse Geocoding
+    private let geocoder = CLGeocoder()
+    private var lastGeocodedCoordinate: CLLocationCoordinate2D?
+    private var lastPlacemark: CLPlacemark?
+
     private override init() {
         var migratedLegacyDistanceFilter = false
         if let data = UserDefaults.standard.data(forKey: userDefaultsKey),
@@ -386,6 +391,15 @@ public final class LocationManager: NSObject, ObservableObject {
             return false
         }
 
+        // Check if we have a fresh placemark cached close to this coordinate (<50m)
+        let cachedPlacemark: CLPlacemark?
+        if let lastCoord = lastGeocodedCoordinate,
+           LocationRecord.displacementMeters(from: lastCoord, to: location.coordinate) < 50.0 {
+            cachedPlacemark = lastPlacemark
+        } else {
+            cachedPlacemark = nil
+        }
+
         let record = LocationRecord(
             location: location,
             source: source,
@@ -393,7 +407,12 @@ public final class LocationManager: NSObject, ObservableObject {
             motionActivity: currentMotionActivity,
             motionTimestamp: motionUpdatedAt,
             motionConfidence: currentMotionConfidence,
-            movementReason: decision.reason
+            movementReason: decision.reason,
+            placemarkName: cachedPlacemark?.name,
+            placemarkLocality: cachedPlacemark?.locality,
+            placemarkThoroughfare: cachedPlacemark?.thoroughfare,
+            placemarkSubThoroughfare: cachedPlacemark?.subThoroughfare,
+            placemarkAreasOfInterest: cachedPlacemark?.areasOfInterest
         )
 
         let saved = LocationStore.shared.saveRecord(record, minDisplacementMeters: decision.thresholdMeters)
@@ -411,7 +430,35 @@ public final class LocationManager: NSObject, ObservableObject {
         }
 
         triggerRecordSync()
+
+        if cachedPlacemark == nil {
+            reverseGeocodeRecord(record, location: location)
+        }
+
         return true
+    }
+
+    private func reverseGeocodeRecord(_ record: LocationRecord, location: CLLocation) {
+        geocoder.reverseGeocodeLocation(location) { [weak self] placemarks, error in
+            guard let self = self else { return }
+            if let error = error {
+                self.logger.warning("CLGeocoder reverseGeocodeLocation warning: \(error.localizedDescription, privacy: .public)")
+                return
+            }
+            guard let placemark = placemarks?.first else { return }
+            self.lastGeocodedCoordinate = location.coordinate
+            self.lastPlacemark = placemark
+
+            if let updated = LocationStore.shared.updatePlacemark(for: record.id, placemark: placemark) {
+                DispatchQueue.main.async {
+                    if self.latestRecord?.id == updated.id {
+                        self.latestRecord = updated
+                    }
+                    self.triggerRecordSync()
+                }
+                self.logger.info("Apple Maps placemark resolved: \(placemark.name ?? "unnamed", privacy: .public), \(placemark.locality ?? "", privacy: .public)")
+            }
+        }
     }
 }
 

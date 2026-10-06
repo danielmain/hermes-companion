@@ -317,3 +317,52 @@ struct EditorialErrorState: View {
         .accessibilityElement(children: .combine)
     }
 }
+
+// MARK: - Flow / Wrapping Layout
+struct EditorialFlowLayout: Layout {
+    var horizontalSpacing: CGFloat = 8
+    var verticalSpacing: CGFloat = 8
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let maxAvailableWidth = proposal.width ?? .infinity
+        var currentX: CGFloat = 0
+        var currentY: CGFloat = 0
+        var rowHeight: CGFloat = 0
+        var maxRowWidth: CGFloat = 0
+
+        for subview in subviews {
+            let idealSize = subview.sizeThatFits(.unspecified)
+            if currentX + idealSize.width > maxAvailableWidth && currentX > 0 {
+                maxRowWidth = max(maxRowWidth, currentX - horizontalSpacing)
+                currentX = 0
+                currentY += rowHeight + verticalSpacing
+                rowHeight = 0
+            }
+            currentX += idealSize.width + horizontalSpacing
+            rowHeight = max(rowHeight, idealSize.height)
+        }
+        maxRowWidth = max(maxRowWidth, currentX > 0 ? currentX - horizontalSpacing : 0)
+        let totalHeight = currentY + rowHeight
+
+        return CGSize(width: maxAvailableWidth.isFinite ? maxAvailableWidth : maxRowWidth, height: totalHeight)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var currentX = bounds.minX
+        var currentY = bounds.minY
+        var rowHeight: CGFloat = 0
+
+        for subview in subviews {
+            let idealSize = subview.sizeThatFits(.unspecified)
+            if currentX + idealSize.width > bounds.maxX && currentX > bounds.minX {
+                currentX = bounds.minX
+                currentY += rowHeight + verticalSpacing
+                rowHeight = 0
+            }
+            subview.place(at: CGPoint(x: currentX, y: currentY), proposal: ProposedViewSize(idealSize))
+            currentX += idealSize.width + horizontalSpacing
+            rowHeight = max(rowHeight, idealSize.height)
+        }
+    }
+}
+

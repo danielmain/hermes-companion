@@ -25,31 +25,53 @@ public final class LocationStore: ObservableObject {
     }
 
     private init() {
-        loadData()
+        loadDataSynchronously()
     }
 
-    private func loadData() {
-        queue.async { [weak self] in
-            guard let self = self else { return }
+    private func loadDataSynchronously() {
+        var loadedRecords: [LocationRecord] = []
+        var loadedDiagnostics: [AppDiagnosticEvent] = []
 
-            var loadedRecords: [LocationRecord] = []
-            var loadedDiagnostics: [AppDiagnosticEvent] = []
+        if let data = try? Data(contentsOf: self.recordsFileURL),
+           let decoded = try? JSONDecoder().decode([LocationRecord].self, from: data) {
+            loadedRecords = decoded
+        }
 
-            if let data = try? Data(contentsOf: self.recordsFileURL),
-               let decoded = try? JSONDecoder().decode([LocationRecord].self, from: data) {
-                loadedRecords = decoded
-            }
+        if let data = try? Data(contentsOf: self.diagnosticsFileURL),
+           let decoded = try? JSONDecoder().decode([AppDiagnosticEvent].self, from: data) {
+            loadedDiagnostics = decoded
+        }
 
-            if let data = try? Data(contentsOf: self.diagnosticsFileURL),
-               let decoded = try? JSONDecoder().decode([AppDiagnosticEvent].self, from: data) {
-                loadedDiagnostics = decoded
-            }
-
-            DispatchQueue.main.async {
-                self.records = loadedRecords
-                self.diagnostics = loadedDiagnostics
+        // Rehydrate from iCloud location_history.json if local records are empty (e.g. fresh install/rebuild)
+        if loadedRecords.isEmpty {
+            let containerId = TrackingConfiguration.defaultContainerIdentifier
+            let containerURL = fileManager.url(forUbiquityContainerIdentifier: containerId) ?? fileManager.url(forUbiquityContainerIdentifier: nil)
+            if let containerURL = containerURL {
+                let historyURL = containerURL.appendingPathComponent("Documents", isDirectory: true).appendingPathComponent("location_history.json")
+                if let data = try? Data(contentsOf: historyURL),
+                   let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+                   let rawRecords = json["records"] as? [[String: Any]] {
+                    var rehydrated: [LocationRecord] = []
+                    for item in rawRecords {
+                        if let itemData = try? JSONSerialization.data(withJSONObject: item),
+                           let record = try? JSONDecoder().decode(LocationRecord.self, from: itemData) {
+                            rehydrated.append(record)
+                        }
+                    }
+                    if !rehydrated.isEmpty {
+                        loadedRecords = rehydrated
+                        self.logger.info("Rehydrated \(rehydrated.count) records from iCloud location_history.json")
+                        // Persist to local cache immediately
+                        if let cacheData = try? JSONEncoder().encode(rehydrated) {
+                            try? cacheData.write(to: self.recordsFileURL, options: .atomic)
+                        }
+                    }
+                }
             }
         }
+
+        self.records = loadedRecords
+        self.diagnostics = loadedDiagnostics
     }
 
     /// Persists a GPS record only when the coordinate has actually moved.
@@ -92,6 +114,38 @@ public final class LocationStore: ObservableObject {
             }
         }
         return true
+    }
+
+    /// Enriches an existing persisted record with Apple Maps CLPlacemark information
+    @discardableResult
+    public func updatePlacemark(for id: UUID, placemark: CLPlacemark) -> LocationRecord? {
+        var updatedRecord: LocationRecord?
+        let updateOnMain: () -> Void = {
+            if let index = self.records.firstIndex(where: { $0.id == id }) {
+                let updated = self.records[index].withPlacemark(placemark)
+                self.records[index] = updated
+                updatedRecord = updated
+            }
+        }
+
+        if Thread.isMainThread {
+            updateOnMain()
+        } else {
+            DispatchQueue.main.sync(execute: updateOnMain)
+        }
+        guard let updated = updatedRecord else { return nil }
+
+        queue.async { [weak self] in
+            guard let self = self else { return }
+            var currentRecords: [LocationRecord] = []
+            DispatchQueue.main.sync {
+                currentRecords = self.records
+            }
+            if let data = try? JSONEncoder().encode(currentRecords) {
+                try? data.write(to: self.recordsFileURL, options: .atomic)
+            }
+        }
+        return updated
     }
 
     public func markSynced(ids: Set<UUID>) {

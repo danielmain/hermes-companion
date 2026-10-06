@@ -280,17 +280,88 @@ class PlacesManager:
                 conn.commit()
                 self._save_to_json_file()
 
+        # Synchronize any existing places from places_file or iCloud
+        self._sync_places_from_files()
+
+    def _sync_places_from_files(self) -> None:
+        """Sync known places from places_file and iCloud container places.json into database."""
+        files_to_check: List[Path] = []
+        if self.places_file.is_file():
+            files_to_check.append(self.places_file)
+
+        # Check iCloud container
+        icloud_docs = Path.home() / "Library/Mobile Documents/iCloud~com~hermes~HermesCompanion/Documents/places.json"
+        if icloud_docs.is_file() and (not self.places_file.is_file() or icloud_docs.resolve() != self.places_file.resolve()):
+            files_to_check.append(icloud_docs)
+
+        now_str = datetime.now(timezone.utc).isoformat()
+        with self._get_connection() as conn:
+            for pf in files_to_check:
+                try:
+                    data = json.loads(pf.read_text(encoding="utf-8"))
+                    if not isinstance(data, list):
+                        continue
+                    for item in data:
+                        if not isinstance(item, dict) or "latitude" not in item or "longitude" not in item or "name" not in item:
+                            continue
+                        name = str(item["name"])
+                        pid = str(item.get("id") or "".join(c.lower() if c.isalnum() else "_" for c in name.strip()))
+                        category = str(item.get("category", "general"))
+                        activity = str(item.get("activity", f"at {name}"))
+                        latitude = float(item["latitude"])
+                        longitude = float(item["longitude"])
+                        radius_meters = float(item.get("radius_meters", 150.0))
+                        notes = str(item.get("notes", ""))
+                        conn.execute(
+                            """
+                            INSERT INTO known_places (id, name, category, activity, latitude, longitude, radius_meters, notes, created_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            ON CONFLICT(id) DO UPDATE SET
+                                name = excluded.name,
+                                category = excluded.category,
+                                activity = excluded.activity,
+                                latitude = excluded.latitude,
+                                longitude = excluded.longitude,
+                                radius_meters = excluded.radius_meters,
+                                notes = excluded.notes
+                            """,
+                            (pid, name, category, activity, latitude, longitude, radius_meters, notes, now_str),
+                        )
+                except Exception:
+                    pass
+            conn.commit()
+
     def _save_to_json_file(self) -> None:
         """Mirror known places to places.json for easy user inspection."""
-        places = self.list_places()
+        with self._get_connection() as conn:
+            cur = conn.execute("SELECT * FROM known_places ORDER BY name ASC")
+            places = [
+                KnownPlace(
+                    id=r["id"],
+                    name=r["name"],
+                    category=r["category"],
+                    activity=r["activity"],
+                    latitude=float(r["latitude"]),
+                    longitude=float(r["longitude"]),
+                    radius_meters=float(r["radius_meters"]),
+                    notes=r["notes"] or "",
+                )
+                for r in cur.fetchall()
+            ]
+        content = json.dumps([p.to_dict() for p in places], indent=2, ensure_ascii=False) + "\n"
         try:
             self.places_file.parent.mkdir(parents=True, exist_ok=True)
-            self.places_file.write_text(
-                json.dumps([p.to_dict() for p in places], indent=2, ensure_ascii=False) + "\n",
-                encoding="utf-8",
-            )
+            self.places_file.write_text(content, encoding="utf-8")
         except Exception:
             pass
+
+        icloud_docs = Path.home() / "Library/Mobile Documents/iCloud~com~hermes~HermesCompanion/Documents/places.json"
+        if icloud_docs.parent.is_dir() and icloud_docs.resolve() != self.places_file.resolve():
+            try:
+                icloud_docs.write_text(content, encoding="utf-8")
+            except Exception:
+                pass
+
 
     def add_place(
         self,
@@ -338,6 +409,7 @@ class PlacesManager:
 
     def list_places(self) -> List[KnownPlace]:
         """List all registered known places."""
+        self._sync_places_from_files()
         with self._get_connection() as conn:
             cur = conn.execute("SELECT * FROM known_places ORDER BY name ASC")
             rows = cur.fetchall()

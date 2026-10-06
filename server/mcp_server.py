@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import json
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import (
     Final,
@@ -340,6 +340,16 @@ def handle_call_tool(name: str, arguments: Mapping[str, object]) -> MCPCallResul
         if not locations:
             return {"content": [{"type": "text", "text": "No location history available."}]}
 
+        try:
+            try:
+                from server.places import get_places_manager
+            except ImportError:
+                from places import get_places_manager  # type: ignore[import-not-found,import-untyped,no-redef]
+            pm = get_places_manager()
+        except Exception:
+            pm = None
+
+        now_utc = datetime.now(timezone.utc)
         lines = [f"Recent {len(locations)} location waypoints:"]
         for loc in locations:
             ts = loc.get("timestamp") or loc.get("recorded_at") or "unknown"
@@ -348,8 +358,34 @@ def handle_call_tool(name: str, arguments: Mapping[str, object]) -> MCPCallResul
             mot = loc.get("motion_activity", "unknown")
             lat_f = _to_float(loc.get("latitude"))
             lon_f = _to_float(loc.get("longitude"))
+
+            place_label: Optional[str] = None
+            if pm:
+                match = pm.match_known_place(lat_f, lon_f)
+                if match:
+                    place_label = f"{match['place_name']} ({match['place_category']})"
+            if not place_label and loc.get("placemark_name"):
+                pm_name = str(loc["placemark_name"]).strip()
+                pm_loc = str(loc.get("placemark_locality") or "").strip()
+                place_label = f"{pm_name}, {pm_loc} (Apple Maps)" if (pm_loc and pm_loc not in pm_name) else f"{pm_name} (Apple Maps)"
+            if not place_label:
+                place_label = "Unlisted place"
+
+            time_label = str(ts)
+            try:
+                ts_clean = str(ts).replace("Z", "+00:00")
+                dt = datetime.fromisoformat(ts_clean)
+                diff_sec = int((now_utc - dt).total_seconds())
+                if diff_sec >= 0:
+                    hours = diff_sec // 3600
+                    mins = (diff_sec % 3600) // 60
+                    age_str = f"{hours}h {mins}m ago" if hours > 0 else f"{mins}m ago"
+                    time_label = f"{ts} ({age_str})"
+            except Exception:
+                pass
+
             lines.append(
-                f"- {ts}: {lat_f:.5f}, {lon_f:.5f} (±{acc:.0f}m, {mot}, {src})"
+                f"- {time_label}: {place_label} — {mot} at {lat_f:.5f}, {lon_f:.5f} (±{acc:.0f}m, {src})"
             )
         return {"content": [{"type": "text", "text": "\n".join(lines)}]}
 
