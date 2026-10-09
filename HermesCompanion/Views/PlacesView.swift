@@ -19,6 +19,7 @@ public struct PlacesView: View {
                 .padding(.vertical, EditorialSpacing.large)
             }
             .background(EditorialColor.paper)
+            .toolbar(.hidden, for: .navigationBar)
             .sheet(isPresented: $isShowingAddSheet) {
                 AddPlaceSheetView()
             }

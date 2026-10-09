@@ -160,10 +160,16 @@ public final class LocationManager: NSObject, ObservableObject {
         isTrackingActive = true
         UserDefaults.standard.set(true, forKey: "com.hermes.trackingActiveState")
 
-        // Configure background updates
-        locationManager.allowsBackgroundLocationUpdates = true
-        locationManager.pausesLocationUpdatesAutomatically = false
-        locationManager.showsBackgroundLocationIndicator = configuration.backgroundIndicatorEnabled
+        // Configure background updates safely if declared in Info.plist (Apple Guideline 2.5.4)
+        if let backgroundModes = Bundle.main.object(forInfoDictionaryKey: "UIBackgroundModes") as? [String],
+           backgroundModes.contains("location") {
+            locationManager.allowsBackgroundLocationUpdates = true
+            locationManager.pausesLocationUpdatesAutomatically = false
+            locationManager.showsBackgroundLocationIndicator = configuration.backgroundIndicatorEnabled
+        } else {
+            locationManager.allowsBackgroundLocationUpdates = false
+            locationManager.pausesLocationUpdatesAutomatically = true
+        }
 
         // Always enable Significant Location Changes (Apple's guarantee for wakes when closed)
         if CLLocationManager.significantLocationChangeMonitoringAvailable() {

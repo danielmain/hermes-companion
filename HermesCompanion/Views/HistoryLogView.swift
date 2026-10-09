@@ -33,8 +33,9 @@ struct HistoryLogView: View {
                         showingClearAlert = true
                     } label: {
                         Image(systemName: "trash")
+                            .font(.body.weight(.medium))
+                            .foregroundStyle(EditorialColor.ink)
                     }
-                    .buttonStyle(EditorialIconButtonStyle())
                     .accessibilityLabel("Clear archive")
                 }
             }
@@ -136,8 +137,9 @@ struct HistoryLogView: View {
             }
         } label: {
             Image(systemName: "square.and.arrow.up")
+                .font(.body.weight(.medium))
+                .foregroundStyle(EditorialColor.ink)
         }
-        .buttonStyle(EditorialIconButtonStyle())
         .accessibilityLabel("Export archive")
     }
 

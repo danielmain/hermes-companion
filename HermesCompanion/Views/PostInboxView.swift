@@ -52,6 +52,8 @@ public struct PostInboxView: View {
                         subtitle: "Private, asynchronous postal channels and letters synchronized with your Hermes agent via iCloud."
                     )
 
+                    actionBarSection
+
                     filterSegmentedBar
 
                     if filteredThreads.isEmpty {
@@ -72,33 +74,40 @@ public struct PostInboxView: View {
                 .padding(.bottom, EditorialSpacing.hero)
             }
             .background(EditorialColor.paper)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        store.loadThreads()
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
-                    }
-                    .buttonStyle(EditorialIconButtonStyle())
-                    .accessibilityLabel("Refresh inbox")
-                }
-
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        showingCompose = true
-                    } label: {
-                        Image(systemName: "plus")
-                    }
-                    .buttonStyle(EditorialIconButtonStyle())
-                    .accessibilityLabel("New letter")
-                }
-            }
+            .toolbar(.hidden, for: .navigationBar)
             .sheet(isPresented: $showingCompose) {
                 NewDispatchSheetView(isPresented: $showingCompose)
             }
             .refreshable {
                 store.loadThreads()
             }
+        }
+    }
+
+    private var actionBarSection: some View {
+        HStack(spacing: EditorialSpacing.small) {
+            Button {
+                store.loadThreads()
+            } label: {
+                Image(systemName: "arrow.clockwise")
+                    .font(.body.weight(.medium))
+            }
+            .buttonStyle(EditorialIconButtonStyle())
+            .accessibilityLabel("Refresh inbox")
+
+            Spacer()
+
+            Button {
+                showingCompose = true
+            } label: {
+                HStack(spacing: EditorialSpacing.small) {
+                    Image(systemName: "plus")
+                        .font(.subheadline.weight(.semibold))
+                    Text("NEW LETTER")
+                }
+            }
+            .buttonStyle(EditorialButtonStyle(isPrimary: true))
+            .accessibilityLabel("New letter")
         }
     }
 

@@ -120,11 +120,12 @@ hermes-companion-ios/
 │   │   ├── LocationStore.swift             # Thread-safe persistent JSON store with synchronous loading & iCloud rehydration
 │   │   └── PlacesStore.swift               # Known places store synchronized with iCloud places.json
 │   ├── Views/
-│   │   ├── MainTabView.swift               # 5-tab layout (Today, Health, Places, Archive, Settings)
+│   │   ├── MainTabView.swift               # 5-tab layout (Today, Post, Health, Places, Settings)
 │   │   ├── DashboardView.swift             # Primary transmitter telemetry UI and architecture guides
+│   │   ├── PostInboxView.swift             # Hermes Post / Inbox: asynchronous letters and memos via iCloud
 │   │   ├── HealthDetailView.swift          # Deep-dive Apple Health telemetry view
 │   │   ├── PlacesView.swift                # Places management UI: register/edit home, gym, work with geofences
-│   │   ├── HistoryLogView.swift            # Historical transmission stream and diagnostic event logs
+│   │   ├── HistoryLogView.swift            # Historical transmission stream and diagnostic event logs (accessible via Today tab)
 │   │   ├── SettingsView.swift              # Pipeline selector (CloudKit), container ID, iOS settings link
 │   │   └── Components/
 │   │       ├── HealthOverviewCard.swift    # Visual card displaying Apple Health telemetry and permissions
@@ -174,7 +175,8 @@ hermes-companion-ios/
 - [HermesCompanion/Services/BackgroundTaskManager.swift](HermesCompanion/Services/BackgroundTaskManager.swift): Registers `BGAppRefreshTask` and `BGProcessingTask` with `BGTaskScheduler`.
 - [HermesCompanion/Models/TrackingConfiguration.swift](HermesCompanion/Models/TrackingConfiguration.swift): Stores user preferences (tracking mode, CloudKit container identifier, geofence radius, distance filter) and the named persist-gate constants (30 m default filter, 150 m stationary override, 1 m/s speed override, 120 s motion freshness, slider 0...50).
 - [HermesCompanion/Models/AppDiagnosticEvent.swift](HermesCompanion/Models/AppDiagnosticEvent.swift): Represents system lifecycle logs with severity (`INFO`, `SUCCESS`, `WARN`, `ERROR`).
-- [HermesCompanion/Views/MainTabView.swift](HermesCompanion/Views/MainTabView.swift): Root tab view hosting `Transmitter`, `Transmissions`, and `Hermes Config`.
+- [HermesCompanion/Views/MainTabView.swift](HermesCompanion/Views/MainTabView.swift): Root tab view hosting `Today`, `Post`, `Health`, `Places`, and `Settings`.
+- [HermesCompanion/Views/PostInboxView.swift](HermesCompanion/Views/PostInboxView.swift): Editorial postal interface for asynchronous correspondence with Hermes Agent profiles (`threads/`), message composition, and thread status filtering.
 - [HermesCompanion/Views/DashboardView.swift](HermesCompanion/Views/DashboardView.swift): Real-time transmitter dashboard displaying connection state, telemetry tiles, tracking mode selector, recent fixes, and explainer sheets.
 - [HermesCompanion/Views/HistoryLogView.swift](HermesCompanion/Views/HistoryLogView.swift): Segmented view for transmission history and diagnostic logs with source filtering, file export, and `LocationDetailView` displaying signal metadata and an interactive `AppleMapsPreviewFrame` that launches Apple Maps on tap.
 - [HermesCompanion/Views/SettingsView.swift](HermesCompanion/Views/SettingsView.swift): Configuration screen for the CloudKit sync container ID, geofence radius slider, and iOS settings shortcut.
@@ -258,7 +260,7 @@ To ensure the codebase is robust, easily testable, and catches bugs at compile-t
 4. **Maps Restricted to Explicit User Request:** The transmitter engine itself remains lightweight without heavy live maps in the telemetry dashboard. Per user request, the record detail inspector (`LocationDetailView`) embeds a small Apple Maps preview frame (`AppleMapsPreviewFrame`) for inspecting individual historical fixes, which opens Apple Maps when clicked/tapped.
 5. **Preserve Closed-State Wakeup Guarantees:**
    - Do **NOT** remove or delay `LocationManager.shared` initialization in `AppDelegate.application(_:didFinishLaunchingWithOptions:)`.
-   - Do **NOT** remove `location` from `UIBackgroundModes` in `Info.plist`.
+   - To comply with **Apple App Store Review Guideline 2.5.4**, `location` is omitted from `UIBackgroundModes` in `Info.plist`; background wakeups rely on Significant Location Changes (`startMonitoringSignificantLocationChanges()`), dynamic geofencing, visits monitoring, and background processing/fetch tasks, which do not require persistent real-time GPS radio mode.
    - Do **NOT** remove `startMonitoringSignificantLocationChanges()` or stationary geofencing, as standard continuous GPS does NOT survive a user swipe-kill or OS memory purge on iOS.
 6. **XcodeGen as Source of Truth:** Do not edit `.xcodeproj` files manually. Make project structure or build setting changes in `project.yml`, then run `xcodegen generate`.
 7. **Verify Builds Before Completion:** Always ensure `xcodebuild` succeeds and `python3 server/test_integration.py` passes before finalizing work.

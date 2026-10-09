@@ -120,7 +120,7 @@ The app keeps working after you leave it, and after iOS relaunches it, through t
 - Visit monitoring for arrivals and departures.
 - Standard GPS while the app is allowed to update in the background.
 
-The in-app Archive tab indexes every recorded fix and system event. Tapping any record displays its precise coordinates, instrument telemetry, and an interactive Apple Maps preview frame; tapping the frame launches Apple Maps directly at that coordinate.
+The in-app Archive (accessible from the Today tab) indexes every recorded fix and system event. Tapping any record displays its precise coordinates, instrument telemetry, and an interactive Apple Maps preview frame; tapping the frame launches Apple Maps directly at that coordinate.
 
 Confirm the Mac can see a fix:
 

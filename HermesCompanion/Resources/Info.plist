@@ -10,7 +10,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Hermes Companion</string>
+	<string>Companion for Hermes</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -24,21 +24,21 @@
 	<key>CFBundleShortVersionString</key>
 	<string>1.0.0</string>
 	<key>CFBundleVersion</key>
-	<string>1</string>
+	<string>4</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSHealthShareUsageDescription</key>
-	<string>Hermes Companion reads your sleep stages, workouts, heart rate, and daily activity from Apple Health so your Hermes companion agent can understand your physical recovery, workout status, and sleep quality.</string>
+	<string>Companion for Hermes reads your sleep stages, workouts, heart rate, and daily activity from Apple Health so your personal Hermes agent can understand your physical recovery, workout status, and sleep quality.</string>
 	<key>NSHealthUpdateUsageDescription</key>
-	<string>Hermes Companion connects to Apple Health to synchronize your health telemetry with your personal companion.</string>
+	<string>Companion for Hermes connects to Apple Health to synchronize your health telemetry with your personal companion.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>Hermes Companion needs location access at all times to report your position and trigger companion automations even when the app is closed or running in the background.</string>
+	<string>Companion for Hermes needs location access to report your position and trigger companion automations when significant location movements or place arrivals occur.</string>
 	<key>NSLocationAlwaysUsageDescription</key>
-	<string>Hermes Companion needs continuous location access even when the app is closed to record significant movements and wake up on arrivals/departures.</string>
+	<string>Companion for Hermes needs location access even when closed to record significant movements and wake up on arrivals/departures.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Hermes Companion needs your location to provide accurate companion updates and map your coordinates.</string>
+	<string>Companion for Hermes needs your location to provide accurate companion updates and map your coordinates.</string>
 	<key>NSMotionUsageDescription</key>
-	<string>Hermes Companion reads motion activity (stationary, walking, running, driving) so your companion agent knows whether you are moving right now, even when the location fix is a few minutes old.</string>
+	<string>Companion for Hermes reads motion activity (stationary, walking, running, driving) so your companion agent knows whether you are moving right now, even when the location fix is a few minutes old.</string>
 	<key>NSUbiquitousContainers</key>
 	<dict>
 		<key>iCloud.com.hermes.HermesCompanion</key>
@@ -53,7 +53,6 @@
 	</dict>
 	<key>UIBackgroundModes</key>
 	<array>
-		<string>location</string>
 		<string>fetch</string>
 		<string>processing</string>
 		<string>remote-notification</string>
