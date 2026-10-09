@@ -305,32 +305,7 @@ private struct EditorialToggleRow: View {
     }
 }
 
-private struct EditorialField: View {
-    let label: LocalizedStringKey
-    let prompt: String
-    @Binding var text: String
-    @FocusState private var isFocused: Bool
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: EditorialSpacing.small) {
-            Text(label)
-                .font(.editorialUtilitySmall)
-                .foregroundStyle(EditorialColor.secondaryInk)
-
-            TextField(prompt, text: $text)
-                .font(.body)
-                .textFieldStyle(.plain)
-                .padding(EditorialSpacing.compact)
-                .frame(minHeight: 48)
-                .background(EditorialColor.paper)
-                .overlay {
-                    Rectangle()
-                        .stroke(EditorialColor.ink, lineWidth: isFocused ? EditorialBorder.strong : EditorialBorder.hairline)
-                }
-                .focused($isFocused)
-        }
-    }
-}
 
 private struct EditorialSlider: View {
     let label: String

@@ -11,21 +11,21 @@ struct MainTabView: View {
                 }
                 .tag(0)
 
+            PostInboxView()
+                .tabItem {
+                    Label("Post", systemImage: "envelope")
+                }
+                .tag(1)
+
             HealthDetailView()
                 .tabItem {
                     Label("Health", systemImage: "heart.text.square")
                 }
-                .tag(1)
+                .tag(2)
 
             PlacesView()
                 .tabItem {
                     Label("Places", systemImage: "mappin.and.ellipse")
-                }
-                .tag(2)
-
-            HistoryLogView()
-                .tabItem {
-                    Label("Archive", systemImage: "archivebox")
                 }
                 .tag(3)
 

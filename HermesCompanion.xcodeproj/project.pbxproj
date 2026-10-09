@@ -11,6 +11,7 @@
 		082C30301E16F666593C8122 /* EditorialOnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10F3163AF5FF0449464E85D2 /* EditorialOnboardingView.swift */; };
 		0BC4378EC9D6DA6EF4976726 /* HealthDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DDC170C34A4EF2F9E770624 /* HealthDetailView.swift */; };
 		1B2E78F66602838584AC2864 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD9CCDD8BC1F05D3F64A7992 /* DashboardView.swift */; };
+		2915E882B297A7B6DDC4CE11 /* DispatchThread.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C2222D1ECB14B14A059D481 /* DispatchThread.swift */; };
 		2AFDDE94090C3D9B5687B52C /* TrackingConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E346E61B87FBF95529DFA97 /* TrackingConfiguration.swift */; };
 		2E75C045551A8FF00EAB09BF /* LocationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3231767A4F3C749850EDCD51 /* LocationStore.swift */; };
 		391D0DF35B83873766C5DE76 /* MetricTileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 655FC160BE3D9698CE13C341 /* MetricTileView.swift */; };
@@ -27,6 +28,7 @@
 		80F8DCBE2B689E3DAB128D47 /* LocationRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70997C2DFDCBB92162F22A42 /* LocationRowView.swift */; };
 		8D1C50BEA55F8A9624F06270 /* HealthSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D31B68B16CFA0619FB293A5 /* HealthSnapshot.swift */; };
 		8E2FEC7B43A3250163CFF287 /* ICloudAccountBannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41936FF57240EAB288E175C2 /* ICloudAccountBannerView.swift */; };
+		942C65960E512ECFDCAF7F75 /* AgentProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43FE4F61A1294A9F4688DF15 /* AgentProfile.swift */; };
 		AB05082DE43399C35A507360 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8F99D2373E2B88B93E58B81 /* SettingsView.swift */; };
 		AF8096125F0073D4D8DB9B82 /* HealthKitManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2187FF074AF20A5A8489B88E /* HealthKitManager.swift */; };
 		C7CD349E260C56EA76CBB3CD /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = ACD3FF5E5C9AE57B0F7C65B5 /* Assets.xcassets */; };
@@ -36,6 +38,8 @@
 		E4CC7A7DDD493988799DE7E8 /* Place.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6EE1AA760E50DB0121FFAFC3 /* Place.swift */; };
 		E50B06B300899EE43F70AA19 /* HistoryLogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 199001EF17CEBCAEA2655885 /* HistoryLogView.swift */; };
 		F0A80981BBC8B6168E73D9A4 /* CloudKitSyncManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3F837EEC8319BE295D0739B /* CloudKitSyncManager.swift */; };
+		F418CFCA68ECF5CE891DF8CE /* PostInboxView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 296A94CAC0FCF9081E2CB40E /* PostInboxView.swift */; };
+		F632412B12E981840D40C4C8 /* DispatchStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85E88E858A8A67B535254A02 /* DispatchStore.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -44,11 +48,13 @@
 		158496746D6DB3BF103D99F3 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		199001EF17CEBCAEA2655885 /* HistoryLogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryLogView.swift; sourceTree = "<group>"; };
 		2187FF074AF20A5A8489B88E /* HealthKitManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitManager.swift; sourceTree = "<group>"; };
+		296A94CAC0FCF9081E2CB40E /* PostInboxView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostInboxView.swift; sourceTree = "<group>"; };
 		3231767A4F3C749850EDCD51 /* LocationStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationStore.swift; sourceTree = "<group>"; };
 		3598323BB305AA350E1DCC0E /* PlacesStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlacesStore.swift; sourceTree = "<group>"; };
 		3D31B68B16CFA0619FB293A5 /* HealthSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthSnapshot.swift; sourceTree = "<group>"; };
 		3E346E61B87FBF95529DFA97 /* TrackingConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackingConfiguration.swift; sourceTree = "<group>"; };
 		41936FF57240EAB288E175C2 /* ICloudAccountBannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ICloudAccountBannerView.swift; sourceTree = "<group>"; };
+		43FE4F61A1294A9F4688DF15 /* AgentProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentProfile.swift; sourceTree = "<group>"; };
 		482DFD3630EAAC5A5D148E16 /* HermesCompanion.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HermesCompanion.entitlements; sourceTree = "<group>"; };
 		485A91DA6EC9A98E1AF9027B /* AppDiagnosticEvent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDiagnosticEvent.swift; sourceTree = "<group>"; };
 		57511556AE5269E42E5009D8 /* HealthOverviewCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthOverviewCard.swift; sourceTree = "<group>"; };
@@ -57,10 +63,12 @@
 		6E9910DB1DD2868FFFE04B8F /* StatusCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusCardView.swift; sourceTree = "<group>"; };
 		6EE1AA760E50DB0121FFAFC3 /* Place.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Place.swift; sourceTree = "<group>"; };
 		70997C2DFDCBB92162F22A42 /* LocationRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationRowView.swift; sourceTree = "<group>"; };
+		85E88E858A8A67B535254A02 /* DispatchStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DispatchStore.swift; sourceTree = "<group>"; };
 		877A2ABB264BA461E7E6175D /* EditorialDesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorialDesignSystem.swift; sourceTree = "<group>"; };
+		8C2222D1ECB14B14A059D481 /* DispatchThread.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DispatchThread.swift; sourceTree = "<group>"; };
 		8C31DC2507E266A61FD54AAF /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		9AABB5A5B4D8FAAAB0657EB5 /* PermissionBannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionBannerView.swift; sourceTree = "<group>"; };
-		A64856389980D1D73A2DC3C3 /* HermesCompanion.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HermesCompanion.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A64856389980D1D73A2DC3C3 /* HermesCompanion.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = HermesCompanion.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A76C9B08427B07439AE47D1E /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
 		ACD3FF5E5C9AE57B0F7C65B5 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		C1CCEDA5B4EA8AC59750808B /* BackgroundTaskManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundTaskManager.swift; sourceTree = "<group>"; };
@@ -79,6 +87,7 @@
 			children = (
 				C1CCEDA5B4EA8AC59750808B /* BackgroundTaskManager.swift */,
 				F3F837EEC8319BE295D0739B /* CloudKitSyncManager.swift */,
+				85E88E858A8A67B535254A02 /* DispatchStore.swift */,
 				2187FF074AF20A5A8489B88E /* HealthKitManager.swift */,
 				C691BD9A582EDEE8459543D6 /* LocationManager.swift */,
 				3231767A4F3C749850EDCD51 /* LocationStore.swift */,
@@ -97,6 +106,7 @@
 				199001EF17CEBCAEA2655885 /* HistoryLogView.swift */,
 				A76C9B08427B07439AE47D1E /* MainTabView.swift */,
 				0EFE0931FA7D1F772DF2DA51 /* PlacesView.swift */,
+				296A94CAC0FCF9081E2CB40E /* PostInboxView.swift */,
 				C8F99D2373E2B88B93E58B81 /* SettingsView.swift */,
 				427369EA2001B3948EEC457D /* Components */,
 				761A84BC86AC90CEF676D765 /* DesignSystem */,
@@ -175,7 +185,9 @@
 		C30CE135B304653AF6E6DE08 /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				43FE4F61A1294A9F4688DF15 /* AgentProfile.swift */,
 				485A91DA6EC9A98E1AF9027B /* AppDiagnosticEvent.swift */,
+				8C2222D1ECB14B14A059D481 /* DispatchThread.swift */,
 				3D31B68B16CFA0619FB293A5 /* HealthSnapshot.swift */,
 				CC4FF56BB8CDA7A346691612 /* LocationRecord.swift */,
 				6EE1AA760E50DB0121FFAFC3 /* Place.swift */,
@@ -254,11 +266,14 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				942C65960E512ECFDCAF7F75 /* AgentProfile.swift in Sources */,
 				425C3943A223A2A6B851E29D /* AppDelegate.swift in Sources */,
 				39533FEBD10F0D1AA79BD1FB /* AppDiagnosticEvent.swift in Sources */,
 				7967632A74989A6A5B219DBF /* BackgroundTaskManager.swift in Sources */,
 				F0A80981BBC8B6168E73D9A4 /* CloudKitSyncManager.swift in Sources */,
 				1B2E78F66602838584AC2864 /* DashboardView.swift in Sources */,
+				F632412B12E981840D40C4C8 /* DispatchStore.swift in Sources */,
+				2915E882B297A7B6DDC4CE11 /* DispatchThread.swift in Sources */,
 				E29462E6F149BCCD9C12C5F3 /* EditorialDesignSystem.swift in Sources */,
 				4006B37325696A198594068F /* EditorialLoadingView.swift in Sources */,
 				082C30301E16F666593C8122 /* EditorialOnboardingView.swift in Sources */,
@@ -279,6 +294,7 @@
 				E4CC7A7DDD493988799DE7E8 /* Place.swift in Sources */,
 				5BD3F7A90AC5977112B1565E /* PlacesStore.swift in Sources */,
 				5DF60949E493F4422C547FE3 /* PlacesView.swift in Sources */,
+				F418CFCA68ECF5CE891DF8CE /* PostInboxView.swift in Sources */,
 				AB05082DE43399C35A507360 /* SettingsView.swift in Sources */,
 				E49D6E26EADC4F184C331174 /* StatusCardView.swift in Sources */,
 				2AFDDE94090C3D9B5687B52C /* TrackingConfiguration.swift in Sources */,
@@ -298,7 +314,6 @@
 				CODE_SIGN_ENTITLEMENTS = HermesCompanion/Resources/HermesCompanion.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = 7H7P2FNJK6;
 				INFOPLIST_FILE = HermesCompanion/Resources/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -322,7 +337,6 @@
 				CODE_SIGN_ENTITLEMENTS = HermesCompanion/Resources/HermesCompanion.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = 7H7P2FNJK6;
 				INFOPLIST_FILE = HermesCompanion/Resources/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (

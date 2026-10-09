@@ -81,8 +81,13 @@ Then ask where you are, how you slept, or whether you are still at a place you n
 python3 ${HERMES_SKILL_DIR}/scripts/companion.py
 python3 ${HERMES_SKILL_DIR}/scripts/companion.py --timeline
 python3 ${HERMES_SKILL_DIR}/scripts/companion.py --health
-python3 ${HERMES_SKILL_DIR}/scripts/companion.py --context
+python3 ${HERMES_SKILL_DIR}/scripts/companion.py --inbox
+python3 ${HERMES_SKILL_DIR}/scripts/companion.py --inbox --pending
+python3 ${HERMES_SKILL_DIR}/scripts/companion.py --thread <thread_id>
+python3 ${HERMES_SKILL_DIR}/scripts/companion.py --reply <thread_id> --message "..."
 ```
+
+**Hermes Post / Inbox**: Send and receive asynchronous letters and memos via the in-app **Post** tab. Designed like a private postbox rather than an instant messenger, you can drop an inquiry or briefing to any of your configured agent profiles (`work`, `fitness`, `personal`). Your agent reads the thread on your Mac, consults your physical telemetry, and writes a reply back to your inbox via your own iCloud container (`threads/<thread_id>/messages/`). When using multiple Hermes profiles (`--profile <name>`), each profile automatically registers into `Documents/profiles.json`, allowing you to choose which agent profile to address before sending.
 
 Name the places you care about once. You can register and edit places directly from the iPhone app's **Places** tab (with 1-tap "Use Current Fix", custom tags, and geofence radius) or via the CLI. Both sync automatically via iCloud:
 

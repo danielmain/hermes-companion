@@ -101,7 +101,25 @@ private struct DashboardLocationStatusSection: View {
                 Rectangle().stroke(EditorialColor.hairline, lineWidth: EditorialBorder.hairline)
             }
 
-            Text("Location history is available in Archive. Tracking modes and background behavior are managed in Settings.")
+            NavigationLink(destination: HistoryLogView()) {
+                HStack {
+                    Label("VIEW LOCATION ARCHIVE", systemImage: "archivebox")
+                        .font(.editorialUtilitySmall)
+                        .foregroundStyle(EditorialColor.ink)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.editorialUtilitySmall)
+                        .foregroundStyle(EditorialColor.secondaryInk)
+                }
+                .padding(EditorialSpacing.compact)
+                .background(EditorialColor.surface)
+                .overlay {
+                    Rectangle().stroke(EditorialColor.hairline, lineWidth: EditorialBorder.hairline)
+                }
+            }
+            .buttonStyle(PlainButtonStyle())
+
+            Text("Tracking modes and background behavior are managed in Settings.")
                 .font(.footnote)
                 .foregroundStyle(EditorialColor.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)

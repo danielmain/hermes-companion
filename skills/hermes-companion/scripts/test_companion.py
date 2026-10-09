@@ -298,6 +298,100 @@ def test_apple_maps_placemark_resolution() -> None:
     check("timeline uses placemark", len(events) > 0 and events[0].get("place_name") == "Fitness First Cannstatt, Stuttgart")
 
 
+def test_dispatch_threads_roundtrip() -> None:
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        threads_dir = Path(tmp_dir) / "threads"
+        threads_dir.mkdir(parents=True, exist_ok=True)
+
+        # 1. Create a thread
+        created = companion.create_dispatch_thread(
+            threads_dir=threads_dir,
+            subject="Weekly Mobility Briefing",
+            initial_body="Can you summarize my running workouts?",
+            sender="user",
+            now=NOW,
+        )
+        check("thread created with pending_agent status", created["status"] == "pending_agent")
+        check("thread created with 1 message", created["message_count"] == 1)
+
+        # 2. List threads
+        threads = companion.list_dispatch_threads(threads_dir)
+        check("listed 1 thread", len(threads) == 1)
+        check("subject matches", threads[0]["subject"] == "Weekly Mobility Briefing")
+
+        # 3. Read messages
+        msgs = companion.list_thread_messages(threads_dir, created["thread_id"])
+        check("1 message in thread", len(msgs) == 1)
+        check("user sender preserved", msgs[0]["sender"] == "user")
+        check("message body matches", msgs[0]["body"] == "Can you summarize my running workouts?")
+
+        # 4. Agent replies
+        reply = companion.reply_to_thread(
+            threads_dir=threads_dir,
+            thread_id=created["thread_id"],
+            body="You completed 3 running sessions totaling 18 km.",
+            sender="agent",
+            now=NOW + timedelta(minutes=5),
+        )
+        check("reply generated", reply is not None)
+        check("reply sender is agent", reply is not None and reply["sender"] == "agent")
+
+        # 5. Verify updated thread metadata
+        threads_after = companion.list_dispatch_threads(threads_dir)
+        check("thread status transitioned to replied", threads_after[0]["status"] == "replied")
+        check("thread count incremented to 2", threads_after[0]["message_count"] == 2)
+        check("snippet updated to reply", threads_after[0]["last_snippet"] == "You completed 3 running sessions totaling 18 km.")
+
+        # 6. Verify chronological messages
+        all_msgs = companion.list_thread_messages(threads_dir, created["thread_id"])
+        check("chronology has 2 messages", len(all_msgs) == 2)
+        check("first message is user", all_msgs[0]["sender"] == "user")
+        check("second message is agent", all_msgs[1]["sender"] == "agent")
+
+
+def test_profiles_registration_and_filtering() -> None:
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        # 1. Register profiles
+        companion.register_active_profile("work", icloud_dir=tmp_dir, now=NOW)
+        companion.register_active_profile("fitness", icloud_dir=tmp_dir, now=NOW + timedelta(minutes=10))
+
+        prof_file = Path(tmp_dir) / "profiles.json"
+        check("profiles.json created", prof_file.is_file())
+        config = json.loads(prof_file.read_text(encoding="utf-8"))
+        profs = config.get("profiles", [])
+        check("two profiles registered", len(profs) == 2)
+        check("fitness is newest active", profs[0]["id"] == "fitness")
+        check("work is second active", profs[1]["id"] == "work")
+
+        # 2. Create threads targeted to different profiles
+        threads_dir = Path(tmp_dir) / "threads"
+        threads_dir.mkdir(parents=True, exist_ok=True)
+        t_work = companion.create_dispatch_thread(
+            threads_dir=threads_dir,
+            subject="Quarterly Planning Review",
+            initial_body="Review Q4 deliverables",
+            target_profile="work",
+            sender="user",
+            now=NOW,
+        )
+        t_fit = companion.create_dispatch_thread(
+            threads_dir=threads_dir,
+            subject="Marathon Training Plan",
+            initial_body="Adjust zone 2 miles",
+            target_profile="fitness",
+            sender="user",
+            now=NOW,
+        )
+        check("work thread has work profile target", t_work.get("target_profile") == "work")
+        check("fitness thread has fitness profile target", t_fit.get("target_profile") == "fitness")
+
+        # 3. Test list filtering by profile
+        all_threads = companion.list_dispatch_threads(threads_dir)
+        check("total 2 threads created", len(all_threads) == 2)
+        fitness_filtered = [t for t in all_threads if t.get("target_profile") == "fitness"]
+        check("fitness filter yields 1 thread", len(fitness_filtered) == 1 and fitness_filtered[0]["subject"] == "Marathon Training Plan")
+
+
 def main() -> int:
     test_still_home_after_hours()
     test_walking_at_home()
@@ -312,9 +406,12 @@ def main() -> int:
     test_timeline_and_history()
     test_bug_md_scenario_gap_detection()
     test_apple_maps_placemark_resolution()
+    test_dispatch_threads_roundtrip()
+    test_profiles_registration_and_filtering()
     print("ok")
     return 0
 
 
 if __name__ == "__main__":
     sys.exit(main())
+
