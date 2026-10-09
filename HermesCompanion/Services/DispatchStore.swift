@@ -104,6 +104,30 @@ public final class DispatchStore: ObservableObject {
         }
     }
 
+    public func registerCustomProfile(id: String, name: String? = nil) {
+        let cleanId = id.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !cleanId.isEmpty else { return }
+        let cleanName = name?.trimmingCharacters(in: .whitespacesAndNewlines)
+            ?? "\(cleanId.capitalized) Agent"
+        let newProfile = AgentProfile(id: cleanId, name: cleanName, lastActive: Date())
+
+        queue.async { [weak self] in
+            guard let self = self else { return }
+            var current = self.availableProfiles.filter { $0.id != cleanId }
+            current.insert(newProfile, at: 0)
+            let config = ProfilesConfig(updatedAt: Date(), profiles: current)
+            if let data = try? DispatchFormatters.jsonEncoder.encode(config) {
+                try? data.write(to: self.localProfilesURL, options: .atomic)
+                if let icloudURL = self.iCloudProfilesURL {
+                    try? data.write(to: icloudURL, options: .atomic)
+                }
+            }
+            DispatchQueue.main.async {
+                self.availableProfiles = current
+            }
+        }
+    }
+
     // MARK: - Functional Thread Retrieval & Loading
 
     public func loadThreads() {

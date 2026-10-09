@@ -413,6 +413,8 @@ public struct NewDispatchSheetView: View {
     @State private var bodyText: String = ""
     @State private var selectedProfile: String = "default"
     @State private var errorMessage: String?
+    @State private var showingCustomProfileAlert: Bool = false
+    @State private var customProfileInput: String = ""
 
     public var body: some View {
         NavigationStack {
@@ -445,6 +447,18 @@ public struct NewDispatchSheetView: View {
                                         }
                                         .buttonStyle(PlainButtonStyle())
                                     }
+
+                                    Button {
+                                        customProfileInput = ""
+                                        showingCustomProfileAlert = true
+                                    } label: {
+                                        EditorialStatusToken(
+                                            text: "+ PROFILE",
+                                            isInverted: false,
+                                            systemImage: "plus"
+                                        )
+                                    }
+                                    .buttonStyle(PlainButtonStyle())
                                 }
                                 .padding(.vertical, EditorialSpacing.xSmall)
                             }
@@ -503,6 +517,21 @@ public struct NewDispatchSheetView: View {
                 if let first = store.availableProfiles.first {
                     selectedProfile = first.id
                 }
+            }
+            .alert("Address to Agent Profile", isPresented: $showingCustomProfileAlert) {
+                TextField("e.g. love, work, health", text: $customProfileInput)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                Button("Add & Select") {
+                    let trimmed = customProfileInput.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                    if !trimmed.isEmpty {
+                        store.registerCustomProfile(id: trimmed)
+                        selectedProfile = trimmed
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Enter the name of your Hermes profile. It will be added to your profile list.")
             }
         }
     }
