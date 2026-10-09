@@ -118,7 +118,7 @@ The app keeps working after you leave it, and after iOS relaunches it, through t
 - Significant location changes, about a cell-tower step, which relaunch a terminated app.
 - A stationary geofence (default 100 m) that fires when you leave.
 - Visit monitoring for arrivals and departures.
-- Standard GPS while the app is allowed to update in the background.
+- Standard GPS while the app is active, plus scheduled background processing tasks.
 
 The in-app Archive (accessible from the Today tab) indexes every recorded fix and system event. Tapping any record displays its precise coordinates, instrument telemetry, and an interactive Apple Maps preview frame; tapping the frame launches Apple Maps directly at that coordinate.
 

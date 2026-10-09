@@ -72,8 +72,8 @@ Neither phone battery percentage nor speed are tracked, stored, or reported. `la
    - If the app is closed, crossing this perimeter triggers `locationManager(_:didExitRegion:)`, prompting iOS to wake the app from its closed state and resume active tracking.
 3. **Visits Monitoring Service (`startMonitoringVisits`)**:
    - Uses Apple's CoreLocation Visit Detection to wake up and record arrival and departure times at frequent destinations.
-4. **Continuous Standard GPS (`allowsBackgroundLocationUpdates = true`)**:
-   - High-precision tracking while moving or while active in foreground/background.
+4. **Standard GPS Tracking & Background Refresh**:
+   - High-precision tracking while active in the foreground. In accordance with **Apple App Store Review Guideline 2.5.4**, persistent background GPS radio mode (`UIBackgroundModes: location`) is omitted from `Info.plist` to prevent battery drain; background wakeups rely on Significant Location Changes, dynamic stationary geofences, Visit detection, and scheduled BGProcessing/BGAppRefresh tasks.
 
 ### Timestamps, UTC Standard & Timezone Handling
 - **Zulu Time (UTC) Canonical Format:** All timestamps written by the iOS app into `latest_location.json` and `latest_health.json` (as well as CloudKit records) use ISO 8601 with the **`Z`** (Zulu) suffix (e.g. `2026-09-29T09:53:05Z`).
