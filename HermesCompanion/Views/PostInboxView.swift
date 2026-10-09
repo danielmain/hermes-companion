@@ -81,6 +81,12 @@ public struct PostInboxView: View {
             .refreshable {
                 store.loadThreads()
             }
+            .onAppear {
+                store.loadThreads()
+            }
+            .onReceive(Timer.publish(every: 5.0, on: .main, in: .common).autoconnect()) { _ in
+                store.loadThreads()
+            }
         }
     }
 
@@ -275,6 +281,10 @@ public struct DispatchThreadDetailView: View {
         .onAppear {
             loadMessages()
         }
+        .onReceive(Timer.publish(every: 3.0, on: .main, in: .common).autoconnect()) { _ in
+            loadMessages()
+            store.loadThreads()
+        }
     }
 
     private func headerSection(_ thread: DispatchThread) -> some View {
@@ -343,7 +353,9 @@ public struct DispatchThreadDetailView: View {
     private func loadMessages() {
         let result = store.loadMessages(for: threadId)
         if case .success(let loaded) = result {
-            self.messages = loaded
+            if loaded.count != self.messages.count || loaded.last?.id != self.messages.last?.id {
+                self.messages = loaded
+            }
         }
     }
 
