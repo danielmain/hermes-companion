@@ -4,7 +4,7 @@ import SwiftUI
 
 public enum DispatchFilter: String, CaseIterable, Identifiable {
     case all = "ALL"
-    case pending = "AWAITING AGENT"
+    case pending = "AWAITING"
     case replied = "REPLIED"
     case archived = "ARCHIVED"
 
@@ -390,29 +390,57 @@ private struct DispatchMessageBubble: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: EditorialSpacing.small) {
-            HStack {
-                EditorialStatusToken(
-                    text: isUser ? "YOU" : "HERMES AGENT",
-                    isInverted: !isUser,
-                    systemImage: isUser ? "person.fill" : "sparkles"
-                )
-
-                Spacer()
-
-                Text(message.timestamp.formatted(date: .omitted, time: .shortened))
-                    .font(.editorialUtilitySmall)
-                    .foregroundStyle(EditorialColor.secondaryInk)
+        HStack {
+            if isUser {
+                Spacer(minLength: EditorialSpacing.large)
             }
 
-            Text(LocalizedStringKey(message.body))
-                .font(.editorialBody)
-                .foregroundStyle(EditorialColor.ink)
-                .lineSpacing(3)
-                .fixedSize(horizontal: false, vertical: true)
-                .textSelection(.enabled)
+            VStack(alignment: .leading, spacing: EditorialSpacing.small) {
+                HStack {
+                    EditorialStatusToken(
+                        text: isUser ? "YOU" : "HERMES AGENT",
+                        isInverted: !isUser,
+                        systemImage: isUser ? "person.fill" : "sparkles"
+                    )
+
+                    Spacer()
+
+                    Text(message.timestamp.formatted(date: .omitted, time: .shortened))
+                        .font(.editorialUtilitySmall)
+                        .foregroundStyle(EditorialColor.secondaryInk)
+                }
+
+                Text(LocalizedStringKey(message.body))
+                    .font(isUser ? .editorialBody : .system(.body, design: .serif))
+                    .foregroundStyle(EditorialColor.ink)
+                    .lineSpacing(isUser ? 3 : 5)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+            }
+            .padding(EditorialSpacing.medium)
+            .background(isUser ? EditorialColor.surface : EditorialColor.paper)
+            .overlay(alignment: .leading) {
+                if !isUser {
+                    Rectangle()
+                        .fill(EditorialColor.ink)
+                        .frame(width: 3)
+                }
+            }
+            .clipShape(isUser ? AnyShape(CutCornerShape()) : AnyShape(Rectangle()))
+            .overlay {
+                if isUser {
+                    CutCornerShape()
+                        .stroke(EditorialColor.hairline, lineWidth: EditorialBorder.hairline)
+                } else {
+                    Rectangle()
+                        .stroke(EditorialColor.hairline, lineWidth: EditorialBorder.hairline)
+                }
+            }
+
+            if !isUser {
+                Spacer(minLength: EditorialSpacing.compact)
+            }
         }
-        .editorialPanel(cutCorner: isUser)
     }
 }
 

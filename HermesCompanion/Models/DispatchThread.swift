@@ -53,7 +53,7 @@ public enum DispatchStatus: String, Codable, Sendable, CaseIterable, Equatable {
 
     public var label: String {
         switch self {
-        case .pendingAgent: return "Awaiting Agent"
+        case .pendingAgent: return "Awaiting"
         case .replied: return "Replied"
         case .archived: return "Archived"
         }
