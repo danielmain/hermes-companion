@@ -1,6 +1,9 @@
 import Foundation
 import Combine
 import os
+#if canImport(UIKit)
+import UIKit
+#endif
 
 // MARK: - Explicit Error Types
 
@@ -182,6 +185,14 @@ public final class DispatchStore: ObservableObject {
 
         return entries.compactMap { folderURL -> DispatchThread? in
             let metaURL = folderURL.appendingPathComponent("meta.json")
+            if fileManager.isUbiquitousItem(at: metaURL) {
+                try? fileManager.startDownloadingUbiquitousItem(at: metaURL)
+            }
+            let icloudMetaURL = folderURL.appendingPathComponent(".meta.json.icloud")
+            if fileManager.fileExists(atPath: icloudMetaURL.path) {
+                try? fileManager.startDownloadingUbiquitousItem(at: icloudMetaURL)
+            }
+
             guard fileManager.fileExists(atPath: metaURL.path),
                   let data = try? Data(contentsOf: metaURL),
                   let thread = try? DispatchFormatters.jsonDecoder.decode(DispatchThread.self, from: data) else {
@@ -194,93 +205,140 @@ public final class DispatchStore: ObservableObject {
     // MARK: - Thread Creation
 
     public func createThread(subject: String, initialBody: String, targetProfile: String = "default") -> Result<DispatchThread, DispatchError> {
-        let cleanSubject = subject.trimmingCharacters(in: .whitespacesAndNewlines)
-        let cleanBody = initialBody.trimmingCharacters(in: .whitespacesAndNewlines)
-        let cleanProfile = targetProfile.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "default" : targetProfile.trimmingCharacters(in: .whitespacesAndNewlines)
+        executeWithBackgroundTask {
+            let cleanSubject = subject.trimmingCharacters(in: .whitespacesAndNewlines)
+            let cleanBody = initialBody.trimmingCharacters(in: .whitespacesAndNewlines)
+            let cleanProfile = targetProfile.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "default" : targetProfile.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        guard !cleanSubject.isEmpty else {
-            return .failure(.writeFailed("Subject cannot be empty"))
-        }
-        guard !cleanBody.isEmpty else {
-            return .failure(.writeFailed("Initial message cannot be empty"))
-        }
+            guard !cleanSubject.isEmpty else {
+                return .failure(.writeFailed("Subject cannot be empty"))
+            }
+            guard !cleanBody.isEmpty else {
+                return .failure(.writeFailed("Initial message cannot be empty"))
+            }
 
-        let threadId = ThreadId.generate().rawValue
-        let now = Date()
-        let snippet = String(cleanBody.prefix(120))
+            let threadId = ThreadId.generate().rawValue
+            let now = Date()
+            let snippet = String(cleanBody.prefix(120))
 
-        let newThread = DispatchThread(
-            id: threadId,
-            subject: cleanSubject,
-            targetProfile: cleanProfile,
-            status: .pendingAgent,
-            createdAt: now,
-            updatedAt: now,
-            messageCount: 1,
-            lastSnippet: snippet
-        )
+            let newThread = DispatchThread(
+                id: threadId,
+                subject: cleanSubject,
+                targetProfile: cleanProfile,
+                status: .pendingAgent,
+                createdAt: now,
+                updatedAt: now,
+                messageCount: 1,
+                lastSnippet: snippet
+            )
 
-        let initialMessage = DispatchMessage(
-            id: MessageId.generate().rawValue,
-            threadId: threadId,
-            sender: .user,
-            timestamp: now,
-            body: cleanBody
-        )
+            let initialMessage = DispatchMessage(
+                id: MessageId.generate().rawValue,
+                threadId: threadId,
+                sender: .user,
+                timestamp: now,
+                body: cleanBody
+            )
 
-        let writeResult = writeThreadAndMessage(thread: newThread, message: initialMessage, sequenceIndex: 1)
-        switch writeResult {
-        case .success:
-            let updated = (self.threads.filter { $0.id != threadId } + [newThread]).sorted(by: { $0.updatedAt > $1.updatedAt })
-            self.threads = updated
-            self.logger.info("Created dispatch thread '\(cleanSubject)' (\(threadId))")
-            return .success(newThread)
-        case .failure(let error):
-            return .failure(error)
+            let writeResult = writeThreadAndMessage(thread: newThread, message: initialMessage, sequenceIndex: 1)
+            switch writeResult {
+            case .success:
+                touchSyncMarker(threadId: threadId)
+                let updated = (self.threads.filter { $0.id != threadId } + [newThread]).sorted(by: { $0.updatedAt > $1.updatedAt })
+                self.threads = updated
+                self.logger.info("Created dispatch thread '\(cleanSubject)' (\(threadId))")
+                return .success(newThread)
+            case .failure(let error):
+                return .failure(error)
+            }
         }
     }
 
     // MARK: - Sending a Reply
 
     public func replyToThread(threadId: String, body: String, sender: DispatchSender) -> Result<DispatchMessage, DispatchError> {
-        let cleanBody = body.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !cleanBody.isEmpty else {
-            return .failure(.writeFailed("Message body cannot be empty"))
+        executeWithBackgroundTask {
+            let cleanBody = body.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !cleanBody.isEmpty else {
+                return .failure(.writeFailed("Message body cannot be empty"))
+            }
+
+            guard let existing = threads.first(where: { $0.id == threadId }) else {
+                return .failure(.threadNotFound(threadId))
+            }
+
+            let now = Date()
+            let nextIndex = existing.messageCount + 1
+            let newStatus: DispatchStatus = (sender == .user) ? .pendingAgent : .replied
+
+            let message = DispatchMessage(
+                id: MessageId.generate().rawValue,
+                threadId: threadId,
+                sender: sender,
+                timestamp: now,
+                body: cleanBody
+            )
+
+            let updatedThread = existing.with(
+                status: newStatus,
+                updatedAt: now,
+                messageCount: nextIndex,
+                lastSnippet: String(cleanBody.prefix(120)),
+                clearError: sender == .user
+            )
+
+            let writeResult = writeThreadAndMessage(thread: updatedThread, message: message, sequenceIndex: nextIndex)
+            switch writeResult {
+            case .success:
+                touchSyncMarker(threadId: threadId)
+                let updatedList = (self.threads.filter { $0.id != threadId } + [updatedThread]).sorted(by: { $0.updatedAt > $1.updatedAt })
+                self.threads = updatedList
+                self.logger.info("Appended message \(message.id) to thread \(threadId) by \(sender.rawValue)")
+                return .success(message)
+            case .failure(let error):
+                return .failure(error)
+            }
         }
+    }
 
-        guard let existing = threads.first(where: { $0.id == threadId }) else {
-            return .failure(.threadNotFound(threadId))
+    // MARK: - Retry Failed Thread
+
+    public func retryThread(id: String) -> Result<Void, DispatchError> {
+        executeWithBackgroundTask {
+            guard let existing = threads.first(where: { $0.id == id }) else {
+                return .failure(.threadNotFound(id))
+            }
+
+            let now = Date()
+            let updated = existing.with(status: .pendingAgent, updatedAt: now, clearError: true)
+            let writeResult = writeMetadata(updated)
+            switch writeResult {
+            case .success:
+                touchSyncMarker(threadId: id)
+                let updatedList = (self.threads.filter { $0.id != id } + [updated]).sorted(by: { $0.updatedAt > $1.updatedAt })
+                self.threads = updatedList
+                self.logger.info("Retried dispatch thread: \(id)")
+                return .success(())
+            case .failure(let error):
+                return .failure(error)
+            }
         }
+    }
 
-        let now = Date()
-        let nextIndex = existing.messageCount + 1
-        let newStatus: DispatchStatus = (sender == .user) ? .pendingAgent : .replied
+    // MARK: - Background Task Helper
 
-        let message = DispatchMessage(
-            id: MessageId.generate().rawValue,
-            threadId: threadId,
-            sender: sender,
-            timestamp: now,
-            body: cleanBody
-        )
-
-        let updatedThread = existing.with(
-            status: newStatus,
-            updatedAt: now,
-            messageCount: nextIndex,
-            lastSnippet: String(cleanBody.prefix(120))
-        )
-
-        let writeResult = writeThreadAndMessage(thread: updatedThread, message: message, sequenceIndex: nextIndex)
-        switch writeResult {
-        case .success:
-            let updatedList = (self.threads.filter { $0.id != threadId } + [updatedThread]).sorted(by: { $0.updatedAt > $1.updatedAt })
-            self.threads = updatedList
-            self.logger.info("Appended message \(message.id) to thread \(threadId) by \(sender.rawValue)")
-            return .success(message)
-        case .failure(let error):
-            return .failure(error)
+    private func executeWithBackgroundTask<T>(_ block: () -> T) -> T {
+        #if canImport(UIKit)
+        let taskId = UIApplication.shared.beginBackgroundTask(withName: "DispatchStoreOperation") {
+            // Expiration handler
         }
+        defer {
+            if taskId != .invalid {
+                UIApplication.shared.endBackgroundTask(taskId)
+            }
+        }
+        #endif
+        return block()
     }
 
     // MARK: - Loading Messages
@@ -296,18 +354,29 @@ public final class DispatchStore: ObservableObject {
 
         for msgDir in candidateDirs {
             guard fileManager.fileExists(atPath: msgDir.path),
-                  let files = try? fileManager.contentsOfDirectory(at: msgDir, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]) else {
+                  let files = try? fileManager.contentsOfDirectory(at: msgDir, includingPropertiesForKeys: nil, options: []) else {
                 continue
             }
 
-            for file in files where file.pathExtension == "json" {
-                guard let data = try? Data(contentsOf: file),
-                      let msg = try? DispatchFormatters.jsonDecoder.decode(DispatchMessage.self, from: data) else {
+            for file in files {
+                let filename = file.lastPathComponent
+                if filename.hasPrefix(".") && filename.hasSuffix(".icloud") {
+                    try? fileManager.startDownloadingUbiquitousItem(at: file)
                     continue
                 }
-                if !seenIds.contains(msg.id) {
-                    seenIds.insert(msg.id)
-                    messages.append(msg)
+
+                if file.pathExtension == "json" {
+                    if fileManager.isUbiquitousItem(at: file) {
+                        try? fileManager.startDownloadingUbiquitousItem(at: file)
+                    }
+                    guard let data = try? Data(contentsOf: file),
+                          let msg = try? DispatchFormatters.jsonDecoder.decode(DispatchMessage.self, from: data) else {
+                        continue
+                    }
+                    if !seenIds.contains(msg.id) {
+                        seenIds.insert(msg.id)
+                        messages.append(msg)
+                    }
                 }
             }
         }
@@ -328,6 +397,21 @@ public final class DispatchStore: ObservableObject {
     }
 
     // MARK: - Low-Level Immutable Disk Writers
+
+    private func coordinatedWrite(data: Data, to url: URL) {
+        let coordinator = NSFileCoordinator(filePresenter: nil)
+        var coordError: NSError?
+        coordinator.coordinate(writingItemAt: url, options: .forReplacing, error: &coordError) { writeURL in
+            do {
+                try data.write(to: writeURL, options: .atomic)
+            } catch {
+                logger.error("Coordinated write failed: \(error.localizedDescription)")
+            }
+        }
+        if let err = coordError {
+            logger.error("Coordinator error: \(err.localizedDescription)")
+        }
+    }
 
     private func writeThreadAndMessage(thread: DispatchThread, message: DispatchMessage, sequenceIndex: Int) -> Result<Void, DispatchError> {
         // 1. Write metadata
@@ -352,12 +436,12 @@ public final class DispatchStore: ObservableObject {
         let localMsgURL = localMsgDir.appendingPathComponent(filename)
         try? msgData.write(to: localMsgURL, options: .atomic)
 
-        // Write to iCloud container
+        // Write to iCloud container using NSFileCoordinator to wake up bird immediately
         if let iCloudDir = iCloudThreadsDirectory {
             let iCloudMsgDir = iCloudDir.appendingPathComponent(thread.id, isDirectory: true).appendingPathComponent("messages", isDirectory: true)
             try? fileManager.createDirectory(at: iCloudMsgDir, withIntermediateDirectories: true)
             let iCloudMsgURL = iCloudMsgDir.appendingPathComponent(filename)
-            try? msgData.write(to: iCloudMsgURL, options: .atomic)
+            coordinatedWrite(data: msgData, to: iCloudMsgURL)
         }
 
         return .success(())
@@ -374,14 +458,32 @@ public final class DispatchStore: ObservableObject {
         let localMetaURL = localThreadDir.appendingPathComponent("meta.json")
         try? metaData.write(to: localMetaURL, options: .atomic)
 
-        // Write to iCloud container
+        // Write to iCloud container using NSFileCoordinator
         if let iCloudDir = iCloudThreadsDirectory {
             let iCloudThreadDir = iCloudDir.appendingPathComponent(thread.id, isDirectory: true)
             try? fileManager.createDirectory(at: iCloudThreadDir, withIntermediateDirectories: true)
             let iCloudMetaURL = iCloudThreadDir.appendingPathComponent("meta.json")
-            try? metaData.write(to: iCloudMetaURL, options: .atomic)
+            coordinatedWrite(data: metaData, to: iCloudMetaURL)
         }
 
         return .success(())
+    }
+
+    private func touchSyncMarker(threadId: String) {
+        let payload: [String: String] = [
+            "updated_at": DispatchFormatters.iso8601Zulu.string(from: Date()),
+            "thread_id": threadId
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted]) else { return }
+
+        // Local cache
+        let localMarker = localThreadsDirectory.appendingPathComponent(".sync_marker.json")
+        try? data.write(to: localMarker, options: .atomic)
+
+        // iCloud Ubiquity Container (triggers macOS launchd WatchPaths immediately via NSFileCoordinator)
+        if let iCloudDir = iCloudThreadsDirectory {
+            let iCloudMarker = iCloudDir.appendingPathComponent(".sync_marker.json")
+            coordinatedWrite(data: data, to: iCloudMarker)
+        }
     }
 }

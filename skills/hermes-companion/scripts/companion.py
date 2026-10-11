@@ -34,6 +34,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import traceback
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -233,6 +234,8 @@ class DispatchThreadMeta(TypedDict, total=False):
     updated_at: str
     message_count: int
     last_snippet: Optional[str]
+    last_error: Optional[str]
+    dispatch_retries: Optional[int]
 
 
 class DispatchMessageRecord(TypedDict):
@@ -334,31 +337,17 @@ def icloud_directories(override: Optional[str]) -> List[Path]:
 
 
 def read_json_file(path: Path) -> Optional[Mapping[str, object]]:
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return None
-    except OSError as exc:
-        log("ERROR", f"could not read {path}: {exc}")
-        return None
-    except json.JSONDecodeError as exc:
-        log("ERROR", f"invalid JSON in {path}: {exc}")
-        return None
-    if not isinstance(data, dict):
-        log("ERROR", f"{path} is not a JSON object")
-        return None
-    return data
+    return safe_read_json(path)
 
 
 def first_reading(directories: Sequence[Path], filename: str) -> Tuple[Optional[Mapping[str, object]], Optional[Path]]:
     for directory in directories:
         path = directory / filename
-        if not path.is_file():
+        if not safe_is_file(path):
             continue
         data = read_json_file(path)
         if data is not None:
             return data, path
-    log("WARN", f"{filename} is not in the iCloud container yet")
     return None, None
 
 
@@ -379,7 +368,7 @@ def default_places_file() -> Path:
 
 def load_places(path: Path) -> List[PlaceRecord]:
     records: List[PlaceRecord] = []
-    if path.is_file():
+    if safe_is_file(path):
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
             if isinstance(data, list):
@@ -405,7 +394,7 @@ def load_places(path: Path) -> List[PlaceRecord]:
     # Seamlessly merge places configured in the iOS app via iCloud container
     for directory in ICLOUD_DIRS:
         icloud_file = directory / "places.json"
-        if icloud_file.is_file() and (not path.is_file() or icloud_file.resolve() != path.resolve()):
+        if safe_is_file(icloud_file) and (not safe_is_file(path) or icloud_file.resolve() != path.resolve()):
             try:
                 ic_data = json.loads(icloud_file.read_text(encoding="utf-8"))
                 if isinstance(ic_data, list):
@@ -1295,10 +1284,17 @@ def safe_is_dir(path: Path) -> bool:
         return False
 
 
-def safe_read_json(path: Path, retries: int = 4) -> Optional[Dict[str, Any]]:
+def safe_is_file(path: Path) -> bool:
+    try:
+        return path.is_file()
+    except OSError:
+        return False
+
+
+def safe_read_json(path: Path, retries: int = 4) -> Optional[dict[str, object]]:
     for attempt in range(retries):
         try:
-            if not path.is_file():
+            if not safe_is_file(path):
                 return None
             content = path.read_text(encoding="utf-8")
             if not content.strip():
@@ -1336,6 +1332,33 @@ def safe_write_text(path: Path, content: str, retries: int = 4) -> bool:
     return False
 
 
+def trigger_icloud_download(path: Path) -> None:
+    """Request immediate download of a dataless .icloud placeholder file on macOS."""
+    if sys.platform != "darwin":
+        return
+    escaped = str(path.resolve()).replace('"', '\\"')
+    try:
+        # Fast path (~30ms, no compiler/toolchain overhead): JXA Foundation
+        cmd = [
+            "osascript", "-l", "JavaScript", "-e",
+            f'ObjC.import("Foundation"); try {{ $.NSFileManager.defaultManager.startDownloadingUbiquitousItemAtURLError($.NSURL.fileURLWithPath("{escaped}"), null); }} catch(e) {{}}'
+        ]
+        res = subprocess.run(cmd, capture_output=True, timeout=2)
+        if res.returncode == 0:
+            return
+    except Exception:
+        pass
+    try:
+        # Fallback path: swift invocation
+        cmd = [
+            "swift", "-e",
+            f'import Foundation; try? FileManager.default.startDownloadingUbiquitousItem(at: URL(fileURLWithPath: "{escaped}"))'
+        ]
+        subprocess.run(cmd, capture_output=True, timeout=3)
+    except Exception:
+        pass
+
+
 def list_dispatch_threads(threads_dir: Path) -> List[DispatchThreadMeta]:
     if not safe_is_dir(threads_dir):
         return []
@@ -1345,13 +1368,36 @@ def list_dispatch_threads(threads_dir: Path) -> List[DispatchThreadMeta]:
     except (OSError, Exception):
         return []
 
+    needs_cooldown = False
     for entry in entries:
-        if not safe_is_dir(entry):
+        try:
+            if not safe_is_dir(entry):
+                continue
+            meta_file = entry / "meta.json"
+            icloud_meta = entry / ".meta.json.icloud"
+            if safe_is_file(icloud_meta) and not safe_is_file(meta_file):
+                trigger_icloud_download(icloud_meta)
+                needs_cooldown = True
+
+            data = safe_read_json(meta_file)
+            if data:
+                results.append(cast(DispatchThreadMeta, data))
+        except (OSError, Exception):
             continue
-        meta_file = entry / "meta.json"
-        data = safe_read_json(meta_file)
-        if data:
-            results.append(cast(DispatchThreadMeta, data))
+
+    if needs_cooldown:
+        # Brief slice to give macOS bird time to materialize the placeholder if download finishes quickly
+        time.sleep(0.15)
+        for entry in entries:
+            try:
+                meta_file = entry / "meta.json"
+                if safe_is_file(meta_file) and not any(r.get("thread_id") == entry.name for r in results):
+                    data = safe_read_json(meta_file)
+                    if data:
+                        results.append(cast(DispatchThreadMeta, data))
+            except Exception:
+                continue
+
     return sorted(results, key=lambda t: str(t.get("updated_at", "")), reverse=True)
 
 
@@ -1361,6 +1407,14 @@ def list_thread_messages(threads_dir: Path, thread_id: str) -> List[DispatchMess
     if not safe_is_dir(msgs_dir):
         return []
     try:
+        has_placeholders = False
+        if safe_is_dir(msgs_dir):
+            for item in msgs_dir.iterdir():
+                if item.name.startswith(".") and item.name.endswith(".icloud"):
+                    trigger_icloud_download(item)
+                    has_placeholders = True
+        if has_placeholders:
+            time.sleep(0.15)
         files = sorted(msgs_dir.glob("*.json"))
     except (OSError, Exception):
         return []
@@ -1478,11 +1532,10 @@ def register_active_profile(
         "updated_at": timestamp_str,
         "profiles": records,
     }
-    try:
-        profiles_file.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    if safe_write_text(profiles_file, json.dumps(payload, indent=2, ensure_ascii=False)):
         log("INFO", f"registered profile '{profile_id}' in {profiles_file}")
-    except Exception as exc:
-        log("WARN", f"could not write profiles.json: {exc}")
+    else:
+        log("WARN", f"could not write {profiles_file}")
 
 
 def create_dispatch_thread(
@@ -1515,7 +1568,7 @@ def create_dispatch_thread(
     }
 
     meta_file = thread_folder / "meta.json"
-    meta_file.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
+    safe_write_text(meta_file, json.dumps(meta, indent=2, ensure_ascii=False))
 
     msg_id = f"msg_{uuid.uuid4().hex[:8]}"
     msg_filename = f"001_{sender}_{date_part}_{msg_id}.json"
@@ -1526,9 +1579,69 @@ def create_dispatch_thread(
         "timestamp": timestamp_str,
         "body": initial_body,
     }
-    (msgs_dir / msg_filename).write_text(json.dumps(message, indent=2, ensure_ascii=False), encoding="utf-8")
+    safe_write_text(msgs_dir / msg_filename, json.dumps(message, indent=2, ensure_ascii=False))
+    touch_sync_marker(threads_dir, thread_id, now=moment)
 
     return meta
+
+
+def touch_sync_marker(
+    threads_dir: Path,
+    thread_id: str,
+    now: Optional[datetime] = None,
+) -> None:
+    """Touch the root .sync_marker.json file to trigger macOS launchd WatchPaths immediately."""
+    try:
+        marker_file = threads_dir / ".sync_marker.json"
+        moment = now or utcnow()
+        data = {
+            "updated_at": moment.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "thread_id": thread_id,
+        }
+        safe_write_text(marker_file, json.dumps(data, indent=2, ensure_ascii=False))
+    except Exception:
+        pass
+
+
+def update_thread_retry(
+    threads_dir: Path,
+    thread_id: str,
+    retries: int,
+    error_message: str,
+    now: Optional[datetime] = None,
+) -> None:
+    """Record a transient dispatch attempt failure without setting permanent failed status."""
+    thread_folder = threads_dir / thread_id
+    meta_file = thread_folder / "meta.json"
+    meta = cast(Optional[DispatchThreadMeta], safe_read_json(meta_file))
+    if not meta:
+        return
+    moment = now or utcnow()
+    meta["dispatch_retries"] = retries
+    meta["last_error"] = f"[Attempt {retries}/3] {error_message}"
+    meta["updated_at"] = moment.strftime("%Y-%m-%dT%H:%M:%SZ")
+    safe_write_text(meta_file, json.dumps(meta, indent=2, ensure_ascii=False))
+
+
+def mark_thread_failed(
+    threads_dir: Path,
+    thread_id: str,
+    error_message: str,
+    now: Optional[datetime] = None,
+) -> None:
+    """Mark a thread as failed with an error message to prevent infinite retry loops."""
+    thread_folder = threads_dir / thread_id
+    meta_file = thread_folder / "meta.json"
+    meta = cast(Optional[DispatchThreadMeta], safe_read_json(meta_file))
+    if not meta:
+        return
+    moment = now or utcnow()
+    timestamp_str = moment.strftime("%Y-%m-%dT%H:%M:%SZ")
+    meta["status"] = "failed"
+    meta["last_error"] = error_message
+    meta["updated_at"] = timestamp_str
+    safe_write_text(meta_file, json.dumps(meta, indent=2, ensure_ascii=False))
+    touch_sync_marker(threads_dir, thread_id, now=moment)
 
 
 def reply_to_thread(
@@ -1571,7 +1684,10 @@ def reply_to_thread(
     meta["status"] = "replied" if sender == "agent" else "pending_agent"
     meta["updated_at"] = timestamp_str
     meta["last_snippet"] = body[:120]
+    meta.pop("last_error", None)
+    meta.pop("dispatch_retries", None)
     safe_write_text(meta_file, json.dumps(meta, indent=2, ensure_ascii=False))
+    touch_sync_marker(threads_dir, thread_id, now=moment)
 
     return message
 
@@ -1628,14 +1744,15 @@ def command_thread_detail(args: argparse.Namespace) -> int:
     thread_id = args.thread
     thread_folder = threads_dir / thread_id
     meta_file = thread_folder / "meta.json"
-    if not meta_file.is_file():
-        log("ERROR", f"thread {thread_id} not found")
-        return 1
+    if not safe_is_file(meta_file):
+        icloud_meta = thread_folder / ".meta.json.icloud"
+        if safe_is_file(icloud_meta):
+            trigger_icloud_download(icloud_meta)
+            time.sleep(0.2)
 
-    try:
-        meta = cast(DispatchThreadMeta, json.loads(meta_file.read_text(encoding="utf-8")))
-    except Exception as exc:
-        log("ERROR", f"failed to parse thread meta: {exc}")
+    meta = cast(Optional[DispatchThreadMeta], safe_read_json(meta_file))
+    if not meta:
+        log("ERROR", f"thread {thread_id} not found or unreadable")
         return 1
 
     messages = list_thread_messages(threads_dir, thread_id)
@@ -1715,6 +1832,54 @@ def command_new_thread(args: argparse.Namespace, now: datetime) -> int:
 LAUNCH_AGENT_LABEL = "ai.hermes.companion-inbox"
 
 
+def get_dispatch_lock_path() -> Path:
+    lock_dir = Path.home() / ".hermes"
+    try:
+        lock_dir.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        lock_dir = Path(tempfile.gettempdir())
+    return lock_dir / "companion_dispatch.lock"
+
+
+def acquire_dispatch_lock(lock_file: Path, stale_seconds: int = 180) -> bool:
+    """Acquire local exclusion lock with stale process and age detection."""
+    try:
+        if lock_file.exists():
+            try:
+                mtime = lock_file.stat().st_mtime
+                age = time.time() - mtime
+                pid_str = lock_file.read_text(encoding="utf-8").strip()
+                pid = int(pid_str) if pid_str.isdigit() else None
+                is_alive = False
+                if pid and pid > 0:
+                    try:
+                        os.kill(pid, 0)
+                        is_alive = True
+                    except OSError:
+                        is_alive = False
+                if not is_alive or age > stale_seconds:
+                    lock_file.unlink(missing_ok=True)
+                else:
+                    return False
+            except Exception:
+                lock_file.unlink(missing_ok=True)
+
+        fd = os.open(str(lock_file), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        os.write(fd, str(os.getpid()).encode("utf-8"))
+        os.close(fd)
+        return True
+    except (FileExistsError, OSError):
+        return False
+
+
+def release_dispatch_lock(lock_file: Path) -> None:
+    try:
+        if lock_file.exists():
+            lock_file.unlink(missing_ok=True)
+    except Exception:
+        pass
+
+
 def find_hermes_executable() -> Optional[str]:
     """Locate the hermes CLI executable."""
     candidates = [
@@ -1774,7 +1939,7 @@ def install_launch_agent(icloud_dir: Optional[str] = None) -> bool:
         <string>--dispatch-pending</string>
     </array>
     <key>StartInterval</key>
-    <integer>60</integer>{watch_xml}
+    <integer>15</integer>{watch_xml}
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
@@ -1861,97 +2026,196 @@ def clean_hermes_chat_output(raw: str) -> str:
     return "\n".join(cleaned).strip()
 
 
+def get_physical_context_summary(
+    icloud_dir: Optional[str] = None,
+    places_file: Optional[Path] = None,
+    now: Optional[datetime] = None,
+) -> str:
+    """Compile a concise, factual physical telemetry briefing to inform the Hermes agent."""
+    moment = now or utcnow()
+    directories = icloud_directories(icloud_dir)
+    loc_raw, loc_path = first_reading(directories, "latest_location.json")
+    health_raw, health_path = first_reading(directories, "latest_health.json")
+
+    parts: List[str] = []
+    if loc_raw and loc_path:
+        places_path = places_file or default_places_file()
+        places = load_places(places_path)
+        loc = resolve_location(loc_raw, places, moment, str(loc_path))
+
+        loc_lines = [
+            f"Place: {loc.get('place_name', 'Unknown')}",
+            f"Coordinates: {loc.get('latitude')}, {loc.get('longitude')}",
+        ]
+        history_records, _ = read_history(directories)
+        addr_parts = [p for p in (loc.get("placemark_name"), loc.get("placemark_locality")) if p]
+        if not addr_parts and history_records:
+            for r in reversed(history_records):
+                r_parts = [p for p in (r.get("placemark_name"), r.get("placemark_locality")) if p]
+                if r_parts:
+                    addr_parts = r_parts
+                    break
+        if addr_parts:
+            loc_lines.append(f"Location/City: {', '.join(addr_parts)}")
+        if loc.get("motion_activity") and loc["motion_activity"] != "unknown":
+            loc_lines.append(f"Motion: {loc['motion_activity']}")
+        if loc.get("still_there") is True:
+            loc_lines.append("Still at this place: Yes")
+
+        if history_records:
+            timeline = build_timeline(history_records, places, moment)
+            events = timeline.get("events", [])
+            if events and events[-1].get("is_current") and events[-1].get("type") == "stay":
+                stay = cast(TimelineStayEvent, events[-1])
+                if stay.get("dwell_human"):
+                    loc_lines.append(f"Dwell time: {stay['dwell_human']}")
+
+        parts.append("Current Location & Movement:\n" + "\n".join(f"  • {l}" for l in loc_lines))
+
+    if health_raw and health_path:
+        health = resolve_health(health_raw, moment, str(health_path))
+        health_lines: List[str] = []
+        if health.get("sleep_hours") is not None:
+            health_lines.append(f"Last sleep: {health['sleep_hours']:.1f} hours ({health.get('sleep_quality', '')})")
+        if health.get("step_count") is not None:
+            health_lines.append(f"Steps today: {health['step_count']:,}")
+        if health.get("last_workout_activity"):
+            health_lines.append(f"Recent workout: {health['last_workout_activity']} ({health.get('last_workout_minutes', 0)} min)")
+        if health_lines:
+            parts.append("Today's Health & Activity:\n" + "\n".join(f"  • {l}" for l in health_lines))
+
+    return "\n\n".join(parts)
+
+
 def command_dispatch_pending(args: argparse.Namespace, now: datetime) -> int:
     """Scan for pending user letters and automatically invoke Hermes to reply with dedicated per-thread session context."""
     threads_dir = get_threads_dir(args.icloud_dir)
     if not threads_dir:
         return 0
 
-    pending = [t for t in list_dispatch_threads(threads_dir) if t.get("status") == "pending_agent"]
-    if not pending:
-        # Zero cost / zero tokens / zero CPU
-        return 0
-
-    hermes_bin = find_hermes_executable()
-    if not hermes_bin:
-        log("WARN", "hermes executable not found, cannot auto-dispatch pending letters")
-        return 1
-
-    lock_file = threads_dir / ".dispatch_lock"
     try:
-        fd = os.open(str(lock_file), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-        os.write(fd, str(os.getpid()).encode("utf-8"))
-        os.close(fd)
-    except FileExistsError:
-        return 0
-    except Exception:
-        pass
+        pending = [t for t in list_dispatch_threads(threads_dir) if t.get("status") == "pending_agent"]
+        if not pending:
+            # Zero cost / zero tokens / zero CPU
+            return 0
 
-    try:
-        dispatched_count = 0
-        for thread in pending:
-            thread_id = thread["thread_id"]
-            target_profile = (thread.get("target_profile") or "default").strip()
-            subject = thread.get("subject", "Letter")
+        hermes_bin = find_hermes_executable()
+        if not hermes_bin:
+            log("WARN", "hermes executable not found, cannot auto-dispatch pending letters")
+            return 1
 
-            messages = list_thread_messages(threads_dir, thread_id)
-            if not messages:
-                continue
+        lock_file = get_dispatch_lock_path()
+        if not acquire_dispatch_lock(lock_file):
+            return 0
 
-            last_msg = messages[-1]
-            if last_msg.get("sender") != "user":
-                continue
-
-            # Check if this is the initial letter or a follow-up ("repregunta")
-            is_initial_turn = len(messages) <= 1
-            user_body = last_msg.get("body", "").strip()
-
-            if is_initial_turn:
-                prompt = (
-                    f"You have received a new asynchronous letter in Hermes Post from Daniel.\n"
-                    f"Subject: {subject}\n\n"
-                    f"Letter content:\n{user_body}\n\n"
-                    f"Instruction:\n"
-                    f"Reply thoughtfully to Daniel's letter in your own natural persona and voice. "
-                    f"Write ONLY the exact text of your letter reply without meta preamble or quotes."
-                )
-            else:
-                prompt = (
-                    f"Daniel replied to the letter thread (Subject: '{subject}'):\n\n"
-                    f"{user_body}\n\n"
-                    f"Instruction:\n"
-                    f"Continue this thread conversation in your natural voice. "
-                    f"Write ONLY the exact text of your reply letter."
-                )
-
-            # Isolate each thread into its own dedicated, persistent Hermes session
-            session_title = f"post_{thread_id}"
-            cmd = [hermes_bin]
-            if target_profile and target_profile != "default":
-                cmd.extend(["-p", target_profile])
-            cmd.extend(["chat", "-c", session_title, "--create-if-missing", "-Q", "-q", prompt])
-
-            log("INFO", f"auto-replying to thread '{thread_id}' with profile '{target_profile}' in session '{session_title}'...")
-            try:
-                proc = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
-                cleaned_reply = clean_hermes_chat_output(proc.stdout)
-                if proc.returncode == 0 and cleaned_reply:
-                    reply_to_thread(threads_dir, thread_id, cleaned_reply, sender="agent", now=now)
-                    log("INFO", f"successfully auto-replied to thread '{thread_id}' in session '{session_title}'")
-                    dispatched_count += 1
-                else:
-                    err = proc.stderr.strip() or f"exit code {proc.returncode}"
-                    log("WARN", f"hermes execution failed for thread '{thread_id}': {err}")
-            except Exception as exc:
-                log("WARN", f"hermes execution error for thread '{thread_id}': {exc}")
-
-        return 0
-    finally:
         try:
-            if lock_file.exists():
-                lock_file.unlink()
-        except Exception:
-            pass
+            dispatched_count = 0
+            for thread in pending:
+                thread_id = thread["thread_id"]
+                target_profile = (thread.get("target_profile") or "default").strip()
+                subject = thread.get("subject", "Letter")
+
+                messages = list_thread_messages(threads_dir, thread_id)
+                if not messages:
+                    continue
+
+                last_msg = messages[-1]
+                if last_msg.get("sender") != "user":
+                    continue
+
+                # Check if this is the initial letter or a follow-up ("repregunta")
+                is_initial_turn = len(messages) <= 1
+                user_body = last_msg.get("body", "").strip()
+
+                # Build physical telemetry briefing so the agent has Daniel's live context
+                telemetry_briefing = get_physical_context_summary(args.icloud_dir, getattr(args, "places", None), now=now)
+                context_section = f"\nDaniel's live physical telemetry (from Hermes Companion):\n{telemetry_briefing}\n" if telemetry_briefing else ""
+
+                if is_initial_turn:
+                    prompt = (
+                        f"You have received a new asynchronous letter in Hermes Post from Daniel.\n"
+                        f"Subject: {subject}\n\n"
+                        f"Letter content:\n{user_body}\n"
+                        f"{context_section}\n"
+                        f"Instruction:\n"
+                        f"Reply thoughtfully to Daniel's letter in your own natural persona and voice. "
+                        f"Reply in the language Daniel used (Spanish if the letter is in Spanish). "
+                        f"You have access to Daniel's live physical telemetry above—use it naturally if relevant to his letter (e.g. location, place, city, weather, physical state). "
+                        f"Write ONLY the exact text of your letter reply without meta preamble or quotes."
+                    )
+                else:
+                    prompt = (
+                        f"Daniel replied to the letter thread (Subject: '{subject}'):\n\n"
+                        f"{user_body}\n"
+                        f"{context_section}\n"
+                        f"Instruction:\n"
+                        f"Continue this thread conversation in your natural voice. "
+                        f"Reply in the language Daniel used (Spanish if the letter is in Spanish). "
+                        f"You have access to Daniel's live physical telemetry above—use it naturally if relevant. "
+                        f"Write ONLY the exact text of your reply letter."
+                    )
+
+                # Isolate each thread into its own dedicated, persistent Hermes session
+                session_title = f"post_{thread_id}"
+                cmd = [hermes_bin]
+                if target_profile and target_profile != "default":
+                    cmd.extend(["-p", target_profile])
+                cmd.extend(["chat", "-c", session_title, "--create-if-missing", "-Q", "-q", prompt])
+
+                log("INFO", f"auto-replying to thread '{thread_id}' with profile '{target_profile}' in session '{session_title}'...")
+                try:
+                    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+                    cleaned_reply = clean_hermes_chat_output(proc.stdout)
+
+                    # Check for session lock contention (e.g. session open in GUI or CLI)
+                    if proc.returncode != 0 and ("SESSION_NOT_OWNED" in proc.stderr or "SESSION_NOT_OWNED" in proc.stdout):
+                        log("WARN", f"session '{session_title}' is locked/busy; falling back to isolated one-shot execution...")
+                        fallback_cmd = [hermes_bin]
+                        if target_profile and target_profile != "default":
+                            fallback_cmd.extend(["-p", target_profile])
+                        fallback_cmd.extend(["chat", "--oneshot", "-Q", "-q", prompt])
+                        fallback_proc = subprocess.run(fallback_cmd, capture_output=True, text=True, timeout=120)
+                        cleaned_fallback = clean_hermes_chat_output(fallback_proc.stdout)
+                        if fallback_proc.returncode == 0 and cleaned_fallback:
+                            reply_to_thread(threads_dir, thread_id, cleaned_fallback, sender="agent", now=now)
+                            log("INFO", f"successfully auto-replied to thread '{thread_id}' via fallback session")
+                            dispatched_count += 1
+                            continue
+
+                    if proc.returncode == 0 and cleaned_reply:
+                        reply_to_thread(threads_dir, thread_id, cleaned_reply, sender="agent", now=now)
+                        log("INFO", f"successfully auto-replied to thread '{thread_id}' in session '{session_title}'")
+                        dispatched_count += 1
+                    else:
+                        err = proc.stderr.strip() or f"exit code {proc.returncode}"
+                        retries = int(thread.get("dispatch_retries", 0)) + 1
+                        if retries < 3:
+                            log("WARN", f"hermes execution attempt {retries}/3 failed for thread '{thread_id}': {err}; will retry")
+                            update_thread_retry(threads_dir, thread_id, retries, err[:140], now=now)
+                        else:
+                            log("ERROR", f"hermes execution failed after 3 attempts for thread '{thread_id}': {err}")
+                            mark_thread_failed(threads_dir, thread_id, f"Agent error: {err[:140]}", now=now)
+                except subprocess.TimeoutExpired:
+                    log("WARN", f"hermes execution timed out for thread '{thread_id}' after 120s")
+                    retries = int(thread.get("dispatch_retries", 0)) + 1
+                    if retries < 3:
+                        update_thread_retry(threads_dir, thread_id, retries, "Timeout after 120s", now=now)
+                    else:
+                        mark_thread_failed(threads_dir, thread_id, "Hermes execution timed out after 120s", now=now)
+                except Exception as exc:
+                    log("WARN", f"hermes execution error for thread '{thread_id}': {exc}")
+                    retries = int(thread.get("dispatch_retries", 0)) + 1
+                    if retries < 3:
+                        update_thread_retry(threads_dir, thread_id, retries, str(exc)[:140], now=now)
+                    else:
+                        mark_thread_failed(threads_dir, thread_id, f"Execution error: {str(exc)[:140]}", now=now)
+
+            return 0
+        finally:
+            release_dispatch_lock(lock_file)
+    except Exception as exc:
+        log("ERROR", f"unexpected error during command_dispatch_pending: {exc}\n{traceback.format_exc()}")
+        return 0
 
 
 def build_parser() -> argparse.ArgumentParser:

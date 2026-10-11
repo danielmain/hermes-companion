@@ -428,6 +428,76 @@ def test_clean_hermes_chat_output() -> None:
     check("cleaned chat output matches", cleaned == expected)
 
 
+def test_error_handling_and_sync_marker() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        threads_dir = tmp_path / "threads"
+        threads_dir.mkdir(parents=True, exist_ok=True)
+
+        moment = datetime(2026, 10, 9, 14, 0, 0, tzinfo=timezone.utc)
+        thread = companion.create_dispatch_thread(
+            threads_dir,
+            "Test Error",
+            "Initial prompt",
+            target_profile="default",
+            sender="user",
+            now=moment,
+        )
+        tid = thread["thread_id"]
+
+        marker_file = threads_dir / ".sync_marker.json"
+        check("sync marker created on thread create", marker_file.is_file())
+
+        # Test retry attempts tracking without marking status failed
+        companion.update_thread_retry(threads_dir, tid, 1, "Gateway busy", now=moment)
+        meta_retry1 = companion.safe_read_json(threads_dir / tid / "meta.json")
+        check("thread retry 1 recorded", meta_retry1 is not None and meta_retry1.get("dispatch_retries") == 1)
+        check("thread retry 1 retains status pending_agent", meta_retry1 is not None and meta_retry1.get("status") == "pending_agent")
+
+        companion.mark_thread_failed(threads_dir, tid, "Hermes timeout 120s", now=moment)
+        meta_after = companion.safe_read_json(threads_dir / tid / "meta.json")
+        check("thread marked failed", meta_after is not None and meta_after.get("status") == "failed")
+        check("thread error recorded", meta_after is not None and meta_after.get("last_error") == "Hermes timeout 120s")
+
+        # Now reply to it and ensure error is cleared and status is replied
+        companion.reply_to_thread(threads_dir, tid, "Agent finally replied", sender="agent", now=moment)
+        meta_replied = companion.safe_read_json(threads_dir / tid / "meta.json")
+        check("thread status transitioned to replied", meta_replied is not None and meta_replied.get("status") == "replied")
+        check("last_error cleared", meta_replied is not None and "last_error" not in meta_replied)
+        check("dispatch_retries cleared after reply", meta_replied is not None and "dispatch_retries" not in meta_replied)
+
+        # Test safe_is_file resilience
+        check("safe_is_file on non-existent is False", not companion.safe_is_file(tmp_path / "does_not_exist.json"))
+        check("safe_is_file on directory is False", not companion.safe_is_file(threads_dir))
+
+        # Test local exclusion lock acquisition and release
+        lock_file = tmp_path / "test.lock"
+        check("acquire lock succeeds", companion.acquire_dispatch_lock(lock_file))
+        check("acquire lock again fails", not companion.acquire_dispatch_lock(lock_file))
+        companion.release_dispatch_lock(lock_file)
+        companion.release_dispatch_lock(lock_file)
+
+
+def test_physical_context_summary() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        loc_payload = {
+            "latitude": 48.815,
+            "longitude": 9.232,
+            "timestamp": "2026-10-11T07:00:00Z",
+            "placemark_name": "Zuckerleweg 50",
+            "placemark_locality": "Stuttgart",
+            "motion_activity": "stationary",
+        }
+        (tmp_path / "latest_location.json").write_text(json.dumps(loc_payload), encoding="utf-8")
+        places_file = tmp_path / "places.json"
+        places_file.write_text(json.dumps([HOME]), encoding="utf-8")
+
+        summary = companion.get_physical_context_summary(icloud_dir=str(tmp_path), places_file=places_file, now=NOW)
+        check("summary contains coordinates", "48.815" in summary and "9.232" in summary)
+        check("summary contains placemark", "Zuckerleweg 50" in summary and "Stuttgart" in summary)
+
+
 def main() -> int:
     test_still_home_after_hours()
     test_walking_at_home()
@@ -446,6 +516,8 @@ def main() -> int:
     test_profiles_registration_and_filtering()
     test_discover_installed_hermes_profiles()
     test_clean_hermes_chat_output()
+    test_error_handling_and_sync_marker()
+    test_physical_context_summary()
     print("ok")
     return 0
 

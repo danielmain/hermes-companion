@@ -49,12 +49,14 @@ public enum DispatchSender: String, Codable, Sendable, CaseIterable, Equatable {
 public enum DispatchStatus: String, Codable, Sendable, CaseIterable, Equatable {
     case pendingAgent = "pending_agent"
     case replied = "replied"
+    case failed = "failed"
     case archived = "archived"
 
     public var label: String {
         switch self {
         case .pendingAgent: return "Awaiting"
         case .replied: return "Replied"
+        case .failed: return "Failed"
         case .archived: return "Archived"
         }
     }
@@ -71,6 +73,7 @@ public struct DispatchThread: Identifiable, Codable, Equatable, Sendable {
     public let updatedAt: Date
     public let messageCount: Int
     public let lastSnippet: String?
+    public let lastError: String?
 
     public init(
         id: String,
@@ -80,7 +83,8 @@ public struct DispatchThread: Identifiable, Codable, Equatable, Sendable {
         createdAt: Date,
         updatedAt: Date,
         messageCount: Int,
-        lastSnippet: String? = nil
+        lastSnippet: String? = nil,
+        lastError: String? = nil
     ) {
         self.id = id
         self.subject = subject
@@ -90,6 +94,7 @@ public struct DispatchThread: Identifiable, Codable, Equatable, Sendable {
         self.updatedAt = updatedAt
         self.messageCount = messageCount
         self.lastSnippet = lastSnippet
+        self.lastError = lastError
     }
 
     enum CodingKeys: String, CodingKey {
@@ -101,6 +106,7 @@ public struct DispatchThread: Identifiable, Codable, Equatable, Sendable {
         case updatedAt = "updated_at"
         case messageCount = "message_count"
         case lastSnippet = "last_snippet"
+        case lastError = "last_error"
     }
 
     public init(from decoder: Decoder) throws {
@@ -113,6 +119,7 @@ public struct DispatchThread: Identifiable, Codable, Equatable, Sendable {
         self.updatedAt = try container.decode(Date.self, forKey: .updatedAt)
         self.messageCount = try container.decode(Int.self, forKey: .messageCount)
         self.lastSnippet = try container.decodeIfPresent(String.self, forKey: .lastSnippet)
+        self.lastError = try container.decodeIfPresent(String.self, forKey: .lastError)
     }
 
     // Pure functional mutation
@@ -121,7 +128,9 @@ public struct DispatchThread: Identifiable, Codable, Equatable, Sendable {
         status: DispatchStatus? = nil,
         updatedAt: Date? = nil,
         messageCount: Int? = nil,
-        lastSnippet: String? = nil
+        lastSnippet: String? = nil,
+        lastError: String? = nil,
+        clearError: Bool = false
     ) -> DispatchThread {
         DispatchThread(
             id: self.id,
@@ -131,7 +140,8 @@ public struct DispatchThread: Identifiable, Codable, Equatable, Sendable {
             createdAt: self.createdAt,
             updatedAt: updatedAt ?? self.updatedAt,
             messageCount: messageCount ?? self.messageCount,
-            lastSnippet: lastSnippet ?? self.lastSnippet
+            lastSnippet: lastSnippet ?? self.lastSnippet,
+            lastError: clearError ? nil : (lastError ?? self.lastError)
         )
     }
 }

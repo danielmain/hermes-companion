@@ -4,9 +4,10 @@ import SwiftUI
 
 public enum DispatchFilter: String, CaseIterable, Identifiable {
     case all = "ALL"
-    case pending = "AWAITING"
+    case pending = "PENDING"
     case replied = "REPLIED"
-    case archived = "ARCHIVED"
+    case failed = "FAILED"
+    case archived = "ARCHIVE"
 
     public var id: String { rawValue }
 
@@ -15,6 +16,7 @@ public enum DispatchFilter: String, CaseIterable, Identifiable {
         case .all: return true
         case .pending: return status == .pendingAgent
         case .replied: return status == .replied
+        case .failed: return status == .failed
         case .archived: return status == .archived
         }
     }
@@ -27,6 +29,8 @@ public struct PostInboxView: View {
     @State private var selectedFilter: DispatchFilter = .all
     @State private var searchText: String = ""
     @State private var showingCompose: Bool = false
+    @State private var showingPostalDisclaimer: Bool = false
+    @AppStorage("hasSeenPostDisclaimer") private var hasSeenPostDisclaimer: Bool = false
 
     public init() {}
 
@@ -78,11 +82,17 @@ public struct PostInboxView: View {
             .sheet(isPresented: $showingCompose) {
                 NewDispatchSheetView(isPresented: $showingCompose)
             }
+            .sheet(isPresented: $showingPostalDisclaimer) {
+                PostalDisclaimerSheetView(isPresented: $showingPostalDisclaimer)
+            }
             .refreshable {
                 store.loadThreads()
             }
             .onAppear {
                 store.loadThreads()
+                if !hasSeenPostDisclaimer {
+                    showingPostalDisclaimer = true
+                }
             }
             .onReceive(Timer.publish(every: 5.0, on: .main, in: .common).autoconnect()) { _ in
                 store.loadThreads()
@@ -101,6 +111,15 @@ public struct PostInboxView: View {
             .buttonStyle(EditorialIconButtonStyle())
             .accessibilityLabel("Refresh inbox")
 
+            Button {
+                showingPostalDisclaimer = true
+            } label: {
+                Image(systemName: "info.circle")
+                    .font(.body.weight(.medium))
+            }
+            .buttonStyle(EditorialIconButtonStyle())
+            .accessibilityLabel("Postal system explanation")
+
             Spacer()
 
             Button {
@@ -108,11 +127,11 @@ public struct PostInboxView: View {
             } label: {
                 HStack(spacing: EditorialSpacing.small) {
                     Image(systemName: "plus")
-                        .font(.subheadline.weight(.semibold))
-                    Text("NEW LETTER")
+                        .font(.caption.weight(.semibold))
+                    Text("New")
                 }
             }
-            .buttonStyle(EditorialButtonStyle(isPrimary: true))
+            .buttonStyle(EditorialButtonStyle(isPrimary: true, isFullWidth: false))
             .accessibilityLabel("New letter")
         }
     }
@@ -155,7 +174,7 @@ private struct DispatchThreadCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: EditorialSpacing.small) {
-            HStack(alignment: .firstTextBaseline, spacing: EditorialSpacing.small) {
+            HStack(alignment: .center, spacing: 6) {
                 EditorialStatusToken(
                     text: thread.targetProfile.uppercased(),
                     isInverted: false,
@@ -164,15 +183,17 @@ private struct DispatchThreadCard: View {
 
                 EditorialStatusToken(
                     text: thread.status.label.uppercased(),
-                    isInverted: thread.status == .pendingAgent,
-                    systemImage: thread.status == .pendingAgent ? "clock" : (thread.status == .replied ? "checkmark" : "archivebox")
+                    isInverted: thread.status == .pendingAgent || thread.status == .failed,
+                    systemImage: thread.status == .pendingAgent ? "clock" : (thread.status == .failed ? "exclamationmark.triangle.fill" : (thread.status == .replied ? "checkmark" : "archivebox"))
                 )
 
-                Spacer()
+                Spacer(minLength: 4)
 
-                Text(thread.updatedAt.formatted(.relative(presentation: .named)))
+                Text(thread.updatedAt.compactRelativeFormatted)
                     .font(.editorialUtilitySmall)
                     .foregroundStyle(EditorialColor.secondaryInk)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
             }
 
             Text(thread.subject)
@@ -187,6 +208,13 @@ private struct DispatchThreadCard: View {
                     .font(.editorialBody)
                     .foregroundStyle(EditorialColor.secondaryInk)
                     .lineLimit(2)
+            }
+
+            if thread.status == .failed, let error = thread.lastError, !error.isEmpty {
+                Text(error)
+                    .font(.editorialUtilitySmall)
+                    .foregroundStyle(EditorialColor.secondaryInk)
+                    .lineLimit(1)
             }
 
             EditorialRule()
@@ -222,46 +250,73 @@ public struct DispatchThreadDetailView: View {
     }
 
     public var body: some View {
-        VStack(spacing: 0) {
-            ScrollViewReader { proxy in
-                ScrollView {
-                    VStack(alignment: .leading, spacing: EditorialSpacing.medium) {
-                        if let thread = currentThread {
-                            headerSection(thread)
-                        }
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: EditorialSpacing.large) {
+                    if let thread = currentThread {
+                        headerSection(thread)
+                    }
 
-                        if messages.isEmpty {
-                            EditorialEmptyState(
-                                index: "NO MESSAGES",
-                                title: "Loading Memos",
-                                message: "Fetching thread chronology...",
-                                systemImage: "envelope"
-                            )
-                        } else {
-                            LazyVStack(spacing: EditorialSpacing.medium) {
-                                ForEach(messages) { message in
-                                    DispatchMessageBubble(message: message)
-                                        .id(message.id)
-                                }
+                    if messages.isEmpty {
+                        EditorialEmptyState(
+                            index: "NO MESSAGES",
+                            title: "Loading Memos",
+                            message: "Fetching thread chronology...",
+                            systemImage: "envelope"
+                        )
+                    } else {
+                        LazyVStack(spacing: EditorialSpacing.large) {
+                            ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
+                                EditorialMemoCard(
+                                    message: message,
+                                    sequenceIndex: index + 1,
+                                    targetProfile: currentThread?.targetProfile ?? "default"
+                                )
+                                .id(message.id)
                             }
                         }
                     }
-                    .padding(.horizontal, EditorialSpacing.page)
-                    .padding(.top, EditorialSpacing.medium)
-                    .padding(.bottom, EditorialSpacing.large)
-                }
-                .onChange(of: messages.count) { _ in
-                    if let last = messages.last {
-                        withAnimation {
-                            proxy.scrollTo(last.id, anchor: .bottom)
+
+                    if let thread = currentThread {
+                        if thread.status == .pendingAgent {
+                            EditorialInTransitBubble(targetProfile: thread.targetProfile)
+                                .id("in_transit_indicator")
+                        } else if thread.status == .failed {
+                            EditorialFailureBanner(
+                                error: thread.lastError,
+                                onRetry: {
+                                    _ = store.retryThread(id: thread.id)
+                                }
+                            )
+                            .id("failed_banner")
+                        } else if thread.status != .archived {
+                            replySection(thread)
+                                .id("reply_section")
                         }
                     }
                 }
+                .padding(.horizontal, EditorialSpacing.page)
+                .padding(.top, EditorialSpacing.medium)
+                .padding(.bottom, EditorialSpacing.hero)
             }
-
-            EditorialRule()
-
-            replyComposerBar
+            .onChange(of: messages.count) { oldCount, newCount in
+                if let last = messages.last {
+                    withAnimation {
+                        proxy.scrollTo(last.id, anchor: .bottom)
+                    }
+                }
+            }
+            .onChange(of: currentThread?.status) { oldStatus, newStatus in
+                if newStatus == .pendingAgent {
+                    withAnimation {
+                        proxy.scrollTo("in_transit_indicator", anchor: .bottom)
+                    }
+                } else if newStatus == .failed {
+                    withAnimation {
+                        proxy.scrollTo("failed_banner", anchor: .bottom)
+                    }
+                }
+            }
         }
         .background(EditorialColor.paper)
         .navigationBarTitleDisplayMode(.inline)
@@ -281,7 +336,7 @@ public struct DispatchThreadDetailView: View {
         .onAppear {
             loadMessages()
         }
-        .onReceive(Timer.publish(every: 3.0, on: .main, in: .common).autoconnect()) { _ in
+        .onReceive(Timer.publish(every: (currentThread?.status == .pendingAgent ? 2.0 : 4.0), on: .main, in: .common).autoconnect()) { _ in
             loadMessages()
             store.loadThreads()
         }
@@ -297,12 +352,15 @@ public struct DispatchThreadDetailView: View {
                 )
                 EditorialStatusToken(
                     text: thread.status.label.uppercased(),
-                    isInverted: thread.status == .pendingAgent
+                    isInverted: thread.status == .pendingAgent || thread.status == .failed,
+                    systemImage: thread.status == .pendingAgent ? "paperplane.fill" : (thread.status == .failed ? "exclamationmark.triangle.fill" : (thread.status == .replied ? "checkmark" : "archivebox"))
                 )
                 Spacer()
-                Text(thread.createdAt.formatted(date: .abbreviated, time: .shortened))
+                Text(thread.createdAt.compactDateFormatted)
                     .font(.editorialUtilitySmall)
                     .foregroundStyle(EditorialColor.secondaryInk)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
             }
 
             Text(thread.subject)
@@ -312,42 +370,78 @@ public struct DispatchThreadDetailView: View {
 
             EditorialRule(strong: true)
         }
-        .padding(.bottom, EditorialSpacing.small)
+        .padding(.bottom, EditorialSpacing.xSmall)
     }
 
-    private var replyComposerBar: some View {
-        VStack(spacing: EditorialSpacing.small) {
-            HStack(alignment: .bottom, spacing: EditorialSpacing.small) {
-                TextField("Compose reply letter...", text: $replyText, axis: .vertical)
-                    .lineLimit(1...5)
-                    .padding(EditorialSpacing.small)
+    private func replySection(_ thread: DispatchThread) -> some View {
+        VStack(alignment: .leading, spacing: EditorialSpacing.small) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Reply")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(EditorialColor.ink)
+
+                Spacer()
+
+                HStack(spacing: EditorialSpacing.xSmall) {
+                    Image(systemName: "clock")
+                        .font(.caption2)
+                    Text("iCloud · 5–30m")
+                        .font(.editorialUtilitySmall)
+                }
+                .foregroundStyle(EditorialColor.secondaryInk)
+            }
+
+            ZStack(alignment: .topLeading) {
+                if replyText.isEmpty {
+                    Text("Write a reply...")
+                        .font(.system(.body, design: .serif))
+                        .italic()
+                        .foregroundStyle(EditorialColor.secondaryInk)
+                        .padding(.top, EditorialSpacing.small)
+                        .padding(.leading, EditorialSpacing.small)
+                }
+
+                TextEditor(text: $replyText)
+                    .font(.system(.body, design: .serif))
+                    .frame(minHeight: 100)
+                    .padding(EditorialSpacing.xSmall)
+                    .scrollContentBackground(.hidden)
                     .background(EditorialColor.surface)
-                    .overlay {
-                        Rectangle().stroke(EditorialColor.hairline, lineWidth: EditorialBorder.hairline)
-                    }
                     .focused($isInputFocused)
+            }
+            .overlay {
+                Rectangle().stroke(EditorialColor.hairline, lineWidth: EditorialBorder.hairline)
+            }
+
+            HStack {
+                Spacer()
 
                 Button {
                     sendReply()
                 } label: {
-                    if isSending {
-                        ProgressView()
-                            .tint(EditorialColor.paper)
-                            .frame(width: 44, height: 44)
-                            .background(EditorialColor.ink)
-                    } else {
-                        Image(systemName: "arrow.up")
-                            .font(.body.weight(.bold))
-                            .foregroundStyle(EditorialColor.paper)
-                            .frame(width: 44, height: 44)
-                            .background(replyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? EditorialColor.secondaryInk : EditorialColor.ink)
+                    HStack(spacing: EditorialSpacing.small) {
+                        if isSending {
+                            ProgressView()
+                                .tint(EditorialColor.paper)
+                            Text("Sending...")
+                                .font(.editorialUtility)
+                        } else {
+                            Image(systemName: "paperplane.fill")
+                                .font(.caption.weight(.semibold))
+                            Text("Dispatch")
+                                .font(.editorialUtility)
+                        }
                     }
                 }
+                .buttonStyle(EditorialButtonStyle(isPrimary: true, isFullWidth: false))
                 .disabled(replyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSending)
             }
         }
         .padding(EditorialSpacing.medium)
-        .background(EditorialColor.paper)
+        .background(EditorialColor.surface)
+        .overlay {
+            Rectangle().stroke(EditorialColor.hairline, lineWidth: EditorialBorder.hairline)
+        }
     }
 
     private func loadMessages() {
@@ -360,6 +454,7 @@ public struct DispatchThreadDetailView: View {
     }
 
     private func sendReply() {
+        guard currentThread?.status != .pendingAgent else { return }
         let textToSend = replyText
         guard !textToSend.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
 
@@ -380,66 +475,280 @@ public struct DispatchThreadDetailView: View {
     }
 }
 
-// MARK: - Message Bubble / Memo Card
+// MARK: - Editorial Memo Card (Full-Width Letter Dossier)
 
-private struct DispatchMessageBubble: View {
+private struct EditorialMemoCard: View {
     let message: DispatchMessage
+    let sequenceIndex: Int
+    let targetProfile: String
 
     private var isUser: Bool {
         message.sender == .user
     }
 
     var body: some View {
-        HStack {
-            if isUser {
-                Spacer(minLength: EditorialSpacing.large)
+        VStack(alignment: .leading, spacing: 0) {
+            // Postal dossier header
+            HStack(spacing: EditorialSpacing.small) {
+                EditorialStatusToken(
+                    text: isUser ? "#\(sequenceIndex) · YOU" : "#\(sequenceIndex) · HERMES",
+                    isInverted: !isUser,
+                    systemImage: isUser ? "person.fill" : "sparkles"
+                )
+
+                Spacer()
+
+                Text(message.timestamp.compactDateFormatted)
+                    .font(.editorialUtilitySmall)
+                    .foregroundStyle(EditorialColor.secondaryInk)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
             }
+            .padding(.horizontal, EditorialSpacing.medium)
+            .padding(.top, EditorialSpacing.medium)
+            .padding(.bottom, EditorialSpacing.small)
 
-            VStack(alignment: .leading, spacing: EditorialSpacing.small) {
-                HStack {
-                    EditorialStatusToken(
-                        text: isUser ? "YOU" : "HERMES AGENT",
-                        isInverted: !isUser,
-                        systemImage: isUser ? "person.fill" : "sparkles"
-                    )
+            EditorialRule()
 
-                    Spacer()
+            // Postal memo body
+            Text(LocalizedStringKey(message.body))
+                .font(.system(.body, design: .serif))
+                .foregroundStyle(EditorialColor.ink)
+                .lineSpacing(5)
+                .padding(EditorialSpacing.medium)
+                .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
+        }
+        .background(isUser ? EditorialColor.userBubble : EditorialColor.agentBubble)
+        .overlay(alignment: .leading) {
+            Rectangle()
+                .fill(isUser ? EditorialColor.secondaryInk : EditorialColor.ink)
+                .frame(width: isUser ? 2 : 3)
+        }
+        .clipShape(Rectangle())
+        .overlay {
+            Rectangle()
+                .stroke(isUser ? EditorialColor.hairline : EditorialColor.ink.opacity(0.35), lineWidth: EditorialBorder.hairline)
+        }
+    }
+}
 
-                    Text(message.timestamp.formatted(date: .omitted, time: .shortened))
+// MARK: - In Transit and Failure State Components
+
+private struct EditorialInTransitBubble: View {
+    let targetProfile: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: EditorialSpacing.small) {
+                HStack(spacing: 4) {
+                    ProgressView()
+                        .controlSize(.mini)
+                        .tint(EditorialColor.ink)
+
+                    Text("IN TRANSIT")
                         .font(.editorialUtilitySmall)
-                        .foregroundStyle(EditorialColor.secondaryInk)
+                        .lineLimit(1)
+                }
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .foregroundStyle(EditorialColor.ink)
+                .background(EditorialColor.paper)
+                .overlay {
+                    Rectangle().stroke(EditorialColor.ink, lineWidth: EditorialBorder.hairline)
                 }
 
-                Text(LocalizedStringKey(message.body))
-                    .font(isUser ? .editorialBody : .system(.body, design: .serif))
-                    .foregroundStyle(EditorialColor.ink)
-                    .lineSpacing(isUser ? 3 : 5)
+                Spacer()
+
+                EditorialStatusToken(
+                    text: targetProfile.uppercased(),
+                    isInverted: true,
+                    systemImage: "sparkles"
+                )
+            }
+            .padding(.horizontal, EditorialSpacing.medium)
+            .padding(.top, EditorialSpacing.medium)
+            .padding(.bottom, EditorialSpacing.small)
+
+            EditorialRule()
+
+            VStack(alignment: .leading, spacing: EditorialSpacing.xSmall) {
+                Text("In transit via iCloud. Your Hermes agent will pick it up and reply shortly (typically 5–30 min).")
+                    .font(.system(.body, design: .serif))
+                    .italic()
+                    .foregroundStyle(EditorialColor.secondaryInk)
+                    .lineSpacing(3)
                     .fixedSize(horizontal: false, vertical: true)
-                    .textSelection(.enabled)
             }
             .padding(EditorialSpacing.medium)
-            .background(isUser ? EditorialColor.surface : EditorialColor.paper)
-            .overlay(alignment: .leading) {
-                if !isUser {
-                    Rectangle()
-                        .fill(EditorialColor.ink)
-                        .frame(width: 3)
-                }
-            }
-            .clipShape(isUser ? AnyShape(CutCornerShape()) : AnyShape(Rectangle()))
-            .overlay {
-                if isUser {
-                    CutCornerShape()
-                        .stroke(EditorialColor.hairline, lineWidth: EditorialBorder.hairline)
-                } else {
-                    Rectangle()
-                        .stroke(EditorialColor.hairline, lineWidth: EditorialBorder.hairline)
-                }
+        }
+        .background(EditorialColor.surface)
+        .overlay(alignment: .leading) {
+            Rectangle()
+                .fill(EditorialColor.hairline)
+                .frame(width: 3)
+        }
+        .clipShape(Rectangle())
+        .overlay {
+            Rectangle()
+                .stroke(EditorialColor.hairline, lineWidth: EditorialBorder.hairline)
+        }
+    }
+}
+
+// MARK: - Postal Notice Component
+
+private struct EditorialPostalHint: View {
+    var body: some View {
+        HStack(spacing: EditorialSpacing.xSmall) {
+            Image(systemName: "clock")
+                .font(.caption2)
+                .foregroundStyle(EditorialColor.secondaryInk)
+
+            Text("iCloud postal relay · 5–30 min")
+                .font(.editorialUtilitySmall)
+                .foregroundStyle(EditorialColor.secondaryInk)
+
+            Spacer()
+        }
+    }
+}
+
+private struct EditorialFailureBanner: View {
+    let error: String?
+    let onRetry: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: EditorialSpacing.small) {
+            HStack(spacing: EditorialSpacing.small) {
+                EditorialStatusToken(
+                    text: "TRANSMISSION FAILED",
+                    isInverted: true,
+                    systemImage: "exclamationmark.triangle.fill"
+                )
+                Spacer()
             }
 
-            if !isUser {
-                Spacer(minLength: EditorialSpacing.compact)
+            Text(error ?? "Agent execution failed or timed out while drafting correspondence.")
+                .font(.editorialBody)
+                .foregroundStyle(EditorialColor.ink)
+
+            HStack {
+                Button(action: onRetry) {
+                    HStack(spacing: EditorialSpacing.small) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.caption.weight(.semibold))
+                        Text("Retry")
+                    }
+                }
+                .buttonStyle(EditorialButtonStyle(isPrimary: true, isFullWidth: false))
+
+                Spacer()
             }
+            .padding(.top, EditorialSpacing.xSmall)
+        }
+        .editorialPanel(emphasized: true)
+    }
+}
+
+// MARK: - Postal Disclaimer Sheet
+
+public struct PostalDisclaimerSheetView: View {
+    @Binding var isPresented: Bool
+    @AppStorage("hasSeenPostDisclaimer") private var hasSeenPostDisclaimer: Bool = false
+
+    public init(isPresented: Binding<Bool>) {
+        self._isPresented = isPresented
+    }
+
+    public var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: EditorialSpacing.large) {
+                    EditorialPageHeader(
+                        index: "HERMES / DISPATCH 01",
+                        title: "Hermes\nPostbox",
+                        subtitle: "Asynchronous epistolar relay protocol via iCloud Drive."
+                    )
+
+                    VStack(alignment: .leading, spacing: EditorialSpacing.medium) {
+                        infoCard(
+                            badge: "ASYNC PROTOCOL",
+                            title: "Postal Letters, Not Live Chat",
+                            description: "Hermes Post operates on a physical postal letter model: you drop a letter, it travels through iCloud synchronization envelopes, and your agent composes a reply once delivered. It is not real-time instant messaging.",
+                            icon: "envelope.badge.shield.half.filled"
+                        )
+
+                        infoCard(
+                            badge: "SYSTEM PURPOSE",
+                            title: "Designed for Offline & Non-P2P Links",
+                            description: "This relay is an autonomous bridge for when you are away from home or cannot establish a direct P2P (Tailscale or local Wi-Fi) connection to your Mac. It consumes zero idle tokens and requires no intermediary servers.",
+                            icon: "antenna.radiowaves.left.and.right"
+                        )
+
+                        infoCard(
+                            badge: "DELIVERY CADENCE",
+                            title: "5–30 Minute Transit Rhythm",
+                            description: "Due to Apple CloudKit sync schedules and iOS background battery optimization, letters and agent responses typically take 5 to 30 minutes. Dispatch your thoughts and check back later.",
+                            icon: "clock.arrow.circlepath"
+                        )
+                    }
+
+                    Button {
+                        hasSeenPostDisclaimer = true
+                        isPresented = false
+                    } label: {
+                        HStack {
+                            Spacer()
+                            Text("Continue")
+                                .font(.editorialUtility)
+                            Spacer()
+                        }
+                    }
+                    .buttonStyle(EditorialButtonStyle(isPrimary: true))
+                    .padding(.top, EditorialSpacing.small)
+                }
+                .padding(.horizontal, EditorialSpacing.page)
+                .padding(.vertical, EditorialSpacing.large)
+            }
+            .background(EditorialColor.paper)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Close") {
+                        hasSeenPostDisclaimer = true
+                        isPresented = false
+                    }
+                    .font(.editorialUtility)
+                    .foregroundStyle(EditorialColor.ink)
+                }
+            }
+        }
+    }
+
+    private func infoCard(badge: String, title: String, description: String, icon: String) -> some View {
+        VStack(alignment: .leading, spacing: EditorialSpacing.small) {
+            HStack(spacing: EditorialSpacing.small) {
+                Image(systemName: icon)
+                    .font(.subheadline)
+                    .foregroundStyle(EditorialColor.ink)
+                EditorialStatusToken(text: badge, isInverted: false)
+            }
+
+            Text(title)
+                .font(.headline)
+                .foregroundStyle(EditorialColor.ink)
+
+            Text(description)
+                .font(.editorialBody)
+                .foregroundStyle(EditorialColor.secondaryInk)
+                .lineSpacing(3)
+        }
+        .padding(EditorialSpacing.medium)
+        .background(EditorialColor.surface)
+        .overlay {
+            Rectangle().stroke(EditorialColor.hairline, lineWidth: EditorialBorder.hairline)
         }
     }
 }
@@ -531,7 +840,10 @@ public struct NewDispatchSheetView: View {
                                 .foregroundStyle(Color.red)
                         }
 
-                        Button("Drop to Postbox") {
+                        EditorialPostalHint()
+                            .padding(.vertical, EditorialSpacing.xSmall)
+
+                        Button("Send") {
                             transmit()
                         }
                         .buttonStyle(EditorialButtonStyle(isPrimary: true))
