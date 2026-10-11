@@ -175,8 +175,8 @@ However, a comprehensive review of the file-based communication channel reveals 
 - **Performance Impact:** Completely prevents race conditions, partial reads, and transient JSON decode errors caused by concurrent disk synchronization. Thread metadata and incoming letters are always read in an atomically consistent state without cycle-skipping or UI glitches.
 
 #### 7. Message Sequence Number Collisions
-- **Current Behavior:** Filenames follow `%03d_{sender}_{timestamp}_{id}.json`, where the prefix index is derived from `thread.messageCount + 1`.
-- **Pain Point:** If the user sends a follow-up letter while the agent is executing and writing its response, both sides can compute the same sequence index (e.g., `002`), causing write contention or inconsistent ordering.
+- **Resolved Behavior:** Strict turn-based state validation (`status == .replied` required before user reply; `status == .pendingAgent` or `status == .failed` required before agent reply) and optimistic concurrency verification against disk metadata eliminate concurrent turn collisions. Sequence prefix numbers are computed monotonically as `max(messageCount, highestDiskSequence) + 1` across both iOS and macOS, preventing prefix collisions even if out-of-order writes occur.
+- **Performance Impact:** Eliminates sequence numbering conflicts, write contention, and non-deterministic chronological letter ordering. The postal communication channel maintains strictly alternating, sequential correspondence between the user and agent across both iCloud and local storage.
 
 ---
 
@@ -206,8 +206,8 @@ The following tasks address the identified scalability and concurrency bottlenec
 - [x] **Task 5: Coordinated Reads with `NSFileCoordinator`**
   - Wrap read operations in `DispatchStore` (`scanDirectory`, `readMessagesFromDisk`, sync marker, and profile loaders) with `NSFileCoordinator` using `.withoutChanges` option to prevent reading half-written files.
 
-- [ ] **Task 6: Concurrency Guards & Sequence Collisions**
-  - Add optimistic concurrency check or turn-based status validation (`status == .replied` required before user reply, `status == .pendingAgent` required before agent reply) to eliminate sequence collisions.
+- [x] **Task 6: Concurrency Guards & Sequence Collisions**
+  - Add optimistic concurrency check or turn-based status validation (`status == .replied` required before user reply, `status == .pendingAgent` required before agent reply) and monotonic sequence index calculation to eliminate sequence collisions.
 
 ## Repository
 

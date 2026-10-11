@@ -576,7 +576,7 @@ public struct DispatchThreadDetailView: View {
     }
 
     private func sendReply(textToSend: String) {
-        guard currentThread?.status != .pendingAgent else { return }
+        guard currentThread?.status == .replied else { return }
         guard !textToSend.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
 
         isSending = true

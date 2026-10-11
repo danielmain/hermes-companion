@@ -14,6 +14,7 @@ public enum DispatchError: LocalizedError, Equatable, Sendable {
     case threadNotFound(String)
     case messageNotFound(String)
     case readFailed(String)
+    case invalidTurn(String)
 
     public var errorDescription: String? {
         switch self {
@@ -23,6 +24,7 @@ public enum DispatchError: LocalizedError, Equatable, Sendable {
         case .threadNotFound(let id): return "Thread not found: \(id)"
         case .messageNotFound(let id): return "Message not found: \(id)"
         case .readFailed(let msg): return "Read error: \(msg)"
+        case .invalidTurn(let msg): return "Invalid turn: \(msg)"
         }
     }
 }
@@ -513,12 +515,49 @@ public final class DispatchStore: ObservableObject {
                 return .failure(.writeFailed("Message body cannot be empty"))
             }
 
-            guard let existing = threads.first(where: { $0.id == threadId }) else {
+            guard let existing = (threads.first(where: { $0.id == threadId }) ?? archivedThreads.first(where: { $0.id == threadId })) else {
                 return .failure(.threadNotFound(threadId))
             }
 
+            guard existing.status != .archived else {
+                return .failure(.invalidTurn("Cannot reply to archived thread \(threadId)"))
+            }
+
+            // Optimistic concurrency check: re-verify latest metadata from disk to guard against stale in-memory state
+            var currentThread = existing
+            let metaCandidates = [
+                iCloudThreadsDirectory?.appendingPathComponent(threadId, isDirectory: true).appendingPathComponent("meta.json"),
+                localThreadsDirectory.appendingPathComponent(threadId, isDirectory: true).appendingPathComponent("meta.json")
+            ].compactMap { $0 }
+
+            for metaURL in metaCandidates {
+                if let data = coordinatedReadData(from: metaURL),
+                   let diskThread = try? DispatchFormatters.jsonDecoder.decode(DispatchThread.self, from: data) {
+                    if diskThread.updatedAt >= currentThread.updatedAt {
+                        currentThread = diskThread
+                        break
+                    }
+                }
+            }
+
+            // Turn-based validation: ensure sender matches the active turn
+            switch sender {
+            case .user:
+                guard currentThread.status == .replied else {
+                    logger.error("Turn-based collision guard: user cannot reply to thread \(threadId) with status '\(currentThread.status.rawValue)'")
+                    return .failure(.invalidTurn("Cannot reply: awaiting agent response (status is \(currentThread.status.rawValue))"))
+                }
+            case .agent:
+                guard currentThread.status == .pendingAgent || currentThread.status == .failed else {
+                    logger.error("Turn-based collision guard: agent cannot reply to thread \(threadId) with status '\(currentThread.status.rawValue)'")
+                    return .failure(.invalidTurn("Cannot reply: expected pending_agent or failed, found \(currentThread.status.rawValue)"))
+                }
+            }
+
+            // Monotonic sequence number calculation: strictly greater than both recorded messageCount and any file on disk
+            let diskSeq = highestMessageSequenceOnDisk(threadId: threadId)
+            let nextIndex = max(currentThread.messageCount, diskSeq) + 1
             let now = Date()
-            let nextIndex = existing.messageCount + 1
             let newStatus: DispatchStatus = (sender == .user) ? .pendingAgent : .replied
 
             let message = DispatchMessage(
@@ -529,7 +568,7 @@ public final class DispatchStore: ObservableObject {
                 body: cleanBody
             )
 
-            let updatedThread = existing.with(
+            let updatedThread = currentThread.with(
                 status: newStatus,
                 updatedAt: now,
                 messageCount: nextIndex,
@@ -543,7 +582,7 @@ public final class DispatchStore: ObservableObject {
                 touchSyncMarker(threadId: threadId)
                 let updatedList = (self.threads.filter { $0.id != threadId } + [updatedThread]).sorted(by: { $0.updatedAt > $1.updatedAt })
                 self.threads = updatedList
-                self.logger.info("Appended message \(message.id) to thread \(threadId) by \(sender.rawValue)")
+                self.logger.info("Appended message \(message.id) (seq: \(nextIndex)) to thread \(threadId) by \(sender.rawValue)")
                 return .success(message)
             case .failure(let error):
                 return .failure(error)
@@ -704,6 +743,39 @@ public final class DispatchStore: ObservableObject {
             messageCache[threadId] = sorted
         }
         return sorted
+    }
+
+    private func highestMessageSequenceOnDisk(threadId: String) -> Int {
+        var maxSeq = 0
+        let candidateDirs = [
+            localThreadsDirectory.appendingPathComponent(threadId, isDirectory: true).appendingPathComponent("messages", isDirectory: true),
+            localArchiveDirectory.appendingPathComponent(threadId, isDirectory: true).appendingPathComponent("messages", isDirectory: true),
+            iCloudThreadsDirectory?.appendingPathComponent(threadId, isDirectory: true).appendingPathComponent("messages", isDirectory: true),
+            iCloudArchiveDirectory?.appendingPathComponent(threadId, isDirectory: true).appendingPathComponent("messages", isDirectory: true)
+        ].compactMap { $0 }
+
+        for dir in candidateDirs {
+            guard fileManager.fileExists(atPath: dir.path),
+                  let files = try? fileManager.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]) else {
+                continue
+            }
+            for file in files {
+                var filename = file.lastPathComponent
+                if filename.hasPrefix(".") {
+                    filename = String(filename.dropFirst())
+                }
+                if filename.hasSuffix(".icloud") {
+                    filename = String(filename.dropLast(7))
+                }
+                guard filename.hasSuffix(".json") else { continue }
+                let base = String(filename.dropLast(5))
+                let components = base.split(separator: "_")
+                if let first = components.first, let seq = Int(first) {
+                    maxSeq = max(maxSeq, seq)
+                }
+            }
+        }
+        return maxSeq
     }
 
     // MARK: - Archive & Unarchive Threads
