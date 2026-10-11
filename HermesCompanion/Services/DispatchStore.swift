@@ -41,6 +41,23 @@ public final class DispatchStore: ObservableObject {
     private let queue = DispatchQueue(label: "com.hermes.dispatchstore", qos: .utility)
     private let logger = Logger(subsystem: "com.hermes.HermesCompanion", category: "DispatchStore")
 
+    // MARK: - Performance Cache & Sync Marker Gating
+
+    private struct CachedThreadRecord {
+        let modificationDate: Date
+        let thread: DispatchThread
+    }
+
+    private struct SyncMarkerSignature: Equatable {
+        let localModDate: Date?
+        let iCloudModDate: Date?
+        let updatedAt: String?
+    }
+
+    private var threadFileCache: [String: CachedThreadRecord] = [:]
+    private var lastSyncMarkerSignature: SyncMarkerSignature?
+    private var hasCompletedInitialScan: Bool = false
+
     // MARK: - Directory Locations
 
     private var localThreadsDirectory: URL {
@@ -133,10 +150,60 @@ public final class DispatchStore: ObservableObject {
 
     // MARK: - Functional Thread Retrieval & Loading
 
-    public func loadThreads() {
+    private func currentSyncMarkerSignature() -> SyncMarkerSignature {
+        var localModDate: Date?
+        var iCloudModDate: Date?
+        var updatedAt: String?
+
+        let localMarker = localThreadsDirectory.appendingPathComponent(".sync_marker.json")
+        if fileManager.fileExists(atPath: localMarker.path) {
+            localModDate = (try? fileManager.attributesOfItem(atPath: localMarker.path)[.modificationDate]) as? Date
+            if let data = try? Data(contentsOf: localMarker),
+               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                updatedAt = obj["updated_at"] as? String
+            }
+        }
+
+        if let iCloudDir = iCloudThreadsDirectory {
+            let iCloudMarker = iCloudDir.appendingPathComponent(".sync_marker.json")
+            if fileManager.fileExists(atPath: iCloudMarker.path) {
+                iCloudModDate = (try? fileManager.attributesOfItem(atPath: iCloudMarker.path)[.modificationDate]) as? Date
+                if let data = try? Data(contentsOf: iCloudMarker),
+                   let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let icloudUpdated = obj["updated_at"] as? String {
+                    if updatedAt == nil || icloudUpdated > (updatedAt ?? "") {
+                        updatedAt = icloudUpdated
+                    }
+                }
+            } else {
+                let placeholderMarker = iCloudDir.appendingPathComponent("..sync_marker.json.icloud")
+                if fileManager.fileExists(atPath: placeholderMarker.path) {
+                    try? fileManager.startDownloadingUbiquitousItem(at: placeholderMarker)
+                }
+            }
+        }
+
+        return SyncMarkerSignature(localModDate: localModDate, iCloudModDate: iCloudModDate, updatedAt: updatedAt)
+    }
+
+    private func hasSyncMarkerChanged() -> Bool {
+        guard hasCompletedInitialScan, lastSyncMarkerSignature != nil else {
+            return true
+        }
+        let current = currentSyncMarkerSignature()
+        return current != lastSyncMarkerSignature
+    }
+
+    public func loadThreads(force: Bool = false) {
         loadProfiles()
         queue.async { [weak self] in
             guard let self = self else { return }
+
+            if !force && !self.hasSyncMarkerChanged() {
+                self.logger.debug("Sync marker unchanged, skipping O(N) thread directory scan")
+                return
+            }
+
             let result = self.scanAllThreads()
             DispatchQueue.main.async {
                 switch result {
@@ -178,6 +245,13 @@ public final class DispatchStore: ObservableObject {
             }
         }
 
+        self.hasCompletedInitialScan = true
+        let currentSig = self.currentSyncMarkerSignature()
+        self.lastSyncMarkerSignature = currentSig
+        if currentSig.localModDate == nil && currentSig.iCloudModDate == nil {
+            self.touchSyncMarker(threadId: "system")
+        }
+
         return .success(Array(threadMap.values))
     }
 
@@ -186,7 +260,8 @@ public final class DispatchStore: ObservableObject {
             return []
         }
 
-        return entries.compactMap { folderURL -> DispatchThread? in
+        var results: [DispatchThread] = []
+        for folderURL in entries {
             let metaURL = folderURL.appendingPathComponent("meta.json")
             if fileManager.isUbiquitousItem(at: metaURL) {
                 try? fileManager.startDownloadingUbiquitousItem(at: metaURL)
@@ -196,13 +271,26 @@ public final class DispatchStore: ObservableObject {
                 try? fileManager.startDownloadingUbiquitousItem(at: icloudMetaURL)
             }
 
-            guard fileManager.fileExists(atPath: metaURL.path),
-                  let data = try? Data(contentsOf: metaURL),
-                  let thread = try? DispatchFormatters.jsonDecoder.decode(DispatchThread.self, from: data) else {
-                return nil
+            guard fileManager.fileExists(atPath: metaURL.path) else {
+                threadFileCache.removeValue(forKey: metaURL.path)
+                continue
             }
-            return thread
+
+            let fileModDate = (try? fileManager.attributesOfItem(atPath: metaURL.path)[.modificationDate]) as? Date ?? Date.distantPast
+            if let cached = threadFileCache[metaURL.path], cached.modificationDate == fileModDate {
+                results.append(cached.thread)
+                continue
+            }
+
+            guard let data = try? Data(contentsOf: metaURL),
+                  let thread = try? DispatchFormatters.jsonDecoder.decode(DispatchThread.self, from: data) else {
+                continue
+            }
+
+            threadFileCache[metaURL.path] = CachedThreadRecord(modificationDate: fileModDate, thread: thread)
+            results.append(thread)
         }
+        return results
     }
 
     // MARK: - Thread Creation
@@ -442,6 +530,7 @@ public final class DispatchStore: ObservableObject {
         guard let existing = threads.first(where: { $0.id == id }) else { return }
         let updated = existing.with(status: .archived, updatedAt: Date())
         _ = writeMetadata(updated)
+        touchSyncMarker(threadId: id)
         let updatedList = (self.threads.filter { $0.id != id } + [updated]).sorted(by: { $0.updatedAt > $1.updatedAt })
         self.threads = updatedList
         logger.info("Archived dispatch thread: \(id)")
@@ -509,6 +598,8 @@ public final class DispatchStore: ObservableObject {
         try? fileManager.createDirectory(at: localThreadDir, withIntermediateDirectories: true)
         let localMetaURL = localThreadDir.appendingPathComponent("meta.json")
         try? metaData.write(to: localMetaURL, options: .atomic)
+        let localModDate = (try? fileManager.attributesOfItem(atPath: localMetaURL.path)[.modificationDate]) as? Date ?? Date()
+        threadFileCache[localMetaURL.path] = CachedThreadRecord(modificationDate: localModDate, thread: thread)
 
         // Write to iCloud container using NSFileCoordinator
         if let iCloudDir = iCloudThreadsDirectory {
@@ -516,6 +607,8 @@ public final class DispatchStore: ObservableObject {
             try? fileManager.createDirectory(at: iCloudThreadDir, withIntermediateDirectories: true)
             let iCloudMetaURL = iCloudThreadDir.appendingPathComponent("meta.json")
             coordinatedWrite(data: metaData, to: iCloudMetaURL)
+            let iCloudModDate = (try? fileManager.attributesOfItem(atPath: iCloudMetaURL.path)[.modificationDate]) as? Date ?? Date()
+            threadFileCache[iCloudMetaURL.path] = CachedThreadRecord(modificationDate: iCloudModDate, thread: thread)
             keepUploading(iCloudMetaURL)
         }
 
@@ -538,5 +631,7 @@ public final class DispatchStore: ObservableObject {
             let iCloudMarker = iCloudDir.appendingPathComponent(".sync_marker.json")
             coordinatedWrite(data: data, to: iCloudMarker)
         }
+
+        lastSyncMarkerSignature = currentSyncMarkerSignature()
     }
 }

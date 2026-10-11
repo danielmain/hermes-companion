@@ -144,6 +144,69 @@ python3 skills/hermes-companion/scripts/companion.py --dispatch-pending   # one 
 
 The agent is resident rather than a one-shot timer on purpose: a job that exits in milliseconds is throttled by `launchd`, which is what made answers arrive minutes late. If the agent cannot answer a letter, the thread is marked `failed` with `last_error` and `failed_at`, and the app shows that reason with a Retry that puts the letter back in the queue. Logs are timestamped in `~/.hermes/logs/companion-inbox.error.log`.
 
+### Asynchronous Postal Architecture & Scalability Review
+
+Hermes Post is explicitly designed as an **asynchronous postal system** (memos and letters exchanged via private iCloud Drive files), not an instant messaging or WhatsApp clone. Background push notifications (APNs) are intentionally out of scope: the user checks their correspondence when convenient, and the agent replies on its own schedule.
+
+However, a comprehensive review of the file-based communication channel reveals specific scalability and concurrency pain points when scaling up (e.g., 50–100+ threads):
+
+#### 1. $O(N)$ Unbounded Full Directory Scanning Every 5 Seconds
+- **Current Behavior:** Every 5.0 seconds in `PostInboxView` (and 2.5s in `DispatchThreadDetailView`), `DispatchStore.scanAllThreads()` traverses all folders in both local `Application Support/threads/` and iCloud `Documents/threads/`. For every thread, it reads `meta.json` from flash storage and decodes it via `JSONDecoder`. On macOS, `companion.py` performs a similar disk sweep.
+- **Pain Point at 100 Threads:** 200 directory checks, 200 disk reads, and 200 JSON decodes occur every 5 seconds while in the foreground. This causes flash storage churn, unnecessary CPU/battery consumption, and potential UI frame drops.
+
+#### 2. Archived Threads Are NOT Ignored by the Disk Monitor
+- **Current Behavior:** `DispatchStore.archiveThread(id:)` only mutates `status: "archived"` in `meta.json` and filters the view in SwiftUI.
+- **Pain Point:** The scanner only discovers that a thread is archived *after* opening its directory, reading `meta.json` from disk, and parsing the JSON. If a user has 5 active threads and 95 archived threads, all 100 threads are still read and parsed every 5 seconds on both iOS and macOS.
+
+#### 3. No Delete Capability (Unbounded Growth)
+- **Current Behavior:** Threads can only be archived, never deleted. Thread directories and message files accumulate indefinitely on disk.
+- **Pain Point:** Lack of a coordinated delete function guarantees that the $O(N)$ scan overhead grows monotonically over time. Deleting requires coordinated removal from both local cache and iCloud Drive to avoid resurrection during dual-directory merging.
+
+#### 4. Unused Synchronization Marker (`.sync_marker.json`)
+- **Current Behavior:** Both `DispatchStore.touchSyncMarker()` and `companion.py: touch_sync_marker()` write timestamp updates to `.sync_marker.json`.
+- **Pain Point:** Neither the iOS client nor the macOS daemon checks the modification timestamp of `.sync_marker.json` before initiating full thread scans. Full directory traversals run blindly regardless of whether any changes occurred.
+
+#### 5. iCloud Evicted Placeholders (`.meta.json.icloud`) Causing UI Jitter
+- **Current Behavior:** When iOS or macOS runs under storage pressure, iCloud Drive offloads dataless placeholders (`.meta.json.icloud`).
+- **Pain Point:** During download, `Data(contentsOf: metaURL)` fails. The thread temporarily vanishes from the user's inbox, then abruptly reappears on a subsequent poll once CloudDocs finishes materializing the file.
+
+#### 6. Uncoordinated Concurrent File Reads
+- **Current Behavior:** Writes to iCloud use `NSFileCoordinator` (or atomic replace on macOS), but `DispatchStore.scanDirectory()` and `readMessagesFromDisk()` read raw files without `NSFileCoordinator`.
+- **Pain Point:** If macOS writes `meta.json` or a letter at the exact millisecond iOS reads it, iOS encounters an incomplete read or JSON decode error, temporarily skipping or corrupting that cycle's view.
+
+#### 7. Message Sequence Number Collisions
+- **Current Behavior:** Filenames follow `%03d_{sender}_{timestamp}_{id}.json`, where the prefix index is derived from `thread.messageCount + 1`.
+- **Pain Point:** If the user sends a follow-up letter while the agent is executing and writing its response, both sides can compute the same sequence index (e.g., `002`), causing write contention or inconsistent ordering.
+
+---
+
+### Actionable Roadmap: Postal Channel Optimization Tasks
+
+The following tasks address the identified scalability and concurrency bottlenecks:
+
+- [x] **Task 1: Gate Directory Scans with `.sync_marker.json`**
+  - Read `.sync_marker.json` modification date / timestamp before initiating `scanAllThreads()` or `companion.py` sweeps.
+  - If the marker has not changed since the last known sync, skip the $O(N)$ directory traversal and JSON decoding entirely.
+  - Maintain an in-memory dictionary cache of parsed threads keyed by `thread_id` and file `modificationDate`.
+
+- [ ] **Task 2: Segregate Archived Threads into `Documents/archive/`**
+  - When a thread is archived, move its folder from `Documents/threads/{id}` to `Documents/archive/{id}` (and in local `Application Support`).
+  - Active scanning loops on both iOS and macOS should only ever enumerate `Documents/threads/`.
+  - Keeps active polling at $O(\text{active})$ instead of $O(\text{total})$, isolating historical threads from the fast path.
+
+- [ ] **Task 3: Implement Coordinated Thread Deletion (`deleteThread`)**
+  - Add `DispatchStore.deleteThread(id:)` that coordinates atomic directory removal across both `localThreadsDirectory` and `iCloudThreadsDirectory` via `NSFileCoordinator`.
+  - Add swipe-to-delete in `PostInboxView` and a destructive Delete button in `DispatchThreadDetailView`.
+  - Add `--delete-thread <id>` in `companion.py` for CLI cleanup.
+
+- [ ] **Task 4: Graceful Cache Fallback for iCloud Placeholders (`.icloud`)**
+  - When `meta.json` is in `.meta.json.icloud` state, retain the previously cached in-memory thread representation while triggering `startDownloadingUbiquitousItem`.
+  - Prevents threads from vanishing and flickering in the UI during CloudDocs sync.
+
+- [ ] **Task 5: Coordinated Reads & Concurrency Guards**
+  - Wrap read operations in `DispatchStore` with `NSFileCoordinator` (using `.withoutChanges` option) to prevent reading half-written files.
+  - Add optimistic concurrency check or turn-based status validation (`status == .replied` required before user reply, `status == .pendingAgent` required before agent reply) to eliminate sequence collisions.
+
 ## Repository
 
 ```text

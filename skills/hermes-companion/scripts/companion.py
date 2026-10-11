@@ -1469,6 +1469,19 @@ def trigger_icloud_download(path: Path) -> None:
         pass
 
 
+# In-memory performance cache for parsed thread metadata
+_DISPATCH_THREAD_CACHE: Dict[str, Tuple[float, DispatchThreadMeta]] = {}
+_LAST_SYNC_MARKER_STATE: Dict[str, Tuple[float, Optional[str]]] = {}
+_LAST_SWEEP_REPORT: Dict[str, SweepReport] = {}
+
+
+def reset_dispatch_cache() -> None:
+    """Clear in-memory caches for dispatch threads and sync markers (used in tests)."""
+    _DISPATCH_THREAD_CACHE.clear()
+    _LAST_SYNC_MARKER_STATE.clear()
+    _LAST_SWEEP_REPORT.clear()
+
+
 def scan_dispatch_threads(threads_dir: Path) -> ThreadScan:
     """Read every thread's meta.json, naming the ones that could not be read.
 
@@ -1497,10 +1510,30 @@ def scan_dispatch_threads(threads_dir: Path) -> ThreadScan:
                 trigger_icloud_download(icloud_meta)
                 needs_cooldown = True
 
+            cache_key = str(meta_file.resolve())
+            if safe_is_file(meta_file):
+                try:
+                    mtime = meta_file.stat().st_mtime
+                    if cache_key in _DISPATCH_THREAD_CACHE:
+                        cached_mtime, cached_meta = _DISPATCH_THREAD_CACHE[cache_key]
+                        if cached_mtime == mtime:
+                            results.append(cached_meta)
+                            continue
+                except Exception:
+                    pass
+            else:
+                _DISPATCH_THREAD_CACHE.pop(cache_key, None)
+
             read = read_json_checked(meta_file)
             if read.data:
-                results.append(cast(DispatchThreadMeta, read.data))
+                meta_dict = cast(DispatchThreadMeta, read.data)
+                try:
+                    _DISPATCH_THREAD_CACHE[cache_key] = (meta_file.stat().st_mtime, meta_dict)
+                except Exception:
+                    pass
+                results.append(meta_dict)
             elif read.reason != "missing":
+                _DISPATCH_THREAD_CACHE.pop(cache_key, None)
                 unreadable.append(entry.name)
                 if log_skip_throttled(
                     f"meta:{meta_file}",
@@ -1520,7 +1553,12 @@ def scan_dispatch_threads(threads_dir: Path) -> ThreadScan:
                 if safe_is_file(meta_file) and not any(r.get("thread_id") == entry.name for r in results):
                     data = safe_read_json(meta_file)
                     if data:
-                        results.append(cast(DispatchThreadMeta, data))
+                        meta_dict = cast(DispatchThreadMeta, data)
+                        try:
+                            _DISPATCH_THREAD_CACHE[str(meta_file.resolve())] = (meta_file.stat().st_mtime, meta_dict)
+                        except Exception:
+                            pass
+                        results.append(meta_dict)
             except Exception:
                 continue
 
@@ -2354,7 +2392,12 @@ def get_physical_context_summary(
     return "\n\n".join(parts)
 
 
-def dispatch_pending_once(args: argparse.Namespace, now: datetime, threads_dir: Path) -> SweepReport:
+def dispatch_pending_once(
+    args: argparse.Namespace,
+    now: datetime,
+    threads_dir: Path,
+    force: bool = False,
+) -> SweepReport:
     """One sweep: answer every letter waiting for the agent. Reports what it did.
 
     Every phase is guarded: a dataless CloudDocs placeholder, an unreadable meta, a corrupt
@@ -2364,9 +2407,34 @@ def dispatch_pending_once(args: argparse.Namespace, now: datetime, threads_dir: 
     """
     zero: SweepReport = {"replies": 0, "pending": 0, "unreadable": 0}
     try:
+        marker_key = str(threads_dir.resolve())
+        marker_file = threads_dir / ".sync_marker.json"
+        marker_state: Optional[Tuple[float, Optional[str]]] = None
+        if safe_is_file(marker_file):
+            try:
+                st = marker_file.stat()
+                m_updated = None
+                m_data = safe_read_json(marker_file)
+                if isinstance(m_data, dict):
+                    m_updated = m_data.get("updated_at")
+                marker_state = (st.st_mtime, m_updated)
+            except Exception:
+                marker_state = None
+
+        last_marker = _LAST_SYNC_MARKER_STATE.get(marker_key)
+        last_report = _LAST_SWEEP_REPORT.get(marker_key)
+
+        if not force and marker_state is not None and last_marker is not None and marker_state == last_marker:
+            if last_report and last_report.get("pending", 0) == 0 and last_report.get("unreadable", 0) == 0:
+                return zero
+
         scan = scan_dispatch_threads(threads_dir)
         pending = [t for t in scan["threads"] if t.get("status") == "pending_agent"]
         report: SweepReport = {"replies": 0, "pending": len(pending), "unreadable": len(scan["unreadable"])}
+        if marker_state is not None:
+            _LAST_SYNC_MARKER_STATE[marker_key] = marker_state
+        _LAST_SWEEP_REPORT[marker_key] = report
+
         if not pending:
             # Zero cost / zero tokens / zero CPU
             return report
@@ -2495,6 +2563,25 @@ def dispatch_pending_once(args: argparse.Namespace, now: datetime, threads_dir: 
                     else:
                         mark_thread_failed(threads_dir, thread_id, f"Execution error: {str(exc)[:140]}", now=now)
 
+            new_marker_state = None
+            if safe_is_file(marker_file):
+                try:
+                    st = marker_file.stat()
+                    m_updated = None
+                    m_data = safe_read_json(marker_file)
+                    if isinstance(m_data, dict):
+                        m_updated = m_data.get("updated_at")
+                    new_marker_state = (st.st_mtime, m_updated)
+                except Exception:
+                    pass
+            if new_marker_state is not None:
+                _LAST_SYNC_MARKER_STATE[marker_key] = new_marker_state
+            remaining_pending = max(0, len(pending) - report["replies"])
+            _LAST_SWEEP_REPORT[marker_key] = {
+                "replies": report["replies"],
+                "pending": remaining_pending,
+                "unreadable": len(scan["unreadable"]),
+            }
             return report
         finally:
             release_dispatch_lock(lock_file)
@@ -2513,7 +2600,7 @@ def command_dispatch_pending(args: argparse.Namespace, now: datetime) -> int:
         threads_dir = get_threads_dir(args.icloud_dir)
         if not threads_dir:
             return 0
-        report = dispatch_pending_once(args, now, threads_dir)
+        report = dispatch_pending_once(args, now, threads_dir, force=True)
         if report["replies"]:
             log("INFO", f"one-shot sweep wrote {report['replies']} agent reply(ies)")
         if report["unreadable"]:

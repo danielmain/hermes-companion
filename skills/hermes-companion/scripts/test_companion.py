@@ -644,6 +644,88 @@ def test_skip_log_is_throttled() -> None:
     check("repeat skip is throttled", not companion.log_skip_throttled(key, "INFO", "unit test skip"))
 
 
+def test_sync_marker_gated_sweeps_and_cache() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        threads_dir = tmp_path / "threads"
+        threads_dir.mkdir(parents=True, exist_ok=True)
+        companion.reset_dispatch_cache()
+
+        moment = datetime(2026, 10, 9, 14, 0, 0, tzinfo=timezone.utc)
+        thread = companion.create_dispatch_thread(
+            threads_dir,
+            "Gating Test",
+            "Initial body",
+            target_profile="default",
+            sender="user",
+            now=moment,
+        )
+        tid = thread["thread_id"]
+
+        # 1. Test in-memory cache avoids re-reading meta.json from disk
+        original_read_json = companion.read_json_checked
+        read_calls = 0
+
+        def counting_read_json(p: Path):
+            nonlocal read_calls
+            read_calls += 1
+            return original_read_json(p)
+
+        companion.read_json_checked = counting_read_json
+        try:
+            # First scan loads and caches
+            scan1 = companion.scan_dispatch_threads(threads_dir)
+            check("first scan reads from disk", read_calls == 1)
+            check("first scan found thread", len(scan1["threads"]) == 1)
+
+            # Second scan with unchanged file should hit in-memory cache
+            scan2 = companion.scan_dispatch_threads(threads_dir)
+            check("second scan uses cache without disk read", read_calls == 1)
+            check("second scan returns identical thread", scan2["threads"][0]["thread_id"] == tid)
+
+            # Touch meta file with new timestamp/mtime: should trigger re-read
+            meta_file = threads_dir / tid / "meta.json"
+            time.sleep(0.01)
+            meta_file.touch()
+            scan3 = companion.scan_dispatch_threads(threads_dir)
+            check("scan after mtime touch re-reads disk", read_calls == 2)
+        finally:
+            companion.read_json_checked = original_read_json
+
+        # 2. Test sync marker gating in dispatch_pending_once
+        # First, reply to the thread so there are 0 pending letters
+        companion.reply_to_thread(threads_dir, tid, "Agent reply", sender="agent", now=moment)
+
+        args = companion.build_parser().parse_args(["--daemon", "--icloud-dir", str(tmp_path)])
+        # Baseline sweep: establishes sync marker baseline
+        report1 = companion.dispatch_pending_once(args, moment, threads_dir)
+        check("baseline sweep completes with 0 pending", report1["pending"] == 0 and report1["replies"] == 0)
+
+        # Gated sweep: sync marker has NOT changed, should skip scan completely
+        original_scan = companion.scan_dispatch_threads
+        scan_called = False
+
+        def tracking_scan(p: Path):
+            nonlocal scan_called
+            scan_called = True
+            return original_scan(p)
+
+        companion.scan_dispatch_threads = tracking_scan
+        try:
+            report2 = companion.dispatch_pending_once(args, moment, threads_dir)
+            check("gated sweep skips scan entirely", not scan_called)
+            check("gated sweep returns zero report", report2["pending"] == 0 and report2["replies"] == 0)
+
+            # Touch sync marker: next sweep should notice change and scan
+            companion.touch_sync_marker(threads_dir, tid, now=moment)
+            time.sleep(0.01)
+            (threads_dir / ".sync_marker.json").touch()
+            report3 = companion.dispatch_pending_once(args, moment, threads_dir)
+            check("sweep after marker touch invokes scan", scan_called)
+        finally:
+            companion.scan_dispatch_threads = original_scan
+
+
 def main() -> int:
     test_still_home_after_hours()
     test_walking_at_home()
@@ -673,6 +755,7 @@ def main() -> int:
     test_daemon_loop_is_bounded()
     test_unreadable_meta_is_reported()
     test_skip_log_is_throttled()
+    test_sync_marker_gated_sweeps_and_cache()
     print("ok")
     return 0
 

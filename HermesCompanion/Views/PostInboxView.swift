@@ -86,7 +86,7 @@ public struct PostInboxView: View {
                 PostalDisclaimerSheetView(isPresented: $showingPostalDisclaimer)
             }
             .refreshable {
-                store.loadThreads()
+                store.loadThreads(force: true)
             }
             .onAppear {
                 store.loadThreads()
@@ -103,7 +103,7 @@ public struct PostInboxView: View {
     private var actionBarSection: some View {
         HStack(spacing: EditorialSpacing.small) {
             Button {
-                store.loadThreads()
+                store.loadThreads(force: true)
             } label: {
                 Image(systemName: "arrow.clockwise")
                     .font(.body.weight(.medium))
