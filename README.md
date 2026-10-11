@@ -132,6 +132,27 @@ python3 skills/hermes-companion/scripts/companion.py
 
 Timestamps in the JSON are UTC (`2026-10-01T09:53:05Z`). The script compares them to UTC now, so the age is right in any timezone. A growing age while you stay put is the design: the timestamp is the last accepted move, not the last GPS tick.
 
+### First-Run Sequence, App Store Distribution & Pre-Flight Checks
+
+When setting up Hermes Companion from scratch on a new Mac and iPhone, observe the following execution order and environmental requirements:
+
+#### 1. Execution Order: Phone Must Run First
+- **Why:** Apple's CloudDocs daemon (`bird`) does **not** create the local folder `~/Library/Mobile Documents/iCloud~com~hermes~HermesCompanion/` on macOS until an authorized device has written at least one file into the container and uploaded it to iCloud.
+- **Cold-Start Latency:** When an iCloud container is initialized for the first time, Apple's cloud provisioning can take **1–3 minutes** before the directory appears under `~/Library/Mobile Documents/` on macOS. Running `companion.py` before the iOS app has written its first record will report that no container or telemetry file exists.
+- **Rule of Thumb:** Launch the iPhone app, grant permissions, and compose an initial letter or wait for the first GPS fix before starting the macOS background daemon.
+
+#### 2. App Store Distribution vs. Sideloading
+- **For End Users (App Store):** Once distributed via the App Store, **end users do not need Xcode, developer certificates, or signing configuration**. They install the app directly from the App Store. Because macOS automatically syncs third-party App Store ubiquity containers (`CloudDocuments`) into `~/Library/Mobile Documents/iCloud~<bundle_id>/` (the same mechanism used by Obsidian, iA Writer, or Logseq), any CLI or agent running under the user's macOS account can read and write to the container out of the box.
+- **For Developers (Sideloading):** When building from source, select your own Apple Developer Team under **Signing & Capabilities** in Xcode. Both free and paid Apple Developer accounts support development ubiquity containers.
+
+#### 3. Pre-Flight Checks & Mitigations (Hermes Executable & iCloud Access)
+- **Hermes Executable Discovery:** When `companion.py --daemon` auto-dispatches replies to pending letters, it invokes the Hermes CLI (`hermes chat ...`). If Hermes was installed in an isolated virtual environment or non-standard PATH not exported to launchd, execution will fail with `"hermes executable not found"`.
+  - *Recommended Mitigation:* On skill installation or service setup (`companion.py --install-service` or a future `--doctor` check), the installer should verify that:
+    1. The `hermes` binary is discoverable and executable across standard candidate paths (`which hermes`, `~/.local/bin`, `~/.cargo/bin`, `~/.hermes/bin`, `/opt/homebrew/bin`).
+    2. The iCloud container directory exists and has active read/write permissions.
+    3. macOS Privacy permissions allow Terminal/Python to access iCloud Drive (`System Settings → Privacy & Security → Files and Folders`).
+- **Graceful Diagnostics:** If checks fail, print immediate actionable remediation steps (e.g., *"Run iOS app first to provision iCloud container"*, *"Add hermes to PATH"*, or *"Grant Full Disk Access to Terminal"*).
+
 ## Letters from the phone (Hermes Post)
 
 Letters written in the app's Post tab land in `Documents/threads/<thread_id>/` as an immutable `meta.json` plus numbered letter files. The Mac answers them on its own: the LaunchAgent `ai.hermes.companion-inbox` keeps `companion.py --daemon` resident and sweeps the container every 5 seconds.
