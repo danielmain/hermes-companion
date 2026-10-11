@@ -56,6 +56,7 @@ public final class DispatchStore: ObservableObject {
     }
 
     private var threadFileCache: [String: CachedThreadRecord] = [:]
+    private var messageCache: [String: [DispatchMessage]] = [:]
     private var lastSyncMarkerSignature: SyncMarkerSignature?
     private var hasCompletedInitialScan: Bool = false
 
@@ -403,12 +404,22 @@ public final class DispatchStore: ObservableObject {
                 try? fileManager.startDownloadingUbiquitousItem(at: metaURL)
             }
             let icloudMetaURL = folderURL.appendingPathComponent(".meta.json.icloud")
-            if fileManager.fileExists(atPath: icloudMetaURL.path) {
+            let hasPlaceholder = fileManager.fileExists(atPath: icloudMetaURL.path)
+            if hasPlaceholder {
                 try? fileManager.startDownloadingUbiquitousItem(at: icloudMetaURL)
             }
 
             guard fileManager.fileExists(atPath: metaURL.path) else {
-                threadFileCache.removeValue(forKey: metaURL.path)
+                if hasPlaceholder, let cached = threadFileCache[metaURL.path] {
+                    // Graceful cache fallback: retain thread during CloudDocs background download
+                    results.append(cached.thread)
+                } else if hasPlaceholder, let fallback = (self.threads.first(where: { $0.id == folderURL.lastPathComponent }) ?? self.archivedThreads.first(where: { $0.id == folderURL.lastPathComponent })) {
+                    // Retain from existing published threads if not yet present in file cache
+                    threadFileCache[metaURL.path] = CachedThreadRecord(modificationDate: Date.distantPast, thread: fallback)
+                    results.append(fallback)
+                } else {
+                    threadFileCache.removeValue(forKey: metaURL.path)
+                }
                 continue
             }
 
@@ -420,6 +431,12 @@ public final class DispatchStore: ObservableObject {
 
             guard let data = try? Data(contentsOf: metaURL),
                   let thread = try? DispatchFormatters.jsonDecoder.decode(DispatchThread.self, from: data) else {
+                if let cached = threadFileCache[metaURL.path] {
+                    // Graceful fallback if read/decode temporarily fails during ubiquitous sync
+                    results.append(cached.thread)
+                } else if let fallback = (self.threads.first(where: { $0.id == folderURL.lastPathComponent }) ?? self.archivedThreads.first(where: { $0.id == folderURL.lastPathComponent })) {
+                    results.append(fallback)
+                }
                 continue
             }
 
@@ -629,6 +646,7 @@ public final class DispatchStore: ObservableObject {
         ].compactMap { $0 }
 
         var seenIds = Set<String>()
+        var foundPlaceholders = false
 
         for msgDir in candidateDirs {
             guard fileManager.fileExists(atPath: msgDir.path),
@@ -640,6 +658,7 @@ public final class DispatchStore: ObservableObject {
                 let filename = file.lastPathComponent
                 if filename.hasPrefix(".") && filename.hasSuffix(".icloud") {
                     try? fileManager.startDownloadingUbiquitousItem(at: file)
+                    foundPlaceholders = true
                     continue
                 }
 
@@ -649,6 +668,7 @@ public final class DispatchStore: ObservableObject {
                     }
                     guard let data = try? Data(contentsOf: file),
                           let msg = try? DispatchFormatters.jsonDecoder.decode(DispatchMessage.self, from: data) else {
+                        foundPlaceholders = true
                         continue
                     }
                     if !seenIds.contains(msg.id) {
@@ -659,7 +679,21 @@ public final class DispatchStore: ObservableObject {
             }
         }
 
-        return messages.sorted(by: { $0.timestamp < $1.timestamp })
+        // Graceful cache fallback: if placeholders are actively syncing and we have cached messages, retain any missing messages
+        if let cachedList = messageCache[threadId] {
+            for cachedMsg in cachedList {
+                if !seenIds.contains(cachedMsg.id) && foundPlaceholders {
+                    seenIds.insert(cachedMsg.id)
+                    messages.append(cachedMsg)
+                }
+            }
+        }
+
+        let sorted = messages.sorted(by: { $0.timestamp < $1.timestamp })
+        if !sorted.isEmpty {
+            messageCache[threadId] = sorted
+        }
+        return sorted
     }
 
     // MARK: - Archive & Unarchive Threads
@@ -759,6 +793,7 @@ public final class DispatchStore: ObservableObject {
             if let iCloudArchive = self.iCloudArchiveDirectory {
                 self.threadFileCache.removeValue(forKey: iCloudArchive.appendingPathComponent(id, isDirectory: true).appendingPathComponent("meta.json").path)
             }
+            self.messageCache.removeValue(forKey: id)
 
             // 3. Touch sync marker
             self.touchSyncMarker(threadId: id)

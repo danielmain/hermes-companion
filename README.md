@@ -167,8 +167,8 @@ However, a comprehensive review of the file-based communication channel reveals 
 - **Performance Impact:** Routine foreground polling cycles (every 5.0s on iOS) and background daemon sweeps (every 3s on macOS) drop from $O(N)$ flash directory traversals to an instantaneous $O(1)$ stat check when idle, completely eliminating disk I/O churn and unnecessary CPU/battery consumption across unchanged thread stores.
 
 #### 5. iCloud Evicted Placeholders (`.meta.json.icloud`) Causing UI Jitter
-- **Current Behavior:** When iOS or macOS runs under storage pressure, iCloud Drive offloads dataless placeholders (`.meta.json.icloud`).
-- **Pain Point:** During download, `Data(contentsOf: metaURL)` fails. The thread temporarily vanishes from the user's inbox, then abruptly reappears on a subsequent poll once CloudDocs finishes materializing the file.
+- **Resolved Behavior:** Both `DispatchStore` (iOS) and `companion.py` (macOS) detect dataless `.meta.json.icloud` placeholders and in-flight CloudDocs downloads, triggering background retrieval via `startDownloadingUbiquitousItem` while seamlessly falling back to in-memory cached thread and message representations.
+- **Performance Impact:** Eliminates UI flicker, message drops, and disappearing threads during device storage pressure or background CloudDocs resynchronization. The inbox and correspondence views remain completely stable while dataless files materialize asynchronously in the background.
 
 #### 6. Uncoordinated Concurrent File Reads
 - **Current Behavior:** Writes to iCloud use `NSFileCoordinator` (or atomic replace on macOS), but `DispatchStore.scanDirectory()` and `readMessagesFromDisk()` read raw files without `NSFileCoordinator`.
@@ -199,7 +199,7 @@ The following tasks address the identified scalability and concurrency bottlenec
   - Add swipe-to-delete in `PostInboxView` and a destructive Delete button in `DispatchThreadDetailView`.
   - Add `--delete-thread <id>` in `companion.py` for CLI cleanup.
 
-- [ ] **Task 4: Graceful Cache Fallback for iCloud Placeholders (`.icloud`)**
+- [x] **Task 4: Graceful Cache Fallback for iCloud Placeholders (`.icloud`)**
   - When `meta.json` is in `.meta.json.icloud` state, retain the previously cached in-memory thread representation while triggering `startDownloadingUbiquitousItem`.
   - Prevents threads from vanishing and flickering in the UI during CloudDocs sync.
 
