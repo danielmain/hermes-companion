@@ -163,8 +163,8 @@ However, a comprehensive review of the file-based communication channel reveals 
 - **Performance Impact:** Eliminates monotonic disk growth. Deleted threads are immediately purged from in-memory caches, removing flash I/O and JSON parsing overhead entirely.
 
 #### 4. Unused Synchronization Marker (`.sync_marker.json`)
-- **Current Behavior:** Both `DispatchStore.touchSyncMarker()` and `companion.py: touch_sync_marker()` write timestamp updates to `.sync_marker.json`.
-- **Pain Point:** Neither the iOS client nor the macOS daemon checks the modification timestamp of `.sync_marker.json` before initiating full thread scans. Full directory traversals run blindly regardless of whether any changes occurred.
+- **Resolved Behavior:** Both `DispatchStore` (iOS) and `companion.py` (macOS) check the modification date and internal `updated_at` timestamp of `.sync_marker.json` (triggering ubiquitous downloads if in a dataless `..sync_marker.json.icloud` state) before initiating full thread scans. If the marker signature matches the last recorded state and no pending or unreadable tasks remain, directory sweeps and JSON decodes are bypassed entirely.
+- **Performance Impact:** Routine foreground polling cycles (every 5.0s on iOS) and background daemon sweeps (every 3s on macOS) drop from $O(N)$ flash directory traversals to an instantaneous $O(1)$ stat check when idle, completely eliminating disk I/O churn and unnecessary CPU/battery consumption across unchanged thread stores.
 
 #### 5. iCloud Evicted Placeholders (`.meta.json.icloud`) Causing UI Jitter
 - **Current Behavior:** When iOS or macOS runs under storage pressure, iCloud Drive offloads dataless placeholders (`.meta.json.icloud`).
