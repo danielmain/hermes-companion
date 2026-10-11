@@ -171,8 +171,8 @@ However, a comprehensive review of the file-based communication channel reveals 
 - **Performance Impact:** Eliminates UI flicker, message drops, and disappearing threads during device storage pressure or background CloudDocs resynchronization. The inbox and correspondence views remain completely stable while dataless files materialize asynchronously in the background.
 
 #### 6. Uncoordinated Concurrent File Reads
-- **Current Behavior:** Writes to iCloud use `NSFileCoordinator` (or atomic replace on macOS), but `DispatchStore.scanDirectory()` and `readMessagesFromDisk()` read raw files without `NSFileCoordinator`.
-- **Pain Point:** If macOS writes `meta.json` or a letter at the exact millisecond iOS reads it, iOS encounters an incomplete read or JSON decode error, temporarily skipping or corrupting that cycle's view.
+- **Resolved Behavior:** `DispatchStore.scanDirectory()`, `readMessagesFromDisk()`, sync marker evaluations, and profile lookups coordinate reading ubiquitous items via `NSFileCoordinator` with `.withoutChanges` options (`coordinatedReadData`). Coordinated reads synchronize with `bird` and macOS atomic writes, falling back gracefully to direct reads and in-memory caches if transient errors occur.
+- **Performance Impact:** Completely prevents race conditions, partial reads, and transient JSON decode errors caused by concurrent disk synchronization. Thread metadata and incoming letters are always read in an atomically consistent state without cycle-skipping or UI glitches.
 
 #### 7. Message Sequence Number Collisions
 - **Current Behavior:** Filenames follow `%03d_{sender}_{timestamp}_{id}.json`, where the prefix index is derived from `thread.messageCount + 1`.
@@ -203,8 +203,10 @@ The following tasks address the identified scalability and concurrency bottlenec
   - When `meta.json` is in `.meta.json.icloud` state, retain the previously cached in-memory thread representation while triggering `startDownloadingUbiquitousItem`.
   - Prevents threads from vanishing and flickering in the UI during CloudDocs sync.
 
-- [ ] **Task 5: Coordinated Reads & Concurrency Guards**
-  - Wrap read operations in `DispatchStore` with `NSFileCoordinator` (using `.withoutChanges` option) to prevent reading half-written files.
+- [x] **Task 5: Coordinated Reads with `NSFileCoordinator`**
+  - Wrap read operations in `DispatchStore` (`scanDirectory`, `readMessagesFromDisk`, sync marker, and profile loaders) with `NSFileCoordinator` using `.withoutChanges` option to prevent reading half-written files.
+
+- [ ] **Task 6: Concurrency Guards & Sequence Collisions**
   - Add optimistic concurrency check or turn-based status validation (`status == .replied` required before user reply, `status == .pendingAgent` required before agent reply) to eliminate sequence collisions.
 
 ## Repository

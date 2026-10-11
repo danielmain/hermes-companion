@@ -81,28 +81,34 @@ public final class DispatchStore: ObservableObject {
         return appSupport.appendingPathComponent("profiles.json")
     }
 
-    private var iCloudThreadsDirectory: URL? {
+    private var iCloudContainerURL: URL? {
         let containerId = TrackingConfiguration.defaultContainerIdentifier
-        let containerURL = fileManager.url(forUbiquityContainerIdentifier: containerId) ?? fileManager.url(forUbiquityContainerIdentifier: nil)
-        guard let containerURL = containerURL else { return nil }
+        return fileManager.url(forUbiquityContainerIdentifier: containerId) ?? fileManager.url(forUbiquityContainerIdentifier: nil)
+    }
+
+    private var iCloudThreadsDirectory: URL? {
+        guard let containerURL = iCloudContainerURL else { return nil }
         let documentsURL = containerURL.appendingPathComponent("Documents", isDirectory: true)
         return documentsURL.appendingPathComponent("threads", isDirectory: true)
     }
 
     private var iCloudArchiveDirectory: URL? {
-        let containerId = TrackingConfiguration.defaultContainerIdentifier
-        let containerURL = fileManager.url(forUbiquityContainerIdentifier: containerId) ?? fileManager.url(forUbiquityContainerIdentifier: nil)
-        guard let containerURL = containerURL else { return nil }
+        guard let containerURL = iCloudContainerURL else { return nil }
         let documentsURL = containerURL.appendingPathComponent("Documents", isDirectory: true)
         return documentsURL.appendingPathComponent("archive", isDirectory: true)
     }
 
     private var iCloudProfilesURL: URL? {
-        let containerId = TrackingConfiguration.defaultContainerIdentifier
-        let containerURL = fileManager.url(forUbiquityContainerIdentifier: containerId) ?? fileManager.url(forUbiquityContainerIdentifier: nil)
-        guard let containerURL = containerURL else { return nil }
+        guard let containerURL = iCloudContainerURL else { return nil }
         let documentsURL = containerURL.appendingPathComponent("Documents", isDirectory: true)
         return documentsURL.appendingPathComponent("profiles.json")
+    }
+
+    private func isUbiquitousURL(_ url: URL) -> Bool {
+        if let container = iCloudContainerURL, url.path.hasPrefix(container.path) {
+            return true
+        }
+        return fileManager.isUbiquitousItem(at: url)
     }
 
     private init() {
@@ -128,7 +134,7 @@ public final class DispatchStore: ObservableObject {
             // 2. Try iCloud Documents/profiles.json
             if let icloudURL = self.iCloudProfilesURL,
                self.fileManager.fileExists(atPath: icloudURL.path),
-               let data = try? Data(contentsOf: icloudURL),
+               let data = self.coordinatedReadData(from: icloudURL, isCoordinated: true),
                let config = try? DispatchFormatters.jsonDecoder.decode(ProfilesConfig.self, from: data) {
                 profiles = config.profiles
                 try? data.write(to: self.localProfilesURL, options: .atomic)
@@ -186,7 +192,7 @@ public final class DispatchStore: ObservableObject {
             let iCloudMarker = iCloudDir.appendingPathComponent(".sync_marker.json")
             if fileManager.fileExists(atPath: iCloudMarker.path) {
                 iCloudModDate = (try? fileManager.attributesOfItem(atPath: iCloudMarker.path)[.modificationDate]) as? Date
-                if let data = try? Data(contentsOf: iCloudMarker),
+                if let data = coordinatedReadData(from: iCloudMarker, isCoordinated: true),
                    let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                    let icloudUpdated = obj["updated_at"] as? String {
                     if updatedAt == nil || icloudUpdated > (updatedAt ?? "") {
@@ -261,13 +267,13 @@ public final class DispatchStore: ObservableObject {
     private func scanArchivedThreads() -> Result<[DispatchThread], DispatchError> {
         var threadMap: [String: DispatchThread] = [:]
 
-        let localResults = scanDirectory(localArchiveDirectory)
+        let localResults = scanDirectory(localArchiveDirectory, isCoordinated: false)
         for thread in localResults {
             threadMap[thread.id] = thread
         }
 
         if let iCloudDir = iCloudArchiveDirectory, fileManager.fileExists(atPath: iCloudDir.path) {
-            let iCloudResults = scanDirectory(iCloudDir)
+            let iCloudResults = scanDirectory(iCloudDir, isCoordinated: true)
             for thread in iCloudResults {
                 if let existing = threadMap[thread.id] {
                     if thread.updatedAt > existing.updatedAt {
@@ -344,7 +350,7 @@ public final class DispatchStore: ObservableObject {
         var threadMap: [String: DispatchThread] = [:]
 
         // 1. Scan local Application Support directory
-        let localResults = scanDirectory(localThreadsDirectory)
+        let localResults = scanDirectory(localThreadsDirectory, isCoordinated: false)
         for thread in localResults {
             if thread.status == .archived {
                 // Auto-migrate legacy archived thread out of active threads directory
@@ -359,7 +365,7 @@ public final class DispatchStore: ObservableObject {
 
         // 2. Scan iCloud Ubiquity container Documents/threads
         if let iCloudDir = iCloudThreadsDirectory, fileManager.fileExists(atPath: iCloudDir.path) {
-            let iCloudResults = scanDirectory(iCloudDir)
+            let iCloudResults = scanDirectory(iCloudDir, isCoordinated: true)
             for thread in iCloudResults {
                 if thread.status == .archived {
                     // Auto-migrate legacy archived thread out of active threads directory
@@ -392,7 +398,7 @@ public final class DispatchStore: ObservableObject {
         return .success(Array(threadMap.values))
     }
 
-    private func scanDirectory(_ dir: URL) -> [DispatchThread] {
+    private func scanDirectory(_ dir: URL, isCoordinated: Bool = false) -> [DispatchThread] {
         guard let entries = try? fileManager.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]) else {
             return []
         }
@@ -429,7 +435,7 @@ public final class DispatchStore: ObservableObject {
                 continue
             }
 
-            guard let data = try? Data(contentsOf: metaURL),
+            guard let data = coordinatedReadData(from: metaURL, isCoordinated: isCoordinated),
                   let thread = try? DispatchFormatters.jsonDecoder.decode(DispatchThread.self, from: data) else {
                 if let cached = threadFileCache[metaURL.path] {
                     // Graceful fallback if read/decode temporarily fails during ubiquitous sync
@@ -638,17 +644,21 @@ public final class DispatchStore: ObservableObject {
 
     private func readMessagesFromDisk(threadId: String) -> [DispatchMessage] {
         var messages: [DispatchMessage] = []
-        let candidateDirs = [
-            localThreadsDirectory.appendingPathComponent(threadId, isDirectory: true).appendingPathComponent("messages", isDirectory: true),
-            localArchiveDirectory.appendingPathComponent(threadId, isDirectory: true).appendingPathComponent("messages", isDirectory: true),
-            iCloudThreadsDirectory?.appendingPathComponent(threadId, isDirectory: true).appendingPathComponent("messages", isDirectory: true),
-            iCloudArchiveDirectory?.appendingPathComponent(threadId, isDirectory: true).appendingPathComponent("messages", isDirectory: true)
-        ].compactMap { $0 }
+        var candidateDirs: [(dir: URL, isCoordinated: Bool)] = [
+            (localThreadsDirectory.appendingPathComponent(threadId, isDirectory: true).appendingPathComponent("messages", isDirectory: true), false),
+            (localArchiveDirectory.appendingPathComponent(threadId, isDirectory: true).appendingPathComponent("messages", isDirectory: true), false)
+        ]
+        if let iCloudThreads = iCloudThreadsDirectory {
+            candidateDirs.append((iCloudThreads.appendingPathComponent(threadId, isDirectory: true).appendingPathComponent("messages", isDirectory: true), true))
+        }
+        if let iCloudArchive = iCloudArchiveDirectory {
+            candidateDirs.append((iCloudArchive.appendingPathComponent(threadId, isDirectory: true).appendingPathComponent("messages", isDirectory: true), true))
+        }
 
         var seenIds = Set<String>()
         var foundPlaceholders = false
 
-        for msgDir in candidateDirs {
+        for (msgDir, isCoordinated) in candidateDirs {
             guard fileManager.fileExists(atPath: msgDir.path),
                   let files = try? fileManager.contentsOfDirectory(at: msgDir, includingPropertiesForKeys: nil, options: []) else {
                 continue
@@ -666,7 +676,7 @@ public final class DispatchStore: ObservableObject {
                     if fileManager.isUbiquitousItem(at: file) {
                         try? fileManager.startDownloadingUbiquitousItem(at: file)
                     }
-                    guard let data = try? Data(contentsOf: file),
+                    guard let data = coordinatedReadData(from: file, isCoordinated: isCoordinated),
                           let msg = try? DispatchFormatters.jsonDecoder.decode(DispatchMessage.self, from: data) else {
                         foundPlaceholders = true
                         continue
@@ -812,7 +822,29 @@ public final class DispatchStore: ObservableObject {
         }
     }
 
-    // MARK: - Low-Level Immutable Disk Writers
+    // MARK: - Low-Level Immutable Disk Readers & Writers
+
+    private func coordinatedReadData(from url: URL, isCoordinated: Bool? = nil) -> Data? {
+        let shouldCoordinate = isCoordinated ?? isUbiquitousURL(url)
+        guard shouldCoordinate else {
+            return try? Data(contentsOf: url)
+        }
+
+        let coordinator = NSFileCoordinator(filePresenter: nil)
+        var coordError: NSError?
+        var readData: Data?
+
+        coordinator.coordinate(readingItemAt: url, options: .withoutChanges, error: &coordError) { coordinatedURL in
+            readData = try? Data(contentsOf: coordinatedURL)
+        }
+
+        if let err = coordError {
+            logger.error("Coordinated read failed for \(url.lastPathComponent): \(err.localizedDescription)")
+            return try? Data(contentsOf: url)
+        }
+
+        return readData
+    }
 
     private func coordinatedWrite(data: Data, to url: URL) {
         let coordinator = NSFileCoordinator(filePresenter: nil)
