@@ -311,6 +311,34 @@ public final class DispatchStore: ObservableObject {
         }
     }
 
+    private func removeDirectory(at url: URL, isCoordinated: Bool) {
+        guard fileManager.fileExists(atPath: url.path) else { return }
+        if isCoordinated {
+            let coordinator = NSFileCoordinator(filePresenter: nil)
+            var error: NSError?
+            coordinator.coordinate(writingItemAt: url, options: .forDeleting, error: &error) { deleteURL in
+                do {
+                    if self.fileManager.fileExists(atPath: deleteURL.path) {
+                        try self.fileManager.removeItem(at: deleteURL)
+                    }
+                } catch {
+                    self.logger.error("Failed to delete coordinated directory at \(deleteURL.path): \(error.localizedDescription)")
+                }
+            }
+            if let err = error {
+                logger.error("Coordinator delete error for \(url.path): \(err.localizedDescription)")
+            }
+        } else {
+            do {
+                if fileManager.fileExists(atPath: url.path) {
+                    try fileManager.removeItem(at: url)
+                }
+            } catch {
+                logger.error("Failed to delete local directory at \(url.path): \(error.localizedDescription)")
+            }
+        }
+    }
+
     private func scanAllThreads() -> Result<[DispatchThread], DispatchError> {
         var threadMap: [String: DispatchThread] = [:]
 
@@ -699,6 +727,53 @@ public final class DispatchStore: ObservableObject {
             self.archivedThreads = self.archivedThreads.filter { $0.id != id }
             self.threads = (self.threads.filter { $0.id != id } + [updated]).sorted(by: { $0.updatedAt > $1.updatedAt })
             self.logger.info("Unarchived dispatch thread: \(id)")
+        }
+    }
+
+    // MARK: - Delete Thread
+
+    public func deleteThread(id: String) {
+        executeWithBackgroundTask {
+            // 1. Remove folder from local threads and archive
+            let localThread = self.localThreadsDirectory.appendingPathComponent(id, isDirectory: true)
+            let localArchive = self.localArchiveDirectory.appendingPathComponent(id, isDirectory: true)
+            self.removeDirectory(at: localThread, isCoordinated: false)
+            self.removeDirectory(at: localArchive, isCoordinated: false)
+
+            // 2. Remove folder from iCloud threads and archive using NSFileCoordinator
+            if let iCloudThreads = self.iCloudThreadsDirectory {
+                let iCloudThread = iCloudThreads.appendingPathComponent(id, isDirectory: true)
+                self.removeDirectory(at: iCloudThread, isCoordinated: true)
+            }
+            if let iCloudArchive = self.iCloudArchiveDirectory {
+                let iCloudArch = iCloudArchive.appendingPathComponent(id, isDirectory: true)
+                self.removeDirectory(at: iCloudArch, isCoordinated: true)
+            }
+
+            // Invalidate cache for paths
+            self.threadFileCache.removeValue(forKey: localThread.appendingPathComponent("meta.json").path)
+            self.threadFileCache.removeValue(forKey: localArchive.appendingPathComponent("meta.json").path)
+            if let iCloudThreads = self.iCloudThreadsDirectory {
+                self.threadFileCache.removeValue(forKey: iCloudThreads.appendingPathComponent(id, isDirectory: true).appendingPathComponent("meta.json").path)
+            }
+            if let iCloudArchive = self.iCloudArchiveDirectory {
+                self.threadFileCache.removeValue(forKey: iCloudArchive.appendingPathComponent(id, isDirectory: true).appendingPathComponent("meta.json").path)
+            }
+
+            // 3. Touch sync marker
+            self.touchSyncMarker(threadId: id)
+
+            // 4. Update in-memory lists
+            let updateUI = {
+                self.threads = self.threads.filter { $0.id != id }
+                self.archivedThreads = self.archivedThreads.filter { $0.id != id }
+            }
+            if Thread.isMainThread {
+                updateUI()
+            } else {
+                DispatchQueue.main.async(execute: updateUI)
+            }
+            self.logger.info("Deleted dispatch thread: \(id)")
         }
     }
 

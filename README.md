@@ -159,8 +159,8 @@ However, a comprehensive review of the file-based communication channel reveals 
 - **Performance Impact:** Active foreground polling (every 5.0s on iOS) and background daemon sweeps on macOS enumerate strictly `Documents/threads/`. Archived threads in `archive/` are completely isolated from the hot path and loaded on-demand, reducing active sweep complexity to strictly $O(\text{active})$. Any legacy archived folders found in `threads/` are auto-migrated to `archive/` on the fly.
 
 #### 3. No Delete Capability (Unbounded Growth)
-- **Current Behavior:** Threads can only be archived, never deleted. Thread directories and message files accumulate indefinitely on disk.
-- **Pain Point:** Lack of a coordinated delete function guarantees that the $O(N)$ scan overhead grows monotonically over time. Deleting requires coordinated removal from both local cache and iCloud Drive to avoid resurrection during dual-directory merging.
+- **Resolved Behavior:** `DispatchStore.deleteThread(id:)` permanently removes the thread folder from both local `Application Support/` and iCloud `Documents/` (handling both active `threads/{id}` and archived `archive/{id}`) using `NSFileCoordinator` with `.forDeleting` options to prevent resurrection during directory reconciliation. On macOS, `companion.py --delete-thread <id>` performs mirrored removal.
+- **Performance Impact:** Eliminates monotonic disk growth. Deleted threads are immediately purged from in-memory caches, removing flash I/O and JSON parsing overhead entirely.
 
 #### 4. Unused Synchronization Marker (`.sync_marker.json`)
 - **Current Behavior:** Both `DispatchStore.touchSyncMarker()` and `companion.py: touch_sync_marker()` write timestamp updates to `.sync_marker.json`.
@@ -194,7 +194,7 @@ The following tasks address the identified scalability and concurrency bottlenec
   - Active scanning loops on both iOS and macOS should only ever enumerate `Documents/threads/`.
   - Keeps active polling at $O(\text{active})$ instead of $O(\text{total})$, isolating historical threads from the fast path.
 
-- [ ] **Task 3: Implement Coordinated Thread Deletion (`deleteThread`)**
+- [x] **Task 3: Implement Coordinated Thread Deletion (`deleteThread`)**
   - Add `DispatchStore.deleteThread(id:)` that coordinates atomic directory removal across both `localThreadsDirectory` and `iCloudThreadsDirectory` via `NSFileCoordinator`.
   - Add swipe-to-delete in `PostInboxView` and a destructive Delete button in `DispatchThreadDetailView`.
   - Add `--delete-thread <id>` in `companion.py` for CLI cleanup.

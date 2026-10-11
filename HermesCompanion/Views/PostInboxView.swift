@@ -66,10 +66,35 @@ public struct PostInboxView: View {
                     } else {
                         LazyVStack(spacing: EditorialSpacing.medium) {
                             ForEach(filteredThreads) { thread in
-                                NavigationLink(destination: DispatchThreadDetailView(threadId: thread.id)) {
-                                    DispatchThreadCard(thread: thread)
+                                SwipeActionRow(onDelete: {
+                                    store.deleteThread(id: thread.id)
+                                }) {
+                                    NavigationLink(destination: DispatchThreadDetailView(threadId: thread.id)) {
+                                        DispatchThreadCard(thread: thread)
+                                    }
+                                    .buttonStyle(PlainButtonStyle())
+                                    .contextMenu {
+                                        if thread.status != .archived {
+                                            Button {
+                                                store.archiveThread(id: thread.id)
+                                            } label: {
+                                                Label("Archive Thread", systemImage: "archivebox")
+                                            }
+                                        } else {
+                                            Button {
+                                                store.unarchiveThread(id: thread.id)
+                                            } label: {
+                                                Label("Unarchive Thread", systemImage: "tray.and.arrow.up")
+                                            }
+                                        }
+
+                                        Button(role: .destructive) {
+                                            store.deleteThread(id: thread.id)
+                                        } label: {
+                                            Label("Delete Thread", systemImage: "trash")
+                                        }
+                                    }
                                 }
-                                .buttonStyle(PlainButtonStyle())
                             }
                         }
                     }
@@ -178,6 +203,110 @@ public struct PostInboxView: View {
     }
 }
 
+// MARK: - Swipe Action Row
+
+private struct SwipeActionRow<Content: View>: View {
+    let onDelete: () -> Void
+    let content: Content
+
+    @State private var offset: CGFloat = 0
+    @State private var isSwiped: Bool = false
+    @State private var showingConfirmation: Bool = false
+
+    private let buttonWidth: CGFloat = 76
+
+    init(onDelete: @escaping () -> Void, @ViewBuilder content: () -> Content) {
+        self.onDelete = onDelete
+        self.content = content()
+    }
+
+    var body: some View {
+        ZStack(alignment: .trailing) {
+            // Background Delete Action
+            HStack {
+                Spacer()
+                Button(role: .destructive) {
+                    showingConfirmation = true
+                } label: {
+                    VStack(spacing: 4) {
+                        Image(systemName: "trash")
+                            .font(.system(size: 18, weight: .medium))
+                        Text("Delete")
+                            .font(.editorialUtilitySmall)
+                    }
+                    .frame(width: buttonWidth)
+                    .frame(maxHeight: .infinity)
+                    .foregroundStyle(.white)
+                    .background(Color.red)
+                    .clipShape(CutCornerShape(cut: 12))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Delete")
+            }
+
+            // Foreground Card Content
+            content
+                .offset(x: offset)
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 20, coordinateSpace: .local)
+                        .onChanged { value in
+                            guard abs(value.translation.width) > abs(value.translation.height) else { return }
+                            if value.translation.width < 0 {
+                                let base = isSwiped ? -buttonWidth : 0
+                                offset = max(-buttonWidth - 30, base + value.translation.width)
+                            } else if isSwiped && value.translation.width > 0 {
+                                offset = min(0, -buttonWidth + value.translation.width)
+                            }
+                        }
+                        .onEnded { value in
+                            guard abs(value.translation.width) > abs(value.translation.height) else { return }
+                            withAnimation(EditorialMotion.quick) {
+                                if value.translation.width < -buttonWidth / 2 || value.predictedEndTranslation.width < -buttonWidth {
+                                    offset = -buttonWidth
+                                    isSwiped = true
+                                } else {
+                                    offset = 0
+                                    isSwiped = false
+                                }
+                            }
+                        }
+                )
+
+            if isSwiped {
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        withAnimation(EditorialMotion.quick) {
+                            offset = 0
+                            isSwiped = false
+                        }
+                    }
+            }
+        }
+        .confirmationDialog(
+            "Delete Thread",
+            isPresented: $showingConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Delete Thread", role: .destructive) {
+                withAnimation(EditorialMotion.quick) {
+                    offset = 0
+                    isSwiped = false
+                }
+                onDelete()
+            }
+            Button("Cancel", role: .cancel) {
+                withAnimation(EditorialMotion.quick) {
+                    offset = 0
+                    isSwiped = false
+                }
+            }
+        } message: {
+            Text("This will permanently remove this thread and its memos from disk and iCloud.")
+        }
+    }
+}
+
 // MARK: - Thread Card View
 
 private struct DispatchThreadCard: View {
@@ -250,9 +379,11 @@ private struct DispatchThreadCard: View {
 
 public struct DispatchThreadDetailView: View {
     let threadId: String
+    @Environment(\.dismiss) private var dismiss
     @StateObject private var store = DispatchStore.shared
     @State private var messages: [DispatchMessage] = []
     @State private var isSending: Bool = false
+    @State private var showingDeleteConfirmation: Bool = false
 
     private var currentThread: DispatchThread? {
         store.threads.first(where: { $0.id == threadId }) ?? store.archivedThreads.first(where: { $0.id == threadId })
@@ -306,6 +437,21 @@ public struct DispatchThreadDetailView: View {
                             )
                             .id("reply_section")
                         }
+
+                        Button(role: .destructive) {
+                            showingDeleteConfirmation = true
+                        } label: {
+                            HStack(spacing: EditorialSpacing.small) {
+                                Image(systemName: "trash")
+                                Text("Delete Thread")
+                            }
+                            .font(.editorialUtility)
+                            .foregroundStyle(Color.red)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .padding(.top, EditorialSpacing.large)
+                            .padding(.bottom, EditorialSpacing.medium)
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
                 .padding(.horizontal, EditorialSpacing.page)
@@ -334,7 +480,7 @@ public struct DispatchThreadDetailView: View {
         .background(EditorialColor.paper)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItemGroup(placement: .topBarTrailing) {
                 if let thread = currentThread {
                     if thread.status != .archived {
                         Button {
@@ -353,8 +499,32 @@ public struct DispatchThreadDetailView: View {
                                 .foregroundStyle(EditorialColor.secondaryInk)
                         }
                     }
+
+                    Button(role: .destructive) {
+                        showingDeleteConfirmation = true
+                    } label: {
+                        Image(systemName: "trash")
+                            .font(.body)
+                            .foregroundStyle(Color.red)
+                    }
+                    .accessibilityLabel("Delete Thread")
                 }
             }
+        }
+        .confirmationDialog(
+            "Delete Thread",
+            isPresented: $showingDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Delete Thread", role: .destructive) {
+                if let thread = currentThread {
+                    store.deleteThread(id: thread.id)
+                    dismiss()
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This will permanently delete this thread and all associated memos from disk and iCloud Drive.")
         }
         .onAppear {
             loadMessages()
