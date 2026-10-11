@@ -726,6 +726,73 @@ def test_sync_marker_gated_sweeps_and_cache() -> None:
             companion.scan_dispatch_threads = original_scan
 
 
+def test_archived_threads_segregation_and_migration() -> None:
+    companion.reset_dispatch_cache()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        threads_dir = tmp_path / "threads"
+        archive_dir = tmp_path / "archive"
+        threads_dir.mkdir(parents=True, exist_ok=True)
+        moment = datetime(2026, 10, 11, 12, 0, 0, tzinfo=timezone.utc)
+
+        # 1. Create two active threads
+        t1 = companion.create_dispatch_thread(threads_dir, "Active letter 1", "Body 1", now=moment)
+        t2 = companion.create_dispatch_thread(threads_dir, "Active letter 2", "Body 2", now=moment)
+        tid1 = t1["thread_id"]
+        tid2 = t2["thread_id"]
+
+        check("both folders exist in threads_dir", (threads_dir / tid1).is_dir() and (threads_dir / tid2).is_dir())
+
+        # 2. Archive t1
+        archived_meta = companion.archive_dispatch_thread(threads_dir, tid1, now=moment)
+        check("archive returns archived meta", archived_meta is not None and archived_meta["status"] == "archived")
+        check("t1 moved out of threads_dir", not (threads_dir / tid1).exists())
+        check("t1 exists in archive_dir", (archive_dir / tid1).is_dir())
+        check("t1 messages still readable in archive", len(companion.list_thread_messages(threads_dir, tid1)) == 1)
+
+        # 3. Active scanning loops only enumerate threads_dir -> only t2 returned
+        scan = companion.scan_dispatch_threads(threads_dir)
+        active_ids = [t["thread_id"] for t in scan["threads"]]
+        check("active scan only returns t2", active_ids == [tid2])
+        check("archive_dir is segregated and ignored by active scan", tid1 not in active_ids)
+
+        # 4. Listing archived threads via list_dispatch_threads(archive_dir) returns t1
+        archived_scan = companion.list_dispatch_threads(archive_dir)
+        check("archived list returns t1", len(archived_scan) == 1 and archived_scan[0]["thread_id"] == tid1)
+
+        # 5. Legacy migration: simulate an old thread that has status 'archived' inside threads_dir
+        legacy_id = "th_legacy_archived"
+        legacy_folder = threads_dir / legacy_id
+        legacy_folder.mkdir()
+        (legacy_folder / "messages").mkdir()
+        legacy_meta = {
+            "thread_id": legacy_id,
+            "subject": "Legacy thread",
+            "target_profile": "default",
+            "status": "archived",
+            "created_at": "2026-10-10T10:00:00Z",
+            "updated_at": "2026-10-10T10:00:00Z",
+            "message_count": 1,
+        }
+        (legacy_folder / "meta.json").write_text(json.dumps(legacy_meta), encoding="utf-8")
+
+        # Scan should detect archived status, move to archive_dir, and exclude from active results
+        scan_migration = companion.scan_dispatch_threads(threads_dir)
+        active_ids_after = [t["thread_id"] for t in scan_migration["threads"]]
+        check("scan auto-migrates legacy thread", not legacy_folder.exists())
+        check("legacy thread now in archive_dir", (archive_dir / legacy_id).is_dir())
+        check("active scan excludes migrated legacy thread", legacy_id not in active_ids_after)
+
+        # 6. Unarchive t1
+        unarchived_meta = companion.unarchive_dispatch_thread(threads_dir, tid1, now=moment)
+        check("unarchive returns replied status", unarchived_meta is not None and unarchived_meta["status"] == "replied")
+        check("t1 moved back to threads_dir", (threads_dir / tid1).is_dir())
+        check("t1 removed from archive_dir", not (archive_dir / tid1).exists())
+        scan_after_unarchive = companion.scan_dispatch_threads(threads_dir)
+        res_ids = [t["thread_id"] for t in scan_after_unarchive["threads"]]
+        check("t1 now back in active scan", tid1 in res_ids and tid2 in res_ids)
+
+
 def main() -> int:
     test_still_home_after_hours()
     test_walking_at_home()
@@ -756,6 +823,7 @@ def main() -> int:
     test_unreadable_meta_is_reported()
     test_skip_log_is_throttled()
     test_sync_marker_gated_sweeps_and_cache()
+    test_archived_threads_segregation_and_migration()
     print("ok")
     return 0
 

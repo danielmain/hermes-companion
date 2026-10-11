@@ -13,7 +13,7 @@ public enum DispatchFilter: String, CaseIterable, Identifiable {
 
     public func matches(_ status: DispatchStatus) -> Bool {
         switch self {
-        case .all: return true
+        case .all: return status != .archived
         case .pending: return status == .pendingAgent
         case .replied: return status == .replied
         case .failed: return status == .failed
@@ -35,7 +35,8 @@ public struct PostInboxView: View {
     public init() {}
 
     private var filteredThreads: [DispatchThread] {
-        store.threads.filter { thread in
+        let sourceList = (selectedFilter == .archived) ? store.archivedThreads : store.threads
+        return sourceList.filter { thread in
             let matchesFilter = selectedFilter.matches(thread.status)
             if searchText.isEmpty {
                 return matchesFilter
@@ -87,11 +88,18 @@ public struct PostInboxView: View {
             }
             .refreshable {
                 store.loadThreads(force: true)
+                store.loadArchivedThreads(force: true)
             }
             .onAppear {
                 store.loadThreads()
+                store.loadArchivedThreads()
                 if !hasSeenPostDisclaimer {
                     showingPostalDisclaimer = true
+                }
+            }
+            .onChange(of: selectedFilter) { _, newFilter in
+                if newFilter == .archived {
+                    store.loadArchivedThreads()
                 }
             }
             .onReceive(Timer.publish(every: 5.0, on: .main, in: .default).autoconnect()) { _ in
@@ -104,6 +112,9 @@ public struct PostInboxView: View {
         HStack(spacing: EditorialSpacing.small) {
             Button {
                 store.loadThreads(force: true)
+                if selectedFilter == .archived {
+                    store.loadArchivedThreads(force: true)
+                }
             } label: {
                 Image(systemName: "arrow.clockwise")
                     .font(.body.weight(.medium))
@@ -244,7 +255,7 @@ public struct DispatchThreadDetailView: View {
     @State private var isSending: Bool = false
 
     private var currentThread: DispatchThread? {
-        store.threads.first(where: { $0.id == threadId })
+        store.threads.first(where: { $0.id == threadId }) ?? store.archivedThreads.first(where: { $0.id == threadId })
     }
 
     public var body: some View {
@@ -324,13 +335,23 @@ public struct DispatchThreadDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                if let thread = currentThread, thread.status != .archived {
-                    Button {
-                        store.archiveThread(id: thread.id)
-                    } label: {
-                        Text("Archive")
-                            .font(.editorialUtility)
-                            .foregroundStyle(EditorialColor.secondaryInk)
+                if let thread = currentThread {
+                    if thread.status != .archived {
+                        Button {
+                            store.archiveThread(id: thread.id)
+                        } label: {
+                            Text("Archive")
+                                .font(.editorialUtility)
+                                .foregroundStyle(EditorialColor.secondaryInk)
+                        }
+                    } else {
+                        Button {
+                            store.unarchiveThread(id: thread.id)
+                        } label: {
+                            Text("Unarchive")
+                                .font(.editorialUtility)
+                                .foregroundStyle(EditorialColor.secondaryInk)
+                        }
                     }
                 }
             }

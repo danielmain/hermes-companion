@@ -155,8 +155,8 @@ However, a comprehensive review of the file-based communication channel reveals 
 - **Pain Point at 100 Threads:** 200 directory checks, 200 disk reads, and 200 JSON decodes occur every 5 seconds while in the foreground. This causes flash storage churn, unnecessary CPU/battery consumption, and potential UI frame drops.
 
 #### 2. Archived Threads Are NOT Ignored by the Disk Monitor
-- **Current Behavior:** `DispatchStore.archiveThread(id:)` only mutates `status: "archived"` in `meta.json` and filters the view in SwiftUI.
-- **Pain Point:** The scanner only discovers that a thread is archived *after* opening its directory, reading `meta.json` from disk, and parsing the JSON. If a user has 5 active threads and 95 archived threads, all 100 threads are still read and parsed every 5 seconds on both iOS and macOS.
+- **Resolved Behavior:** `DispatchStore.archiveThread(id:)` moves the thread folder from `threads/{id}` to `archive/{id}` in both local `Application Support/` and iCloud `Documents/` using `NSFileCoordinator`. On macOS, `companion.py --archive <id>` mirrors this move.
+- **Performance Impact:** Active foreground polling (every 5.0s on iOS) and background daemon sweeps on macOS enumerate strictly `Documents/threads/`. Archived threads in `archive/` are completely isolated from the hot path and loaded on-demand, reducing active sweep complexity to strictly $O(\text{active})$. Any legacy archived folders found in `threads/` are auto-migrated to `archive/` on the fly.
 
 #### 3. No Delete Capability (Unbounded Growth)
 - **Current Behavior:** Threads can only be archived, never deleted. Thread directories and message files accumulate indefinitely on disk.
@@ -189,7 +189,7 @@ The following tasks address the identified scalability and concurrency bottlenec
   - If the marker has not changed since the last known sync, skip the $O(N)$ directory traversal and JSON decoding entirely.
   - Maintain an in-memory dictionary cache of parsed threads keyed by `thread_id` and file `modificationDate`.
 
-- [ ] **Task 2: Segregate Archived Threads into `Documents/archive/`**
+- [x] **Task 2: Segregate Archived Threads into `Documents/archive/`**
   - When a thread is archived, move its folder from `Documents/threads/{id}` to `Documents/archive/{id}` (and in local `Application Support`).
   - Active scanning loops on both iOS and macOS should only ever enumerate `Documents/threads/`.
   - Keeps active polling at $O(\text{active})$ instead of $O(\text{total})$, isolating historical threads from the fast path.

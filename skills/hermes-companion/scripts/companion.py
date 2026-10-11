@@ -1318,6 +1318,19 @@ def get_threads_dir(override: Optional[str] = None) -> Optional[Path]:
     return None
 
 
+def get_archive_dir(override: Optional[str] = None) -> Optional[Path]:
+    for directory in icloud_directories(override):
+        cand = directory / "archive"
+        if cand.is_dir():
+            return cand
+    dirs = icloud_directories(override)
+    if dirs:
+        cand = dirs[0] / "archive"
+        cand.mkdir(parents=True, exist_ok=True)
+        return cand
+    return None
+
+
 def safe_is_dir(path: Path) -> bool:
     try:
         return path.is_dir()
@@ -1500,6 +1513,7 @@ def scan_dispatch_threads(threads_dir: Path) -> ThreadScan:
     results: List[DispatchThreadMeta] = []
     unreadable: List[str] = []
     needs_cooldown = False
+    is_active_threads_dir = (threads_dir.name != "archive")
     for entry in entries:
         try:
             if not safe_is_dir(entry):
@@ -1517,6 +1531,18 @@ def scan_dispatch_threads(threads_dir: Path) -> ThreadScan:
                     if cache_key in _DISPATCH_THREAD_CACHE:
                         cached_mtime, cached_meta = _DISPATCH_THREAD_CACHE[cache_key]
                         if cached_mtime == mtime:
+                            if is_active_threads_dir and cached_meta.get("status") == "archived":
+                                archive_dir = threads_dir.parent / "archive"
+                                archive_dir.mkdir(parents=True, exist_ok=True)
+                                dest = archive_dir / entry.name
+                                try:
+                                    if dest.exists():
+                                        shutil.rmtree(dest)
+                                    shutil.move(str(entry), str(dest))
+                                    _DISPATCH_THREAD_CACHE.pop(cache_key, None)
+                                except Exception:
+                                    pass
+                                continue
                             results.append(cached_meta)
                             continue
                 except Exception:
@@ -1527,6 +1553,19 @@ def scan_dispatch_threads(threads_dir: Path) -> ThreadScan:
             read = read_json_checked(meta_file)
             if read.data:
                 meta_dict = cast(DispatchThreadMeta, read.data)
+                if is_active_threads_dir and meta_dict.get("status") == "archived":
+                    archive_dir = threads_dir.parent / "archive"
+                    archive_dir.mkdir(parents=True, exist_ok=True)
+                    dest = archive_dir / entry.name
+                    try:
+                        if dest.exists():
+                            shutil.rmtree(dest)
+                        shutil.move(str(entry), str(dest))
+                        _DISPATCH_THREAD_CACHE.pop(cache_key, None)
+                        log("INFO", f"auto-migrated archived thread {entry.name} to {dest}")
+                    except Exception as exc:
+                        log("WARN", f"failed to migrate archived thread {entry.name}: {exc}")
+                    continue
                 try:
                     _DISPATCH_THREAD_CACHE[cache_key] = (meta_file.stat().st_mtime, meta_dict)
                 except Exception:
@@ -1554,6 +1593,18 @@ def scan_dispatch_threads(threads_dir: Path) -> ThreadScan:
                     data = safe_read_json(meta_file)
                     if data:
                         meta_dict = cast(DispatchThreadMeta, data)
+                        if is_active_threads_dir and meta_dict.get("status") == "archived":
+                            archive_dir = threads_dir.parent / "archive"
+                            archive_dir.mkdir(parents=True, exist_ok=True)
+                            dest = archive_dir / entry.name
+                            try:
+                                if dest.exists():
+                                    shutil.rmtree(dest)
+                                shutil.move(str(entry), str(dest))
+                                _DISPATCH_THREAD_CACHE.pop(str(meta_file.resolve()), None)
+                            except Exception:
+                                pass
+                            continue
                         try:
                             _DISPATCH_THREAD_CACHE[str(meta_file.resolve())] = (meta_file.stat().st_mtime, meta_dict)
                         except Exception:
@@ -1575,6 +1626,10 @@ def list_dispatch_threads(threads_dir: Path) -> List[DispatchThreadMeta]:
 
 def list_thread_messages(threads_dir: Path, thread_id: str) -> List[DispatchMessageRecord]:
     thread_folder = threads_dir / thread_id
+    if not safe_is_dir(thread_folder):
+        arch_folder = (threads_dir.parent / "archive") / thread_id
+        if safe_is_dir(arch_folder):
+            thread_folder = arch_folder
     msgs_dir = thread_folder / "messages"
     if not safe_is_dir(msgs_dir):
         return []
@@ -1873,6 +1928,117 @@ def reply_to_thread(
     return message
 
 
+def archive_dispatch_thread(
+    threads_dir: Path,
+    thread_id: str,
+    now: Optional[datetime] = None,
+) -> Optional[DispatchThreadMeta]:
+    """Archive a thread: mark status as archived and move folder to Documents/archive/{id}."""
+    archive_dir = threads_dir.parent / "archive"
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    source = threads_dir / thread_id
+    dest = archive_dir / thread_id
+
+    if not safe_is_dir(source) and not safe_is_dir(dest):
+        return None
+
+    folder = dest if safe_is_dir(dest) else source
+    meta_file = folder / "meta.json"
+    meta = cast(Optional[DispatchThreadMeta], safe_read_json(meta_file))
+    if not meta:
+        return None
+
+    moment = now or utcnow()
+    meta["status"] = "archived"
+    meta["updated_at"] = moment.strftime("%Y-%m-%dT%H:%M:%SZ")
+    safe_write_text(meta_file, json.dumps(meta, indent=2, ensure_ascii=False))
+
+    if safe_is_dir(source) and source != dest:
+        if dest.exists():
+            shutil.rmtree(dest)
+        shutil.move(str(source), str(dest))
+
+    _DISPATCH_THREAD_CACHE.pop(str((source / "meta.json").resolve()), None)
+    _DISPATCH_THREAD_CACHE.pop(str((dest / "meta.json").resolve()), None)
+
+    touch_sync_marker(threads_dir, thread_id, now=moment)
+    return meta
+
+
+def unarchive_dispatch_thread(
+    threads_dir: Path,
+    thread_id: str,
+    now: Optional[datetime] = None,
+) -> Optional[DispatchThreadMeta]:
+    """Unarchive a thread: mark status as replied and move folder back to Documents/threads/{id}."""
+    archive_dir = threads_dir.parent / "archive"
+    source = archive_dir / thread_id
+    dest = threads_dir / thread_id
+
+    if not safe_is_dir(source) and not safe_is_dir(dest):
+        return None
+
+    folder = dest if safe_is_dir(dest) else source
+    meta_file = folder / "meta.json"
+    meta = cast(Optional[DispatchThreadMeta], safe_read_json(meta_file))
+    if not meta:
+        return None
+
+    moment = now or utcnow()
+    meta["status"] = "replied"
+    meta["updated_at"] = moment.strftime("%Y-%m-%dT%H:%M:%SZ")
+    safe_write_text(meta_file, json.dumps(meta, indent=2, ensure_ascii=False))
+
+    if safe_is_dir(source) and source != dest:
+        if dest.exists():
+            shutil.rmtree(dest)
+        shutil.move(str(source), str(dest))
+
+    _DISPATCH_THREAD_CACHE.pop(str((source / "meta.json").resolve()), None)
+    _DISPATCH_THREAD_CACHE.pop(str((dest / "meta.json").resolve()), None)
+
+    touch_sync_marker(threads_dir, thread_id, now=moment)
+    return meta
+
+
+def command_archive_thread(args: argparse.Namespace, now: datetime) -> int:
+    threads_dir = get_threads_dir(args.icloud_dir)
+    if not threads_dir:
+        log("ERROR", "cannot resolve iCloud threads directory")
+        return 1
+
+    meta = archive_dispatch_thread(threads_dir, args.archive, now=now)
+    if not meta:
+        log("ERROR", f"thread {args.archive} not found or unreadable")
+        return 1
+
+    if args.json:
+        print(json.dumps(meta, indent=2, ensure_ascii=False))
+        return 0
+
+    print(f"Archived thread [{args.archive}] and moved to Documents/archive/")
+    return 0
+
+
+def command_unarchive_thread(args: argparse.Namespace, now: datetime) -> int:
+    threads_dir = get_threads_dir(args.icloud_dir)
+    if not threads_dir:
+        log("ERROR", "cannot resolve iCloud threads directory")
+        return 1
+
+    meta = unarchive_dispatch_thread(threads_dir, args.unarchive, now=now)
+    if not meta:
+        log("ERROR", f"thread {args.unarchive} not found or unreadable")
+        return 1
+
+    if args.json:
+        print(json.dumps(meta, indent=2, ensure_ascii=False))
+        return 0
+
+    print(f"Unarchived thread [{args.unarchive}] and moved to Documents/threads/")
+    return 0
+
+
 def command_threads(args: argparse.Namespace) -> int:
     threads_dir = get_threads_dir(args.icloud_dir)
     if not threads_dir or not threads_dir.is_dir():
@@ -1883,7 +2049,12 @@ def command_threads(args: argparse.Namespace) -> int:
             print("No dispatch threads found in iCloud container.")
         return 0
 
-    threads = list_dispatch_threads(threads_dir)
+    if getattr(args, "archived", False):
+        archive_dir = threads_dir.parent / "archive"
+        threads = list_dispatch_threads(archive_dir) if safe_is_dir(archive_dir) else []
+    else:
+        threads = list_dispatch_threads(threads_dir)
+
     if args.pending:
         threads = [t for t in threads if t.get("status") == "pending_agent"]
     if args.profile:
@@ -1924,6 +2095,10 @@ def command_thread_detail(args: argparse.Namespace) -> int:
 
     thread_id = args.thread
     thread_folder = threads_dir / thread_id
+    if not safe_is_dir(thread_folder):
+        arch_folder = (threads_dir.parent / "archive") / thread_id
+        if safe_is_dir(arch_folder):
+            thread_folder = arch_folder
     meta_file = thread_folder / "meta.json"
     if not safe_is_file(meta_file):
         icloud_meta = thread_folder / ".meta.json.icloud"
@@ -2693,6 +2868,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--pending", action="store_true", help="Filter threads awaiting agent reply")
     parser.add_argument("--thread", metavar="ID", help="Read full messages in a thread")
     parser.add_argument("--reply", metavar="ID", help="Post an agent reply to a thread")
+    parser.add_argument("--archive", metavar="ID", help="Archive a dispatch thread and move to Documents/archive/")
+    parser.add_argument("--unarchive", metavar="ID", help="Unarchive a dispatch thread and move to Documents/threads/")
+    parser.add_argument("--archived", action="store_true", help="List archived dispatch threads from Documents/archive/")
     parser.add_argument("--new-thread", "--new-post", action="store_true", dest="new_thread", help="Create a new post/thread")
     parser.add_argument("--subject", help="Subject for new dispatch thread")
     parser.add_argument("--message", help="Message body for reply or new thread")
@@ -2766,6 +2944,10 @@ def main(argv: Optional[Sequence[str]] = None, now: Optional[datetime] = None) -
 
     if args.threads:
         return command_threads(args)
+    if args.archive:
+        return command_archive_thread(args, moment)
+    if args.unarchive:
+        return command_unarchive_thread(args, moment)
     if args.thread:
         return command_thread_detail(args)
     if args.reply:

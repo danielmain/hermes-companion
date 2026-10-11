@@ -33,6 +33,7 @@ public final class DispatchStore: ObservableObject {
     public static let shared = DispatchStore()
 
     @Published public private(set) var threads: [DispatchThread] = []
+    @Published public private(set) var archivedThreads: [DispatchThread] = []
     @Published public private(set) var availableProfiles: [AgentProfile] = [AgentProfile.default]
     @Published public private(set) var isSyncing: Bool = false
     @Published public private(set) var lastSyncDate: Date?
@@ -67,6 +68,13 @@ public final class DispatchStore: ObservableObject {
         return dir
     }
 
+    private var localArchiveDirectory: URL {
+        let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let dir = appSupport.appendingPathComponent("archive", isDirectory: true)
+        try? fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
     private var localProfilesURL: URL {
         let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         return appSupport.appendingPathComponent("profiles.json")
@@ -80,6 +88,14 @@ public final class DispatchStore: ObservableObject {
         return documentsURL.appendingPathComponent("threads", isDirectory: true)
     }
 
+    private var iCloudArchiveDirectory: URL? {
+        let containerId = TrackingConfiguration.defaultContainerIdentifier
+        let containerURL = fileManager.url(forUbiquityContainerIdentifier: containerId) ?? fileManager.url(forUbiquityContainerIdentifier: nil)
+        guard let containerURL = containerURL else { return nil }
+        let documentsURL = containerURL.appendingPathComponent("Documents", isDirectory: true)
+        return documentsURL.appendingPathComponent("archive", isDirectory: true)
+    }
+
     private var iCloudProfilesURL: URL? {
         let containerId = TrackingConfiguration.defaultContainerIdentifier
         let containerURL = fileManager.url(forUbiquityContainerIdentifier: containerId) ?? fileManager.url(forUbiquityContainerIdentifier: nil)
@@ -91,6 +107,7 @@ public final class DispatchStore: ObservableObject {
     private init() {
         loadProfiles()
         loadThreads()
+        loadArchivedThreads()
     }
 
     // MARK: - Profile Management
@@ -221,26 +238,117 @@ public final class DispatchStore: ObservableObject {
         }
     }
 
-    private func scanAllThreads() -> Result<[DispatchThread], DispatchError> {
+    public func loadArchivedThreads(force: Bool = false) {
+        queue.async { [weak self] in
+            guard let self = self else { return }
+            let result = self.scanArchivedThreads()
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let loaded):
+                    let sorted = loaded.sorted(by: { $0.updatedAt > $1.updatedAt })
+                    if self.archivedThreads != sorted {
+                        self.archivedThreads = sorted
+                    }
+                    self.logger.info("Loaded \(loaded.count) archived dispatch threads")
+                case .failure(let error):
+                    self.logger.error("Failed to load archived threads: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+
+    private func scanArchivedThreads() -> Result<[DispatchThread], DispatchError> {
         var threadMap: [String: DispatchThread] = [:]
 
-        // 1. Scan local Application Support directory
-        let localResults = scanDirectory(localThreadsDirectory)
+        let localResults = scanDirectory(localArchiveDirectory)
         for thread in localResults {
             threadMap[thread.id] = thread
         }
 
-        // 2. Scan iCloud Ubiquity container Documents/threads
-        if let iCloudDir = iCloudThreadsDirectory, fileManager.fileExists(atPath: iCloudDir.path) {
+        if let iCloudDir = iCloudArchiveDirectory, fileManager.fileExists(atPath: iCloudDir.path) {
             let iCloudResults = scanDirectory(iCloudDir)
             for thread in iCloudResults {
-                // If local exists, keep the one with newer updatedAt
                 if let existing = threadMap[thread.id] {
                     if thread.updatedAt > existing.updatedAt {
                         threadMap[thread.id] = thread
                     }
                 } else {
                     threadMap[thread.id] = thread
+                }
+            }
+        }
+
+        return .success(Array(threadMap.values))
+    }
+
+    private func moveDirectory(from srcURL: URL, to dstURL: URL, isCoordinated: Bool) {
+        guard fileManager.fileExists(atPath: srcURL.path) else { return }
+        let parentDst = dstURL.deletingLastPathComponent()
+        try? fileManager.createDirectory(at: parentDst, withIntermediateDirectories: true)
+
+        if isCoordinated {
+            let coordinator = NSFileCoordinator(filePresenter: nil)
+            var error: NSError?
+            coordinator.coordinate(writingItemAt: srcURL, options: .forMoving, writingItemAt: dstURL, options: .forReplacing, error: &error) { src, dst in
+                do {
+                    if self.fileManager.fileExists(atPath: dst.path) {
+                        try self.fileManager.removeItem(at: dst)
+                    }
+                    try self.fileManager.moveItem(at: src, to: dst)
+                } catch {
+                    self.logger.error("Failed to move coordinated directory from \(src.path) to \(dst.path): \(error.localizedDescription)")
+                }
+            }
+        } else {
+            do {
+                if fileManager.fileExists(atPath: dstURL.path) {
+                    try fileManager.removeItem(at: dstURL)
+                }
+                try fileManager.moveItem(at: srcURL, to: dstURL)
+            } catch {
+                logger.error("Failed to move local directory from \(srcURL.path) to \(dstURL.path): \(error.localizedDescription)")
+            }
+        }
+    }
+
+    private func scanAllThreads() -> Result<[DispatchThread], DispatchError> {
+        var threadMap: [String: DispatchThread] = [:]
+
+        // 1. Scan local Application Support directory
+        let localResults = scanDirectory(localThreadsDirectory)
+        for thread in localResults {
+            if thread.status == .archived {
+                // Auto-migrate legacy archived thread out of active threads directory
+                let src = localThreadsDirectory.appendingPathComponent(thread.id, isDirectory: true)
+                let dst = localArchiveDirectory.appendingPathComponent(thread.id, isDirectory: true)
+                moveDirectory(from: src, to: dst, isCoordinated: false)
+                threadFileCache.removeValue(forKey: src.appendingPathComponent("meta.json").path)
+            } else {
+                threadMap[thread.id] = thread
+            }
+        }
+
+        // 2. Scan iCloud Ubiquity container Documents/threads
+        if let iCloudDir = iCloudThreadsDirectory, fileManager.fileExists(atPath: iCloudDir.path) {
+            let iCloudResults = scanDirectory(iCloudDir)
+            for thread in iCloudResults {
+                if thread.status == .archived {
+                    // Auto-migrate legacy archived thread out of active threads directory
+                    if let iCloudArchive = iCloudArchiveDirectory {
+                        let src = iCloudDir.appendingPathComponent(thread.id, isDirectory: true)
+                        let dst = iCloudArchive.appendingPathComponent(thread.id, isDirectory: true)
+                        moveDirectory(from: src, to: dst, isCoordinated: true)
+                        threadFileCache.removeValue(forKey: src.appendingPathComponent("meta.json").path)
+                    }
+                } else {
+                    // If local exists, keep the one with newer updatedAt
+                    if let existing = threadMap[thread.id] {
+                        if thread.updatedAt > existing.updatedAt {
+                            threadMap[thread.id] = thread
+                        }
+                    } else {
+                        threadMap[thread.id] = thread
+                    }
                 }
             }
         }
@@ -487,7 +595,9 @@ public final class DispatchStore: ObservableObject {
         var messages: [DispatchMessage] = []
         let candidateDirs = [
             localThreadsDirectory.appendingPathComponent(threadId, isDirectory: true).appendingPathComponent("messages", isDirectory: true),
-            iCloudThreadsDirectory?.appendingPathComponent(threadId, isDirectory: true).appendingPathComponent("messages", isDirectory: true)
+            localArchiveDirectory.appendingPathComponent(threadId, isDirectory: true).appendingPathComponent("messages", isDirectory: true),
+            iCloudThreadsDirectory?.appendingPathComponent(threadId, isDirectory: true).appendingPathComponent("messages", isDirectory: true),
+            iCloudArchiveDirectory?.appendingPathComponent(threadId, isDirectory: true).appendingPathComponent("messages", isDirectory: true)
         ].compactMap { $0 }
 
         var seenIds = Set<String>()
@@ -524,16 +634,72 @@ public final class DispatchStore: ObservableObject {
         return messages.sorted(by: { $0.timestamp < $1.timestamp })
     }
 
-    // MARK: - Archive Thread
+    // MARK: - Archive & Unarchive Threads
 
     public func archiveThread(id: String) {
-        guard let existing = threads.first(where: { $0.id == id }) else { return }
-        let updated = existing.with(status: .archived, updatedAt: Date())
-        _ = writeMetadata(updated)
-        touchSyncMarker(threadId: id)
-        let updatedList = (self.threads.filter { $0.id != id } + [updated]).sorted(by: { $0.updatedAt > $1.updatedAt })
-        self.threads = updatedList
-        logger.info("Archived dispatch thread: \(id)")
+        executeWithBackgroundTask {
+            guard let existing = (self.threads.first(where: { $0.id == id }) ?? self.archivedThreads.first(where: { $0.id == id })) else { return }
+            let updated = existing.with(status: .archived, updatedAt: Date())
+
+            // 1. Move folder from threads/{id} to archive/{id}
+            let localSrc = self.localThreadsDirectory.appendingPathComponent(id, isDirectory: true)
+            let localDst = self.localArchiveDirectory.appendingPathComponent(id, isDirectory: true)
+            self.moveDirectory(from: localSrc, to: localDst, isCoordinated: false)
+
+            if let iCloudThreads = self.iCloudThreadsDirectory, let iCloudArchive = self.iCloudArchiveDirectory {
+                let iCloudSrc = iCloudThreads.appendingPathComponent(id, isDirectory: true)
+                let iCloudDst = iCloudArchive.appendingPathComponent(id, isDirectory: true)
+                self.moveDirectory(from: iCloudSrc, to: iCloudDst, isCoordinated: true)
+            }
+
+            // Invalidate cache for old paths
+            self.threadFileCache.removeValue(forKey: localSrc.appendingPathComponent("meta.json").path)
+            if let iCloudThreads = self.iCloudThreadsDirectory {
+                self.threadFileCache.removeValue(forKey: iCloudThreads.appendingPathComponent(id, isDirectory: true).appendingPathComponent("meta.json").path)
+            }
+
+            // 2. Write updated metadata into archive destination
+            _ = self.writeMetadata(updated)
+            self.touchSyncMarker(threadId: id)
+
+            // 3. Update in-memory lists
+            self.threads = self.threads.filter { $0.id != id }
+            self.archivedThreads = (self.archivedThreads.filter { $0.id != id } + [updated]).sorted(by: { $0.updatedAt > $1.updatedAt })
+            self.logger.info("Archived dispatch thread: \(id)")
+        }
+    }
+
+    public func unarchiveThread(id: String) {
+        executeWithBackgroundTask {
+            guard let existing = (self.archivedThreads.first(where: { $0.id == id }) ?? self.threads.first(where: { $0.id == id })) else { return }
+            let updated = existing.with(status: .replied, updatedAt: Date())
+
+            // 1. Move folder from archive/{id} to threads/{id}
+            let localSrc = self.localArchiveDirectory.appendingPathComponent(id, isDirectory: true)
+            let localDst = self.localThreadsDirectory.appendingPathComponent(id, isDirectory: true)
+            self.moveDirectory(from: localSrc, to: localDst, isCoordinated: false)
+
+            if let iCloudArchive = self.iCloudArchiveDirectory, let iCloudThreads = self.iCloudThreadsDirectory {
+                let iCloudSrc = iCloudArchive.appendingPathComponent(id, isDirectory: true)
+                let iCloudDst = iCloudThreads.appendingPathComponent(id, isDirectory: true)
+                self.moveDirectory(from: iCloudSrc, to: iCloudDst, isCoordinated: true)
+            }
+
+            // Invalidate cache for old paths
+            self.threadFileCache.removeValue(forKey: localSrc.appendingPathComponent("meta.json").path)
+            if let iCloudArchive = self.iCloudArchiveDirectory {
+                self.threadFileCache.removeValue(forKey: iCloudArchive.appendingPathComponent(id, isDirectory: true).appendingPathComponent("meta.json").path)
+            }
+
+            // 2. Write updated metadata into threads destination
+            _ = self.writeMetadata(updated)
+            self.touchSyncMarker(threadId: id)
+
+            // 3. Update in-memory lists
+            self.archivedThreads = self.archivedThreads.filter { $0.id != id }
+            self.threads = (self.threads.filter { $0.id != id } + [updated]).sorted(by: { $0.updatedAt > $1.updatedAt })
+            self.logger.info("Unarchived dispatch thread: \(id)")
+        }
     }
 
     // MARK: - Low-Level Immutable Disk Writers
@@ -570,14 +736,18 @@ public final class DispatchStore: ObservableObject {
             return .failure(.serializationFailed("Failed to encode message"))
         }
 
+        let isArchived = (thread.status == .archived)
+        let localBaseDir = isArchived ? localArchiveDirectory : localThreadsDirectory
+
         // Write locally
-        let localMsgDir = localThreadsDirectory.appendingPathComponent(thread.id, isDirectory: true).appendingPathComponent("messages", isDirectory: true)
+        let localMsgDir = localBaseDir.appendingPathComponent(thread.id, isDirectory: true).appendingPathComponent("messages", isDirectory: true)
         try? fileManager.createDirectory(at: localMsgDir, withIntermediateDirectories: true)
         let localMsgURL = localMsgDir.appendingPathComponent(filename)
         try? msgData.write(to: localMsgURL, options: .atomic)
 
         // Write to iCloud container using NSFileCoordinator to wake up bird immediately
-        if let iCloudDir = iCloudThreadsDirectory {
+        let iCloudBaseDir = isArchived ? iCloudArchiveDirectory : iCloudThreadsDirectory
+        if let iCloudDir = iCloudBaseDir {
             let iCloudMsgDir = iCloudDir.appendingPathComponent(thread.id, isDirectory: true).appendingPathComponent("messages", isDirectory: true)
             try? fileManager.createDirectory(at: iCloudMsgDir, withIntermediateDirectories: true)
             let iCloudMsgURL = iCloudMsgDir.appendingPathComponent(filename)
@@ -593,8 +763,11 @@ public final class DispatchStore: ObservableObject {
             return .failure(.serializationFailed("Failed to encode thread metadata"))
         }
 
+        let isArchived = (thread.status == .archived)
+        let localBaseDir = isArchived ? localArchiveDirectory : localThreadsDirectory
+
         // Write locally
-        let localThreadDir = localThreadsDirectory.appendingPathComponent(thread.id, isDirectory: true)
+        let localThreadDir = localBaseDir.appendingPathComponent(thread.id, isDirectory: true)
         try? fileManager.createDirectory(at: localThreadDir, withIntermediateDirectories: true)
         let localMetaURL = localThreadDir.appendingPathComponent("meta.json")
         try? metaData.write(to: localMetaURL, options: .atomic)
@@ -602,7 +775,8 @@ public final class DispatchStore: ObservableObject {
         threadFileCache[localMetaURL.path] = CachedThreadRecord(modificationDate: localModDate, thread: thread)
 
         // Write to iCloud container using NSFileCoordinator
-        if let iCloudDir = iCloudThreadsDirectory {
+        let iCloudBaseDir = isArchived ? iCloudArchiveDirectory : iCloudThreadsDirectory
+        if let iCloudDir = iCloudBaseDir {
             let iCloudThreadDir = iCloudDir.appendingPathComponent(thread.id, isDirectory: true)
             try? fileManager.createDirectory(at: iCloudThreadDir, withIntermediateDirectories: true)
             let iCloudMetaURL = iCloudThreadDir.appendingPathComponent("meta.json")
