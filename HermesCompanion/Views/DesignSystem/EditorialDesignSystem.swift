@@ -25,6 +25,18 @@ enum EditorialColor {
             : UIColor(red: 0.933, green: 0.933, blue: 0.918, alpha: 1)
     })
 
+    static let userBubble = Color(uiColor: UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(red: 0.15, green: 0.15, blue: 0.15, alpha: 1)
+            : UIColor(red: 0.905, green: 0.905, blue: 0.885, alpha: 1)
+    })
+
+    static let agentBubble = Color(uiColor: UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(red: 0.05, green: 0.05, blue: 0.05, alpha: 1)
+            : UIColor(red: 0.99, green: 0.99, blue: 0.985, alpha: 1)
+    })
+
     static let hairline = ink.opacity(0.24)
     static let faintHairline = ink.opacity(0.15)
 }
@@ -81,20 +93,27 @@ struct EditorialPanelModifier: ViewModifier {
     let emphasized: Bool
     let cutCorner: Bool
 
+    @ViewBuilder
     func body(content: Content) -> some View {
-        content
-            .padding(EditorialSpacing.medium)
-            .background(EditorialColor.surface)
-            .clipShape(cutCorner ? AnyShape(CutCornerShape()) : AnyShape(Rectangle()))
-            .overlay {
-                if cutCorner {
+        if cutCorner {
+            content
+                .padding(EditorialSpacing.medium)
+                .background(EditorialColor.surface)
+                .clipShape(CutCornerShape())
+                .overlay {
                     CutCornerShape()
                         .stroke(EditorialColor.hairline, lineWidth: emphasized ? EditorialBorder.strong : EditorialBorder.hairline)
-                } else {
+                }
+        } else {
+            content
+                .padding(EditorialSpacing.medium)
+                .background(EditorialColor.surface)
+                .clipShape(Rectangle())
+                .overlay {
                     Rectangle()
                         .stroke(EditorialColor.hairline, lineWidth: emphasized ? EditorialBorder.strong : EditorialBorder.hairline)
                 }
-            }
+        }
     }
 }
 
@@ -197,16 +216,19 @@ struct EditorialStatusToken: View {
     var systemImage: String?
 
     var body: some View {
-        HStack(spacing: EditorialSpacing.xSmall) {
+        HStack(spacing: 3) {
             if let systemImage {
                 Image(systemName: systemImage)
-                    .imageScale(.small)
+                    .font(.system(size: 8, weight: .semibold))
             }
             Text(text)
+                .lineLimit(1)
         }
         .font(.editorialUtilitySmall)
-        .padding(.horizontal, EditorialSpacing.small)
-        .padding(.vertical, EditorialSpacing.xSmall)
+        .lineLimit(1)
+        .fixedSize(horizontal: true, vertical: false)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 3)
         .foregroundStyle(isInverted ? EditorialColor.paper : EditorialColor.ink)
         .background(isInverted ? EditorialColor.ink : EditorialColor.paper)
         .overlay {
@@ -218,15 +240,18 @@ struct EditorialStatusToken: View {
 
 struct EditorialButtonStyle: ButtonStyle {
     let isPrimary: Bool
+    var isFullWidth: Bool = true
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.editorialUtility)
+            .lineLimit(1)
+            .fixedSize(horizontal: !isFullWidth, vertical: false)
             .tracking(0.6)
             .foregroundStyle(isPrimary ? EditorialColor.paper : EditorialColor.ink)
             .padding(.horizontal, EditorialSpacing.medium)
             .frame(minHeight: 44)
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: isFullWidth ? .infinity : nil)
             .background(configuration.isPressed ? (isPrimary ? EditorialColor.secondaryInk : EditorialColor.ink) : (isPrimary ? EditorialColor.ink : EditorialColor.paper))
             .foregroundStyle(configuration.isPressed && !isPrimary ? EditorialColor.paper : (isPrimary ? EditorialColor.paper : EditorialColor.ink))
             .overlay {
@@ -395,6 +420,53 @@ public struct EditorialField: View {
                         .stroke(EditorialColor.ink, lineWidth: isFocused ? EditorialBorder.strong : EditorialBorder.hairline)
                 }
                 .focused($isFocused)
+        }
+    }
+}
+
+// MARK: - Date Formatting Helpers
+
+private enum EditorialDateFormatters {
+    static let calendar = Calendar.current
+
+    static let timeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "H:mm"
+        return f
+    }()
+
+    static let fullFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "d MMM · H:mm"
+        return f
+    }()
+}
+
+extension Date {
+    public var compactRelativeFormatted: String {
+        let seconds = -self.timeIntervalSinceNow
+        if seconds < 60 {
+            return "just now"
+        } else if seconds < 3600 {
+            let m = max(1, Int(seconds / 60))
+            return "\(m)m ago"
+        } else if seconds < 86400 {
+            let h = Int(seconds / 3600)
+            return "\(h)h ago"
+        } else {
+            let d = Int(seconds / 86400)
+            return "\(d)d ago"
+        }
+    }
+
+    public var compactDateFormatted: String {
+        let calendar = EditorialDateFormatters.calendar
+        if calendar.isDateInToday(self) {
+            return EditorialDateFormatters.timeFormatter.string(from: self)
+        } else if calendar.isDateInYesterday(self) {
+            return "Yest. " + EditorialDateFormatters.timeFormatter.string(from: self)
+        } else {
+            return EditorialDateFormatters.fullFormatter.string(from: self)
         }
     }
 }

@@ -58,9 +58,8 @@ public struct PlacesView: View {
                 HStack(spacing: EditorialSpacing.small) {
                     Image(systemName: "plus")
                         .font(.subheadline.weight(.semibold))
-                    Text("REGISTER PLACE")
+                    Text("Add Place")
                         .font(.editorialUtility)
-                        .tracking(1.0)
                 }
                 .padding(.horizontal, EditorialSpacing.medium)
                 .padding(.vertical, EditorialSpacing.compact)
@@ -332,9 +331,8 @@ struct AddPlaceSheetView: View {
                         HStack(spacing: 4) {
                             Image(systemName: "plus")
                                 .font(.caption.bold())
-                            Text("ADD")
+                            Text("Add")
                                 .font(.editorialUtility)
-                                .tracking(0.8)
                         }
                         .padding(.horizontal, 14)
                         .padding(.vertical, 12)
@@ -403,7 +401,7 @@ struct AddPlaceSheetView: View {
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "location.fill")
-                        Text("USE CURRENT FIX")
+                        Text("Use Current")
                     }
                     .font(.editorialUtilitySmall)
                     .padding(.horizontal, 8)
@@ -446,9 +444,8 @@ struct AddPlaceSheetView: View {
         } label: {
             HStack {
                 Spacer()
-                Text("SAVE PLACE")
+                Text("Save Place")
                     .font(.editorialUtility)
-                    .tracking(1.2)
                     .foregroundStyle(EditorialColor.paper)
                 Spacer()
             }

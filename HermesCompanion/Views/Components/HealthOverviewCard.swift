@@ -66,7 +66,7 @@ private struct HealthAuthorizationContent: View {
                 .foregroundStyle(EditorialColor.secondaryInk)
 
             Button(action: connectAction) {
-                Label("CONNECT APPLE HEALTH", systemImage: "heart.text.square")
+                Label("Connect Apple Health", systemImage: "heart.text.square")
             }
             .buttonStyle(EditorialButtonStyle(isPrimary: true))
         }
@@ -158,7 +158,7 @@ private struct AuthorizedHealthContent: View {
             }
 
             Button(action: refreshAction) {
-                Label(isRefreshing ? "READING…" : "REFRESH HEALTH ARCHIVE", systemImage: "arrow.clockwise")
+                Label(isRefreshing ? "Updating…" : "Refresh", systemImage: "arrow.clockwise")
             }
             .buttonStyle(EditorialButtonStyle(isPrimary: false))
             .disabled(isRefreshing)

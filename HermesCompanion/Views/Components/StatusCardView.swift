@@ -46,7 +46,7 @@ struct StatusCardView: View {
                 locationManager.requestSingleLocationUpdate(source: .manualPing)
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
             } label: {
-                Label("REQUEST READING", systemImage: "arrow.clockwise")
+                Label("Update Fix", systemImage: "arrow.clockwise")
             }
             .buttonStyle(EditorialButtonStyle(isPrimary: false))
         }
@@ -73,7 +73,7 @@ struct StatusCardView: View {
             }
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         } label: {
-            Label(locationManager.isTrackingActive ? "PAUSE TRACKING" : "START TRACKING",
+            Label(locationManager.isTrackingActive ? "Pause Tracking" : "Start Tracking",
                   systemImage: locationManager.isTrackingActive ? "pause" : "play")
         }
         .buttonStyle(EditorialButtonStyle(isPrimary: !locationManager.isTrackingActive))
@@ -164,7 +164,7 @@ private struct CoordinateReadout: View {
 
     private var copyButton: some View {
         Button(action: copyAction) {
-            Label(copied ? "COPIED" : "COPY", systemImage: copied ? "checkmark" : "doc.on.doc")
+            Label(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc")
         }
         .buttonStyle(EditorialButtonStyle(isPrimary: false))
         .frame(maxWidth: 130)

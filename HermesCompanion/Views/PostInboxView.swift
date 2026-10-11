@@ -94,7 +94,7 @@ public struct PostInboxView: View {
                     showingPostalDisclaimer = true
                 }
             }
-            .onReceive(Timer.publish(every: 5.0, on: .main, in: .common).autoconnect()) { _ in
+            .onReceive(Timer.publish(every: 5.0, on: .main, in: .default).autoconnect()) { _ in
                 store.loadThreads()
             }
         }
@@ -241,9 +241,7 @@ public struct DispatchThreadDetailView: View {
     let threadId: String
     @StateObject private var store = DispatchStore.shared
     @State private var messages: [DispatchMessage] = []
-    @State private var replyText: String = ""
     @State private var isSending: Bool = false
-    @FocusState private var isInputFocused: Bool
 
     private var currentThread: DispatchThread? {
         store.threads.first(where: { $0.id == threadId })
@@ -252,7 +250,7 @@ public struct DispatchThreadDetailView: View {
     public var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                VStack(alignment: .leading, spacing: EditorialSpacing.large) {
+                LazyVStack(alignment: .leading, spacing: EditorialSpacing.large) {
                     if let thread = currentThread {
                         headerSection(thread)
                     }
@@ -265,15 +263,13 @@ public struct DispatchThreadDetailView: View {
                             systemImage: "envelope"
                         )
                     } else {
-                        LazyVStack(spacing: EditorialSpacing.large) {
-                            ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
-                                EditorialMemoCard(
-                                    message: message,
-                                    sequenceIndex: index + 1,
-                                    targetProfile: currentThread?.targetProfile ?? "default"
-                                )
-                                .id(message.id)
-                            }
+                        ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
+                            EditorialMemoCard(
+                                message: message,
+                                sequenceIndex: index + 1,
+                                targetProfile: currentThread?.targetProfile ?? "default"
+                            )
+                            .id(message.id)
                         }
                     }
 
@@ -290,8 +286,14 @@ public struct DispatchThreadDetailView: View {
                             )
                             .id("failed_banner")
                         } else if thread.status != .archived {
-                            replySection(thread)
-                                .id("reply_section")
+                            ThreadReplySectionView(
+                                thread: thread,
+                                isSending: isSending,
+                                onSend: { text in
+                                    sendReply(textToSend: text)
+                                }
+                            )
+                            .id("reply_section")
                         }
                     }
                 }
@@ -336,9 +338,8 @@ public struct DispatchThreadDetailView: View {
         .onAppear {
             loadMessages()
         }
-        .onReceive(Timer.publish(every: (currentThread?.status == .pendingAgent ? 2.0 : 4.0), on: .main, in: .common).autoconnect()) { _ in
+        .onReceive(Timer.publish(every: (currentThread?.status == .pendingAgent ? 2.5 : 5.0), on: .main, in: .default).autoconnect()) { _ in
             loadMessages()
-            store.loadThreads()
         }
     }
 
@@ -373,7 +374,46 @@ public struct DispatchThreadDetailView: View {
         .padding(.bottom, EditorialSpacing.xSmall)
     }
 
-    private func replySection(_ thread: DispatchThread) -> some View {
+    private func loadMessages() {
+        store.loadMessagesAsync(for: threadId) { result in
+            if case .success(let loaded) = result {
+                if self.messages != loaded {
+                    self.messages = loaded
+                }
+            }
+        }
+    }
+
+    private func sendReply(textToSend: String) {
+        guard currentThread?.status != .pendingAgent else { return }
+        guard !textToSend.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+
+        isSending = true
+        let result = store.replyToThread(threadId: threadId, body: textToSend, sender: .user)
+
+        DispatchQueue.main.async {
+            self.isSending = false
+            switch result {
+            case .success(let msg):
+                self.messages.append(msg)
+            case .failure:
+                break
+            }
+        }
+    }
+}
+
+// MARK: - Dedicated Thread Reply Section
+
+private struct ThreadReplySectionView: View {
+    let thread: DispatchThread
+    let isSending: Bool
+    let onSend: (String) -> Void
+
+    @State private var replyText: String = ""
+    @FocusState private var isInputFocused: Bool
+
+    var body: some View {
         VStack(alignment: .leading, spacing: EditorialSpacing.small) {
             HStack(alignment: .firstTextBaseline) {
                 Text("Reply")
@@ -417,7 +457,10 @@ public struct DispatchThreadDetailView: View {
                 Spacer()
 
                 Button {
-                    sendReply()
+                    let text = replyText
+                    replyText = ""
+                    isInputFocused = false
+                    onSend(text)
                 } label: {
                     HStack(spacing: EditorialSpacing.small) {
                         if isSending {
@@ -441,36 +484,6 @@ public struct DispatchThreadDetailView: View {
         .background(EditorialColor.surface)
         .overlay {
             Rectangle().stroke(EditorialColor.hairline, lineWidth: EditorialBorder.hairline)
-        }
-    }
-
-    private func loadMessages() {
-        let result = store.loadMessages(for: threadId)
-        if case .success(let loaded) = result {
-            if loaded.count != self.messages.count || loaded.last?.id != self.messages.last?.id {
-                self.messages = loaded
-            }
-        }
-    }
-
-    private func sendReply() {
-        guard currentThread?.status != .pendingAgent else { return }
-        let textToSend = replyText
-        guard !textToSend.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-
-        isSending = true
-        let result = store.replyToThread(threadId: threadId, body: textToSend, sender: .user)
-
-        DispatchQueue.main.async {
-            self.isSending = false
-            switch result {
-            case .success(let msg):
-                self.messages.append(msg)
-                self.replyText = ""
-                self.isInputFocused = false
-            case .failure:
-                break
-            }
         }
     }
 }
@@ -511,13 +524,12 @@ private struct EditorialMemoCard: View {
             EditorialRule()
 
             // Postal memo body
-            Text(LocalizedStringKey(message.body))
+            Text(verbatim: message.body)
                 .font(.system(.body, design: .serif))
                 .foregroundStyle(EditorialColor.ink)
                 .lineSpacing(5)
                 .padding(EditorialSpacing.medium)
                 .fixedSize(horizontal: false, vertical: true)
-                .textSelection(.enabled)
         }
         .background(isUser ? EditorialColor.userBubble : EditorialColor.agentBubble)
         .overlay(alignment: .leading) {
@@ -529,6 +541,15 @@ private struct EditorialMemoCard: View {
         .overlay {
             Rectangle()
                 .stroke(isUser ? EditorialColor.hairline : EditorialColor.ink.opacity(0.35), lineWidth: EditorialBorder.hairline)
+        }
+        .contextMenu {
+            Button {
+                #if canImport(UIKit)
+                UIPasteboard.general.string = message.body
+                #endif
+            } label: {
+                Label("Copy Letter", systemImage: "doc.on.doc")
+            }
         }
     }
 }

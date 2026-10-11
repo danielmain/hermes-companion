@@ -141,7 +141,10 @@ public final class DispatchStore: ObservableObject {
             DispatchQueue.main.async {
                 switch result {
                 case .success(let loaded):
-                    self.threads = loaded.sorted(by: { $0.updatedAt > $1.updatedAt })
+                    let sorted = loaded.sorted(by: { $0.updatedAt > $1.updatedAt })
+                    if self.threads != sorted {
+                        self.threads = sorted
+                    }
                     self.lastSyncDate = Date()
                     self.logger.info("Loaded \(loaded.count) dispatch threads")
                 case .failure(let error):
@@ -378,6 +381,21 @@ public final class DispatchStore: ObservableObject {
     // MARK: - Loading Messages
 
     public func loadMessages(for threadId: String) -> Result<[DispatchMessage], DispatchError> {
+        let sorted = readMessagesFromDisk(threadId: threadId)
+        return .success(sorted)
+    }
+
+    public func loadMessagesAsync(for threadId: String, completion: @escaping (Result<[DispatchMessage], DispatchError>) -> Void) {
+        queue.async { [weak self] in
+            guard let self = self else { return }
+            let sorted = self.readMessagesFromDisk(threadId: threadId)
+            DispatchQueue.main.async {
+                completion(.success(sorted))
+            }
+        }
+    }
+
+    private func readMessagesFromDisk(threadId: String) -> [DispatchMessage] {
         var messages: [DispatchMessage] = []
         let candidateDirs = [
             localThreadsDirectory.appendingPathComponent(threadId, isDirectory: true).appendingPathComponent("messages", isDirectory: true),
@@ -415,8 +433,7 @@ public final class DispatchStore: ObservableObject {
             }
         }
 
-        let sorted = messages.sorted(by: { $0.timestamp < $1.timestamp })
-        return .success(sorted)
+        return messages.sorted(by: { $0.timestamp < $1.timestamp })
     }
 
     // MARK: - Archive Thread

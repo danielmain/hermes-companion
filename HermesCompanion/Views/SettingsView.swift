@@ -73,7 +73,7 @@ private struct CloudSettingsSection: View {
 
             if cloudKitSyncManager.accountStatus != .available {
                 Button(action: cloudKitSyncManager.openSettingsForAccount) {
-                    Label("OPEN ACCOUNT SETTINGS", systemImage: "arrow.up.forward.app")
+                    Label("Account Settings", systemImage: "arrow.up.forward.app")
                 }
                 .buttonStyle(EditorialButtonStyle(isPrimary: false))
             }
@@ -105,7 +105,7 @@ private struct CloudSettingsSection: View {
             }
 
             Button(action: runCloudKitTest) {
-                Label("TEST CLOUDKIT CONNECTION", systemImage: "network")
+                Label("Test Connection", systemImage: "network")
             }
             .buttonStyle(EditorialButtonStyle(isPrimary: true))
             .disabled(isPinging)
@@ -168,7 +168,7 @@ private struct TrackingSettingsSection: View {
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             } label: {
                 Label(
-                    locationManager.isTrackingActive ? "PAUSE LOCATION TRACKING" : "START LOCATION TRACKING",
+                    locationManager.isTrackingActive ? "Pause Tracking" : "Start Tracking",
                     systemImage: locationManager.isTrackingActive ? "pause" : "play"
                 )
             }

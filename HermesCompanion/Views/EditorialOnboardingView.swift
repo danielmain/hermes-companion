@@ -60,7 +60,7 @@ struct EditorialOnboardingView: View {
                         completion()
                         UINotificationFeedbackGenerator().notificationOccurred(.success)
                     } label: {
-                        Label("ENTER FIELD UNIT", systemImage: "arrow.right")
+                        Label("Get Started", systemImage: "arrow.right")
                     }
                     .buttonStyle(EditorialButtonStyle(isPrimary: true))
                 }

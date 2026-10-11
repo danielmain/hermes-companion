@@ -24,7 +24,7 @@ struct PermissionBannerView: View {
                 }
 
                 Button(action: openSettings) {
-                    Label(buttonLabel.uppercased(), systemImage: "arrow.up.forward.app")
+                    Label(buttonLabel, systemImage: "arrow.up.forward.app")
                 }
                 .buttonStyle(EditorialButtonStyle(isPrimary: true))
             }
@@ -55,7 +55,7 @@ struct PermissionBannerView: View {
     }
 
     private var buttonLabel: String {
-        locationManager.authorizationStatus == .notDetermined ? "Request access" : "Open settings"
+        locationManager.authorizationStatus == .notDetermined ? "Grant Access" : "Open Settings"
     }
 
     private func openSettings() {

@@ -27,7 +27,7 @@ struct ICloudAccountBannerView: View {
                 }
 
                 Button(action: cloudKitSyncManager.openSettingsForAccount) {
-                    Label("OPEN ACCOUNT SETTINGS", systemImage: "arrow.up.forward.app")
+                    Label("Account Settings", systemImage: "arrow.up.forward.app")
                 }
                 .buttonStyle(EditorialButtonStyle(isPrimary: false))
             }

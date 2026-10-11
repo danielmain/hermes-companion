@@ -313,7 +313,7 @@ public final class HealthKitManager: ObservableObject {
         // Cluster backwards from the latest sample to capture only the current/last night's session.
         // A gap of > 4 hours between contiguous sleep stages defines a distinct previous session (nap or previous night).
         var sessionSamples: [HKCategorySample] = []
-        var currentEnd = latestSample.endDate
+        let currentEnd = latestSample.endDate
 
         for sample in sortedSamples.reversed() {
             if sample.startDate > currentEnd { continue }
