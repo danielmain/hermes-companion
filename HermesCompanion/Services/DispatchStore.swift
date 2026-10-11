@@ -341,6 +341,40 @@ public final class DispatchStore: ObservableObject {
         return block()
     }
 
+    // MARK: - Container Upload
+
+    /// Hold a background task while CloudDocs confirms the container file was uploaded.
+    ///
+    /// A write into the ubiquity container returns as soon as the local file exists; pushing
+    /// it to iCloud is bird's job, and iOS is free to suspend the app first. That is where the
+    /// minutes went: a letter written at 10:38 reached the Mac at 10:46. Polling
+    /// `ubiquitousItemIsUploaded` while a background task is held gives the upload its window.
+    /// The wait runs off the main thread, so the UI never blocks.
+    private func keepUploading(_ url: URL, timeout: TimeInterval = 25) {
+        #if canImport(UIKit)
+        let taskId = UIApplication.shared.beginBackgroundTask(withName: "DispatchStoreUpload") {}
+        DispatchQueue.global(qos: .utility).async { [logger = self.logger] in
+            defer {
+                if taskId != .invalid {
+                    UIApplication.shared.endBackgroundTask(taskId)
+                }
+            }
+            let deadline = Date().addingTimeInterval(timeout)
+            while Date() < deadline {
+                let values = try? url.resourceValues(forKeys: [.ubiquitousItemIsUploadedKey])
+                if values?.ubiquitousItemIsUploaded == true {
+                    logger.info("Container upload confirmed for \(url.lastPathComponent)")
+                    return
+                }
+                Thread.sleep(forTimeInterval: 0.25)
+            }
+            logger.error("Container upload for \(url.lastPathComponent) still pending after \(Int(timeout))s; iOS will retry it in the background")
+        }
+        #else
+        _ = url
+        #endif
+    }
+
     // MARK: - Loading Messages
 
     public func loadMessages(for threadId: String) -> Result<[DispatchMessage], DispatchError> {
@@ -442,6 +476,7 @@ public final class DispatchStore: ObservableObject {
             try? fileManager.createDirectory(at: iCloudMsgDir, withIntermediateDirectories: true)
             let iCloudMsgURL = iCloudMsgDir.appendingPathComponent(filename)
             coordinatedWrite(data: msgData, to: iCloudMsgURL)
+            keepUploading(iCloudMsgURL)
         }
 
         return .success(())
@@ -464,6 +499,7 @@ public final class DispatchStore: ObservableObject {
             try? fileManager.createDirectory(at: iCloudThreadDir, withIntermediateDirectories: true)
             let iCloudMetaURL = iCloudThreadDir.appendingPathComponent("meta.json")
             coordinatedWrite(data: metaData, to: iCloudMetaURL)
+            keepUploading(iCloudMetaURL)
         }
 
         return .success(())
