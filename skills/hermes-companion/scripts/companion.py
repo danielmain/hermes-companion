@@ -29,6 +29,7 @@ import math
 import os
 import re
 import shutil
+import signal
 import sqlite3
 import subprocess
 import sys
@@ -68,6 +69,8 @@ PROSE_HEALTH_KEYS: Final[Tuple[str, ...]] = (
     "suggestedOpeners",
 )
 
+PLACE_CITY_KEYS: Final[Tuple[str, ...]] = ("city", "locality", "placemark_locality")
+
 ICLOUD_DIRS: Final[Tuple[Path, ...]] = (
     Path.home() / "Library/Mobile Documents/iCloud~com~hermes~HermesCompanion/Documents",
     Path.home() / "Library/Mobile Documents/iCloud~com~hermes~HermesCompanion",
@@ -81,6 +84,8 @@ ICLOUD_DIRS: Final[Tuple[Path, ...]] = (
 # ==============================================================================
 
 class PlaceRecord(TypedDict, total=False):
+    city: str
+    locality: str
     id: str
     name: str
     category: str
@@ -236,6 +241,7 @@ class DispatchThreadMeta(TypedDict, total=False):
     last_snippet: Optional[str]
     last_error: Optional[str]
     dispatch_retries: Optional[int]
+    failed_at: Optional[str]
 
 
 class DispatchMessageRecord(TypedDict):
@@ -251,7 +257,13 @@ class DispatchMessageRecord(TypedDict):
 # ==============================================================================
 
 def log(level: str, message: str) -> None:
-    print(f"{level} hermes-companion: {message}", file=sys.stderr)
+    """Structured single line on stderr, flushed and timestamped.
+
+    launchd captures stderr into companion-inbox.error.log; an unflushed buffer dies
+    with the process, and without a timestamp a stall cannot be placed on a timeline.
+    """
+    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    print(f"{stamp} {level} hermes-companion: {message}", file=sys.stderr, flush=True)
 
 
 def utcnow() -> datetime:
@@ -366,6 +378,32 @@ def default_places_file() -> Path:
     return Path.home() / ".hermes" / "hermes-companion" / "places.json"
 
 
+def place_from_record(item: Mapping[str, object]) -> PlaceRecord:
+    """Normalise one raw place object. Pure.
+
+    The optional city/locality keys are kept: they are the only city name available when
+    the iPhone has not reverse-geocoded the current fix, and losing them is what lets the
+    agent guess a city out of thin air.
+    """
+    city = text_field(item, "city")
+    locality = text_field(item, "locality")
+    record = PlaceRecord(
+        id=str(item.get("id", "")),
+        name=str(item.get("name", "")),
+        category=str(item.get("category", "general")),
+        activity=str(item.get("activity", f"at {item.get('name', 'place')}")),
+        latitude=_to_float(item.get("latitude")),
+        longitude=_to_float(item.get("longitude")),
+        radius_meters=_to_float(item.get("radius_meters"), 150.0),
+        notes=str(item.get("notes", "")),
+    )
+    if city:
+        record["city"] = city
+    if locality:
+        record["locality"] = locality
+    return record
+
+
 def load_places(path: Path) -> List[PlaceRecord]:
     records: List[PlaceRecord] = []
     if safe_is_file(path):
@@ -373,16 +411,7 @@ def load_places(path: Path) -> List[PlaceRecord]:
             data = json.loads(path.read_text(encoding="utf-8"))
             if isinstance(data, list):
                 records = [
-                    PlaceRecord(
-                        id=str(item.get("id", "")),
-                        name=str(item.get("name", "")),
-                        category=str(item.get("category", "general")),
-                        activity=str(item.get("activity", f"at {item.get('name', 'place')}")),
-                        latitude=_to_float(item.get("latitude")),
-                        longitude=_to_float(item.get("longitude")),
-                        radius_meters=_to_float(item.get("radius_meters"), 150.0),
-                        notes=str(item.get("notes", "")),
-                    )
+                    place_from_record(item)
                     for item in data
                     if isinstance(item, dict) and "latitude" in item and "longitude" in item
                 ]
@@ -407,18 +436,7 @@ def load_places(path: Path) -> List[PlaceRecord]:
                         p_id = str(item.get("id", "")).strip().lower()
                         if p_id in existing_ids or (p_name and p_name in existing_names):
                             continue
-                        records.append(
-                            PlaceRecord(
-                                id=str(item.get("id", "")),
-                                name=str(item.get("name", "")),
-                                category=str(item.get("category", "general")),
-                                activity=str(item.get("activity", f"at {item.get('name', 'place')}")),
-                                latitude=_to_float(item.get("latitude")),
-                                longitude=_to_float(item.get("longitude")),
-                                radius_meters=_to_float(item.get("radius_meters"), 150.0),
-                                notes=str(item.get("notes", "")),
-                            )
-                        )
+                        records.append(place_from_record(item))
                         if p_name:
                             existing_names.add(p_name)
                         if p_id:
@@ -1291,6 +1309,15 @@ def safe_is_file(path: Path) -> bool:
         return False
 
 
+def warn_once(path: Path, message: str) -> None:
+    """Warn about a path once per process, so a corrupt file cannot flood the log."""
+    key = str(path)
+    if key in _WARNED_PATHS:
+        return
+    _WARNED_PATHS.add(key)
+    log("WARN", message)
+
+
 def safe_read_json(path: Path, retries: int = 4) -> Optional[dict[str, object]]:
     for attempt in range(retries):
         try:
@@ -1301,8 +1328,16 @@ def safe_read_json(path: Path, retries: int = 4) -> Optional[dict[str, object]]:
                 if attempt < retries - 1:
                     time.sleep(0.15 * (attempt + 1))
                     continue
+                warn_once(path, f"{path.name} is empty after {retries} attempts; skipping")
                 return None
-            return json.loads(content)
+            try:
+                return json.loads(content)
+            except json.JSONDecodeError as exc:
+                if attempt < retries - 1:
+                    time.sleep(0.15 * (attempt + 1))
+                    continue
+                warn_once(path, f"{path.name} is not valid JSON ({exc}); skipping")
+                return None
         except OSError:
             # Handles Darwin EDEADLK (Resource deadlock avoided), EAGAIN, etc. during iCloud sync
             if attempt < retries - 1:
@@ -1318,16 +1353,44 @@ def safe_read_json(path: Path, retries: int = 4) -> Optional[dict[str, object]]:
 
 
 def safe_write_text(path: Path, content: str, retries: int = 4) -> bool:
+    """Write atomically: hidden temp file in the same directory, then os.replace.
+
+    A partial write into a synced iCloud container is exactly what produces corrupt
+    payloads on the iPhone and `[Errno 11] Resource deadlock avoided` on this side, so
+    the rename is not optional. The temp name is dot-prefixed, and the iOS client skips
+    hidden files, so it never shows up as a half-written letter.
+    """
     for attempt in range(retries):
+        tmp_path: Optional[Path] = None
         try:
-            path.write_text(content, encoding="utf-8")
+            path.parent.mkdir(parents=True, exist_ok=True)
+            fd, tmp_name = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp")
+            tmp_path = Path(tmp_name)
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                handle.write(content)
+                handle.flush()
+                try:
+                    os.fsync(handle.fileno())
+                except OSError:
+                    pass
+            os.replace(tmp_path, path)
             return True
         except OSError:
+            if tmp_path is not None:
+                try:
+                    tmp_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
             if attempt < retries - 1:
                 time.sleep(0.15 * (attempt + 1))
                 continue
             return False
         except Exception:
+            if tmp_path is not None:
+                try:
+                    tmp_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
             return False
     return False
 
@@ -1639,6 +1702,7 @@ def mark_thread_failed(
     timestamp_str = moment.strftime("%Y-%m-%dT%H:%M:%SZ")
     meta["status"] = "failed"
     meta["last_error"] = error_message
+    meta["failed_at"] = timestamp_str
     meta["updated_at"] = timestamp_str
     safe_write_text(meta_file, json.dumps(meta, indent=2, ensure_ascii=False))
     touch_sync_marker(threads_dir, thread_id, now=moment)
@@ -1686,6 +1750,7 @@ def reply_to_thread(
     meta["last_snippet"] = body[:120]
     meta.pop("last_error", None)
     meta.pop("dispatch_retries", None)
+    meta.pop("failed_at", None)
     safe_write_text(meta_file, json.dumps(meta, indent=2, ensure_ascii=False))
     touch_sync_marker(threads_dir, thread_id, now=moment)
 
@@ -1830,6 +1895,11 @@ def command_new_thread(args: argparse.Namespace, now: datetime) -> int:
 # MARK: - Autonomous Background Dispatch & LaunchAgent Service
 
 LAUNCH_AGENT_LABEL = "ai.hermes.companion-inbox"
+DAEMON_DEFAULT_INTERVAL: Final[float] = 5.0
+DAEMON_MIN_INTERVAL: Final[float] = 0.1
+DAEMON_HEARTBEAT_SECONDS: Final[float] = 300.0
+_STOP_REQUESTED: bool = False
+_WARNED_PATHS: set[str] = set()
 
 
 def get_dispatch_lock_path() -> Path:
@@ -1900,18 +1970,20 @@ def get_launch_agent_path() -> Path:
     return Path.home() / "Library" / "LaunchAgents" / f"{LAUNCH_AGENT_LABEL}.plist"
 
 
-def install_launch_agent(icloud_dir: Optional[str] = None) -> bool:
-    """Install and load macOS LaunchAgent for 60s background dispatch with minimal resource usage."""
-    if sys.platform != "darwin":
-        return False
+def render_launch_agent_plist(
+    python_bin: str,
+    script_path: str,
+    threads_dir: Optional[Path],
+    home: str,
+    interval: float = DAEMON_DEFAULT_INTERVAL,
+) -> str:
+    """Render the LaunchAgent XML. Pure: same inputs, same bytes.
 
-    plist_path = get_launch_agent_path()
-    plist_path.parent.mkdir(parents=True, exist_ok=True)
-
-    script_path = str(Path(__file__).resolve())
-    python_bin = sys.executable or "/usr/bin/python3"
-
-    threads_dir = get_threads_dir(icloud_dir)
+    KeepAlive plus a resident --daemon replaces the transient StartInterval sweep. A job
+    that exits in milliseconds, every 15s, is what launchd throttles; a job that never
+    exits is never throttled. WatchPaths still kicks the agent when the container changes,
+    and PYTHONUNBUFFERED keeps a dying process from taking its last log lines with it.
+    """
     watch_xml = ""
     if threads_dir:
         watch_xml = f"""
@@ -1920,13 +1992,12 @@ def install_launch_agent(icloud_dir: Optional[str] = None) -> bool:
         <string>{threads_dir}</string>
     </array>"""
 
-    home = str(Path.home())
     system_path = (
         f"{home}/.local/bin:{home}/.hermes/bin:{home}/.hermes/hermes-agent/.hermes/bin:"
         "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
     )
 
-    plist_content = f"""<?xml version="1.0" encoding="UTF-8"?>
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
@@ -1936,16 +2007,22 @@ def install_launch_agent(icloud_dir: Optional[str] = None) -> bool:
     <array>
         <string>{python_bin}</string>
         <string>{script_path}</string>
-        <string>--dispatch-pending</string>
+        <string>--daemon</string>
+        <string>--interval</string>
+        <string>{interval:g}</string>
     </array>
-    <key>StartInterval</key>
-    <integer>15</integer>{watch_xml}
+    <key>KeepAlive</key>
+    <true/>
+    <key>ThrottleInterval</key>
+    <integer>10</integer>{watch_xml}
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
         <string>{system_path}</string>
         <key>HERMES_HOME</key>
         <string>{home}/.hermes</string>
+        <key>PYTHONUNBUFFERED</key>
+        <string>1</string>
     </dict>
     <key>RunAtLoad</key>
     <true/>
@@ -1954,13 +2031,64 @@ def install_launch_agent(icloud_dir: Optional[str] = None) -> bool:
     <key>StandardErrorPath</key>
     <string>{home}/.hermes/logs/companion-inbox.error.log</string>
 </dict>
-</plist>
-"""
+</plist>"""
+
+
+def dispatch_python_bin() -> str:
+    """Interpreter to pin in the LaunchAgent. Deliberately not plain sys.executable.
+
+    companion.py is executed by whatever interpreter its caller happens to run under:
+    a Hermes profile agent runs it with the Hermes venv Python, a profile on the local
+    model with its own, and the plist was rendered with `sys.executable`. Each caller
+    therefore wrote itself into the plist and relaunched the job, so the agent flapped
+    (four daemon generations in a minute, each killed by the next caller's launchctl).
+    The interpreter this machine already uses for the agent wins, whatever calls us.
+    """
+    override = os.environ.get("HERMES_COMPANION_PYTHON", "").strip()
+    if override and os.access(override, os.X_OK):
+        return override
+
+    uv_root = Path.home() / ".local" / "share" / "uv" / "python"
+    for pattern in ("cpython-3.12-*/bin/python3", "cpython-3.*/bin/python3"):
+        for candidate in sorted(uv_root.glob(pattern), reverse=True):
+            if os.access(candidate, os.X_OK):
+                return str(candidate)
+
+    for fallback in (shutil.which("python3") or "", sys.executable or "", "/usr/bin/python3"):
+        if fallback and os.access(fallback, os.X_OK):
+            return fallback
+    return "/usr/bin/python3"
+
+
+def is_daemon_plist(text: str) -> bool:
+    """True when a plist already describes the resident daemon. Pure."""
+    return "--daemon" in text and "<key>KeepAlive</key>" in text and "<key>StartInterval</key>" not in text
+
+
+def install_launch_agent(icloud_dir: Optional[str] = None) -> bool:
+    """Install and (re)load the dispatch LaunchAgent."""
+    if sys.platform != "darwin":
+        return False
+
+    plist_path = get_launch_agent_path()
+    plist_path.parent.mkdir(parents=True, exist_ok=True)
+
+    plist_content = render_launch_agent_plist(
+        dispatch_python_bin(),
+        str(Path(__file__).resolve()),
+        get_threads_dir(icloud_dir),
+        str(Path.home()),
+    )
+
     try:
+        domain = f"gui/{os.getuid()}"
+        subprocess.run(["launchctl", "bootout", f"{domain}/{LAUNCH_AGENT_LABEL}"], capture_output=True)
         subprocess.run(["launchctl", "unload", str(plist_path)], capture_output=True)
-        plist_path.write_text(plist_content.strip(), encoding="utf-8")
-        res = subprocess.run(["launchctl", "load", str(plist_path)], capture_output=True, text=True)
-        log("INFO", f"installed background auto-responder service: {plist_path}")
+        plist_path.write_text(plist_content, encoding="utf-8")
+        res = subprocess.run(["launchctl", "bootstrap", domain, str(plist_path)], capture_output=True, text=True)
+        if res.returncode != 0:
+            res = subprocess.run(["launchctl", "load", str(plist_path)], capture_output=True, text=True)
+        log("INFO", f"installed background dispatch daemon: {plist_path} (rc={res.returncode})")
         return res.returncode == 0
     except Exception as exc:
         log("WARN", f"could not install LaunchAgent: {exc}")
@@ -1983,12 +2111,22 @@ def uninstall_launch_agent() -> bool:
 
 
 def ensure_launch_agent_installed(icloud_dir: Optional[str] = None) -> None:
-    """Ensure LaunchAgent is installed once on macOS without blocking."""
+    """Install the LaunchAgent, or upgrade a transient one, then leave it alone.
+
+    Every companion command from every profile lands here, so this must be a no-op once
+    the resident daemon is installed: rewriting the plist means unloading the job, and a
+    caller that rewrites it on every run keeps killing the agent it just started.
+    """
     if sys.platform != "darwin":
         return
     plist_path = get_launch_agent_path()
-    if not plist_path.is_file():
-        install_launch_agent(icloud_dir)
+    try:
+        current = plist_path.read_text(encoding="utf-8")
+    except OSError:
+        current = ""
+    if is_daemon_plist(current):
+        return
+    install_launch_agent(icloud_dir)
 
 
 def clean_hermes_chat_output(raw: str) -> str:
@@ -2026,6 +2164,59 @@ def clean_hermes_chat_output(raw: str) -> str:
     return "\n".join(cleaned).strip()
 
 
+def place_city(place: Optional[Mapping[str, object]]) -> Optional[str]:
+    """City of a saved place, when the user's places file names one. Pure."""
+    if not place:
+        return None
+    for key in PLACE_CITY_KEYS:
+        value = place.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def text_field(record: Mapping[str, object], key: str) -> Optional[str]:
+    """Trimmed string field, or None. Pure."""
+    value = record.get(key)
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return None
+
+
+def resolve_city_and_area(
+    raw: Mapping[str, object],
+    location: Mapping[str, object],
+    places: Sequence[PlaceRecord],
+    history_records: Sequence[Mapping[str, object]],
+) -> Tuple[Optional[str], Optional[str]]:
+    """City and street for the live fix, with a last-known fallback. Pure.
+
+    The iPhone only reverse-geocodes some fixes, so the newest reading often carries no
+    placemark at all. Without a fallback the agent is handed a place name and no city,
+    and it fills the blank from its own imagination (a letter sent from Stuttgart was
+    answered as if Daniel were in Paris). Order: live fix placemark, the city saved with
+    the matched place, then the newest placemark anywhere in the local history.
+    """
+    area = text_field(location, "placemark_name") or text_field(location, "placemark_thoroughfare")
+    city = text_field(raw, "placemark_locality")
+
+    if not city:
+        city = place_city(match_place(_to_float(raw.get("latitude")), _to_float(raw.get("longitude")), places))
+
+    if not city or not area:
+        for record in reversed(list(history_records)):
+            record_city = text_field(record, "placemark_locality")
+            record_area = text_field(record, "placemark_name") or text_field(record, "placemark_thoroughfare")
+            if not city and record_city:
+                city = record_city
+            if not area and record_area:
+                area = record_area
+            if city and area:
+                break
+
+    return city, area
+
+
 def get_physical_context_summary(
     icloud_dir: Optional[str] = None,
     places_file: Optional[Path] = None,
@@ -2048,15 +2239,11 @@ def get_physical_context_summary(
             f"Coordinates: {loc.get('latitude')}, {loc.get('longitude')}",
         ]
         history_records, _ = read_history(directories)
-        addr_parts = [p for p in (loc.get("placemark_name"), loc.get("placemark_locality")) if p]
-        if not addr_parts and history_records:
-            for r in reversed(history_records):
-                r_parts = [p for p in (r.get("placemark_name"), r.get("placemark_locality")) if p]
-                if r_parts:
-                    addr_parts = r_parts
-                    break
-        if addr_parts:
-            loc_lines.append(f"Location/City: {', '.join(addr_parts)}")
+        city, area = resolve_city_and_area(loc_raw, loc, places, history_records)
+        if city:
+            loc_lines.append(f"City: {city}")
+        if area and area != city:
+            loc_lines.append(f"Area/Street: {area}")
         if loc.get("motion_activity") and loc["motion_activity"] != "unknown":
             loc_lines.append(f"Motion: {loc['motion_activity']}")
         if loc.get("still_there") is True:
@@ -2087,12 +2274,12 @@ def get_physical_context_summary(
     return "\n\n".join(parts)
 
 
-def command_dispatch_pending(args: argparse.Namespace, now: datetime) -> int:
-    """Scan for pending user letters and automatically invoke Hermes to reply with dedicated per-thread session context."""
-    threads_dir = get_threads_dir(args.icloud_dir)
-    if not threads_dir:
-        return 0
+def dispatch_pending_once(args: argparse.Namespace, now: datetime, threads_dir: Path) -> int:
+    """One sweep: answer every letter waiting for the agent. Returns replies written.
 
+    Every phase is guarded: a dataless CloudDocs placeholder, a corrupt payload, a busy
+    session or a timed-out agent must cost that one thread, never the sweep.
+    """
     try:
         pending = [t for t in list_dispatch_threads(threads_dir) if t.get("status") == "pending_agent"]
         if not pending:
@@ -2188,6 +2375,7 @@ def command_dispatch_pending(args: argparse.Namespace, now: datetime) -> int:
                         dispatched_count += 1
                     else:
                         err = proc.stderr.strip() or f"exit code {proc.returncode}"
+                        log("ERROR", f"hermes exit {proc.returncode} for thread '{thread_id}'; stderr tail: {err[-500:]}")
                         retries = int(thread.get("dispatch_retries", 0)) + 1
                         if retries < 3:
                             log("WARN", f"hermes execution attempt {retries}/3 failed for thread '{thread_id}': {err}; will retry")
@@ -2210,12 +2398,86 @@ def command_dispatch_pending(args: argparse.Namespace, now: datetime) -> int:
                     else:
                         mark_thread_failed(threads_dir, thread_id, f"Execution error: {str(exc)[:140]}", now=now)
 
-            return 0
+            return dispatched_count
         finally:
             release_dispatch_lock(lock_file)
     except Exception as exc:
+        log("ERROR", f"unexpected error during dispatch sweep: {exc}\n{traceback.format_exc()}")
+        return 0
+
+
+def command_dispatch_pending(args: argparse.Namespace, now: datetime) -> int:
+    """Transient one-shot sweep, for a manual run or a cron entry."""
+    try:
+        threads_dir = get_threads_dir(args.icloud_dir)
+        if not threads_dir:
+            return 0
+        return dispatch_pending_once(args, now, threads_dir)
+    except Exception as exc:
         log("ERROR", f"unexpected error during command_dispatch_pending: {exc}\n{traceback.format_exc()}")
         return 0
+
+
+def command_daemon(args: argparse.Namespace) -> int:
+    """Long-running dispatch loop for the KeepAlive LaunchAgent. Returns the exit code.
+
+    A sweep that finds nothing costs one directory listing, so the loop is idle-cheap,
+    and because the process never exits launchd has nothing to throttle: a letter that
+    lands in the container is picked up on the next tick instead of minutes later.
+    SIGTERM unwinds in well under the sweep interval (launchd's exit timeout is 5s).
+    """
+    interval = max(DAEMON_MIN_INTERVAL, float(getattr(args, "interval", DAEMON_DEFAULT_INTERVAL) or DAEMON_DEFAULT_INTERVAL))
+    max_cycles: Optional[int] = getattr(args, "max_cycles", None)
+    for handled in (signal.SIGTERM, signal.SIGINT):
+        signal.signal(handled, request_daemon_stop)
+
+    log("INFO", f"dispatch daemon online (pid {os.getpid()}, interval {interval:g}s, script {os.path.abspath(__file__)})")
+    cycles = 0
+    last_heartbeat = time.monotonic()
+    while not daemon_stop_requested():
+        cycles += 1
+        began = time.monotonic()
+        try:
+            threads_dir = get_threads_dir(args.icloud_dir)
+            if threads_dir:
+                written = dispatch_pending_once(args, utcnow(), threads_dir)
+                if written:
+                    log("INFO", f"cycle {cycles}: wrote {written} agent reply(ies)")
+        except Exception as exc:
+            log("ERROR", f"cycle {cycles} failed: {exc}\n{traceback.format_exc()}")
+
+        moment = time.monotonic()
+        if moment - last_heartbeat >= DAEMON_HEARTBEAT_SECONDS:
+            last_heartbeat = moment
+            log("INFO", f"heartbeat: {cycles} cycles, last sweep took {moment - began:.2f}s")
+
+        if max_cycles is not None and cycles >= max_cycles:
+            log("INFO", f"daemon reached --max-cycles {max_cycles}; exiting")
+            break
+        sleep_until_deadline(began + interval)
+
+    log("INFO", f"dispatch daemon stopped after {cycles} cycles")
+    return 0
+
+
+def request_daemon_stop(signum: int, frame: object) -> None:
+    """SIGTERM/SIGINT handler: ask the loop to finish the current sweep and exit."""
+    global _STOP_REQUESTED
+    _STOP_REQUESTED = True
+    log("INFO", f"daemon received signal {signum}; unwinding")
+
+
+def daemon_stop_requested() -> bool:
+    return _STOP_REQUESTED
+
+
+def sleep_until_deadline(deadline: float, step: float = 0.25) -> None:
+    """Sleep in small slices so a signal is honoured promptly."""
+    while not daemon_stop_requested():
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return
+        time.sleep(min(step, remaining))
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -2241,7 +2503,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--to-profile", help="Target agent profile for new dispatch thread (defaults to 'default')")
     parser.add_argument("--register-profile", metavar="NAME", help="Register a specific agent profile in profiles.json")
     parser.add_argument("--discover-profiles", action="store_true", help="Discover and print all installed Hermes profiles")
-    parser.add_argument("--dispatch-pending", action="store_true", help="Scan pending letters and generate autonomous replies using Hermes")
+    parser.add_argument("--dispatch-pending", action="store_true", help="Scan pending letters and generate autonomous replies using Hermes (one sweep)")
+    parser.add_argument("--daemon", action="store_true", help="Run the long-lived dispatch daemon (launchd KeepAlive service)")
+    parser.add_argument("--interval", type=float, default=DAEMON_DEFAULT_INTERVAL, help="Seconds between daemon sweeps (default 5)")
+    parser.add_argument("--max-cycles", type=int, help="Stop the daemon after N sweeps (used by tests)")
     parser.add_argument("--install-service", action="store_true", help="Install macOS background LaunchAgent auto-responder")
     parser.add_argument("--uninstall-service", action="store_true", help="Uninstall macOS background LaunchAgent auto-responder")
     parser.add_argument("--service-status", action="store_true", help="Check status of background LaunchAgent auto-responder")
@@ -2282,6 +2547,8 @@ def main(argv: Optional[Sequence[str]] = None, now: Optional[datetime] = None) -
         return 0
     if args.dispatch_pending:
         return command_dispatch_pending(args, moment)
+    if args.daemon:
+        return command_daemon(args)
 
     # Automatically register active profile and discover installed profiles in iCloud profiles.json
     active_profile = active_profile_name(args.profile)

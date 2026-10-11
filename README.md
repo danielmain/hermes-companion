@@ -132,6 +132,18 @@ python3 skills/hermes-companion/scripts/companion.py
 
 Timestamps in the JSON are UTC (`2026-10-01T09:53:05Z`). The script compares them to UTC now, so the age is right in any timezone. A growing age while you stay put is the design: the timestamp is the last accepted move, not the last GPS tick.
 
+## Letters from the phone (Hermes Post)
+
+Letters written in the app's Post tab land in `Documents/threads/<thread_id>/` as an immutable `meta.json` plus numbered letter files. The Mac answers them on its own: the LaunchAgent `ai.hermes.companion-inbox` keeps `companion.py --daemon` resident and sweeps the container every 5 seconds.
+
+```bash
+python3 skills/hermes-companion/scripts/companion.py --install-service
+python3 skills/hermes-companion/scripts/companion.py --service-status
+python3 skills/hermes-companion/scripts/companion.py --dispatch-pending   # one sweep, foreground
+```
+
+The agent is resident rather than a one-shot timer on purpose: a job that exits in milliseconds is throttled by `launchd`, which is what made answers arrive minutes late. If the agent cannot answer a letter, the thread is marked `failed` with `last_error` and `failed_at`, and the app shows that reason with a Retry that puts the letter back in the queue. Logs are timestamped in `~/.hermes/logs/companion-inbox.error.log`.
+
 ## Repository
 
 ```text
