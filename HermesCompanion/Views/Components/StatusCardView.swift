@@ -7,7 +7,7 @@ struct StatusCardView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: EditorialSpacing.large) {
-            EditorialSectionHeader(index: "#00", title: "ACTIVE SESSION", trailing: trackingCode)
+            EditorialSectionHeader(title: "ACTIVE SESSION", trailing: trackingCode)
 
             ViewThatFits(in: .horizontal) {
                 HStack(alignment: .top, spacing: EditorialSpacing.medium) {

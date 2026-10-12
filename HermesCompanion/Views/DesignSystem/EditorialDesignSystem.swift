@@ -165,9 +165,15 @@ struct EditorialPageHeader: View {
 }
 
 struct EditorialSectionHeader: View {
-    let index: String
+    var index: String? = nil
     let title: LocalizedStringKey
     var trailing: String?
+
+    init(index: String? = nil, title: LocalizedStringKey, trailing: String? = nil) {
+        self.index = index
+        self.title = title
+        self.trailing = trailing
+    }
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
@@ -198,8 +204,10 @@ struct EditorialSectionHeader: View {
 
     private var label: some View {
         HStack(alignment: .firstTextBaseline, spacing: EditorialSpacing.small) {
-            Text(index)
-                .foregroundStyle(EditorialColor.secondaryInk)
+            if let index, !index.isEmpty {
+                Text(index)
+                    .foregroundStyle(EditorialColor.secondaryInk)
+            }
             Text(title)
                 .foregroundStyle(EditorialColor.ink)
         }

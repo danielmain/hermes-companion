@@ -81,6 +81,12 @@ public final class LocationManager: NSObject, ObservableObject {
             )
         }
 
+        // Restore latest persisted record and coordinate on launch
+        if let stored = LocationStore.shared.latestRecord {
+            self.latestRecord = stored
+            self.lastRecordedCoordinate = stored.coordinate
+        }
+
         // Check if tracking was enabled previously
         let wasActive = UserDefaults.standard.bool(forKey: "com.hermes.trackingActiveState")
         if wasActive {

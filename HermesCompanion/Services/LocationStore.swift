@@ -8,6 +8,10 @@ public final class LocationStore: ObservableObject {
     @Published public private(set) var records: [LocationRecord] = []
     @Published public private(set) var diagnostics: [AppDiagnosticEvent] = []
 
+    public var latestRecord: LocationRecord? {
+        records.first
+    }
+
     private let fileManager = FileManager.default
     private let queue = DispatchQueue(label: "com.hermes.locationstore", qos: .utility)
     private let logger = Logger(subsystem: "com.hermes.HermesCompanion", category: "LocationStore")

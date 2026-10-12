@@ -30,6 +30,7 @@ public struct PostInboxView: View {
     @State private var searchText: String = ""
     @State private var showingCompose: Bool = false
     @State private var showingPostalDisclaimer: Bool = false
+    @State private var showingClearConfirmation: Bool = false
     @AppStorage("hasSeenPostDisclaimer") private var hasSeenPostDisclaimer: Bool = false
 
     public init() {}
@@ -113,6 +114,14 @@ public struct PostInboxView: View {
             .sheet(isPresented: $showingPostalDisclaimer) {
                 PostalDisclaimerSheetView(isPresented: $showingPostalDisclaimer)
             }
+            .alert("Clear All Threads", isPresented: $showingClearConfirmation) {
+                Button("Cancel", role: .cancel) {}
+                Button("Clear All", role: .destructive) {
+                    store.deleteAllThreads()
+                }
+            } message: {
+                Text("All your messages will be deleted, but can still be found in your Hermes application on your Mac.")
+            }
             .refreshable {
                 store.loadThreads(force: true)
                 store.loadArchivedThreads(force: true)
@@ -159,6 +168,20 @@ public struct PostInboxView: View {
             .accessibilityLabel("Postal system explanation")
 
             Spacer()
+
+            Button(role: .destructive) {
+                showingClearConfirmation = true
+            } label: {
+                HStack(spacing: EditorialSpacing.small) {
+                    Image(systemName: "trash")
+                        .font(.caption.weight(.semibold))
+                    Text("Clear")
+                }
+            }
+            .buttonStyle(EditorialButtonStyle(isPrimary: false, isFullWidth: false))
+            .disabled(store.threads.isEmpty && store.archivedThreads.isEmpty)
+            .opacity((store.threads.isEmpty && store.archivedThreads.isEmpty) ? 0.35 : 1.0)
+            .accessibilityLabel("Clear all threads")
 
             Button {
                 showingCompose = true

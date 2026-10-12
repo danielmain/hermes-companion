@@ -10,7 +10,7 @@ public struct HealthOverviewCard: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: EditorialSpacing.medium) {
-            EditorialSectionHeader(index: "#01", title: "TODAY'S HEALTH", trailing: authorizationLabel)
+            EditorialSectionHeader(title: "TODAY'S HEALTH", trailing: authorizationLabel)
 
             if healthKitManager.authorizationStatus == .accessRequested {
                 AuthorizedHealthContent(

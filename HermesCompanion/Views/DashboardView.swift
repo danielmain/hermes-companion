@@ -41,7 +41,7 @@ private struct DashboardHeroHeader: View {
                 }
                 .accessibilityHidden(true)
 
-            Text("HERMES / TODAY 01")
+            Text("HERMES / TODAY")
                 .font(.editorialUtility)
                 .tracking(1.2)
                 .foregroundStyle(EditorialColor.secondaryInk)
@@ -70,7 +70,7 @@ private struct DashboardLocationStatusSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: EditorialSpacing.medium) {
-            EditorialSectionHeader(index: "#02", title: "LOCATION", trailing: "CONTEXT")
+            EditorialSectionHeader(title: "LOCATION", trailing: "CONTEXT")
 
             VStack(spacing: 0) {
                 DashboardStatusRow(
@@ -87,7 +87,7 @@ private struct DashboardLocationStatusSection: View {
                 EditorialRule()
                 DashboardStatusRow(
                     label: "ACCURACY",
-                    value: locationManager.latestRecord?.formattedAccuracy ?? "No reading",
+                    value: accuracyValue,
                     systemImage: "scope"
                 )
                 EditorialRule()
@@ -128,10 +128,23 @@ private struct DashboardLocationStatusSection: View {
     }
 
     private var lastUpdate: String {
-        guard let date = locationManager.latestRecord?.timestamp else {
-            return "No reading"
+        if let date = locationManager.latestRecord?.timestamp {
+            return date.formatted(.relative(presentation: .named))
         }
-        return date.formatted(.relative(presentation: .named))
+        if let date = locationManager.currentLocation?.timestamp {
+            return date.formatted(.relative(presentation: .named))
+        }
+        return locationManager.isTrackingActive ? "Awaiting fix" : "Paused"
+    }
+
+    private var accuracyValue: String {
+        if let accuracy = locationManager.latestRecord?.formattedAccuracy {
+            return accuracy
+        }
+        if let current = locationManager.currentLocation {
+            return "±\(Int(current.horizontalAccuracy)) m"
+        }
+        return locationManager.isTrackingActive ? "Acquiring..." : "Unavailable"
     }
 
     private var syncStatus: String {

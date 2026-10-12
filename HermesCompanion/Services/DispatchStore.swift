@@ -904,6 +904,77 @@ public final class DispatchStore: ObservableObject {
         }
     }
 
+    public func deleteAllThreads() {
+        executeWithBackgroundTask {
+            let allIds = Array(Set(self.threads.map(\.id) + self.archivedThreads.map(\.id)))
+
+            for id in allIds {
+                let localThread = self.localThreadsDirectory.appendingPathComponent(id, isDirectory: true)
+                let localArchive = self.localArchiveDirectory.appendingPathComponent(id, isDirectory: true)
+                self.removeDirectory(at: localThread, isCoordinated: false)
+                self.removeDirectory(at: localArchive, isCoordinated: false)
+
+                if let iCloudThreads = self.iCloudThreadsDirectory {
+                    let iCloudThread = iCloudThreads.appendingPathComponent(id, isDirectory: true)
+                    self.removeDirectory(at: iCloudThread, isCoordinated: true)
+                }
+                if let iCloudArchive = self.iCloudArchiveDirectory {
+                    let iCloudArch = iCloudArchive.appendingPathComponent(id, isDirectory: true)
+                    self.removeDirectory(at: iCloudArch, isCoordinated: true)
+                }
+
+                self.threadFileCache.removeValue(forKey: localThread.appendingPathComponent("meta.json").path)
+                self.threadFileCache.removeValue(forKey: localArchive.appendingPathComponent("meta.json").path)
+                if let iCloudThreads = self.iCloudThreadsDirectory {
+                    self.threadFileCache.removeValue(forKey: iCloudThreads.appendingPathComponent(id, isDirectory: true).appendingPathComponent("meta.json").path)
+                }
+                if let iCloudArchive = self.iCloudArchiveDirectory {
+                    self.threadFileCache.removeValue(forKey: iCloudArchive.appendingPathComponent(id, isDirectory: true).appendingPathComponent("meta.json").path)
+                }
+                self.messageCache.removeValue(forKey: id)
+            }
+
+            // Also clean up any remaining directories on disk
+            if let localEntries = try? self.fileManager.contentsOfDirectory(at: self.localThreadsDirectory, includingPropertiesForKeys: nil) {
+                for url in localEntries where url.lastPathComponent != ".sync_marker.json" {
+                    self.removeDirectory(at: url, isCoordinated: false)
+                }
+            }
+            if let localArchiveEntries = try? self.fileManager.contentsOfDirectory(at: self.localArchiveDirectory, includingPropertiesForKeys: nil) {
+                for url in localArchiveEntries where url.lastPathComponent != ".sync_marker.json" {
+                    self.removeDirectory(at: url, isCoordinated: false)
+                }
+            }
+            if let iCloudThreads = self.iCloudThreadsDirectory,
+               let iCloudEntries = try? self.fileManager.contentsOfDirectory(at: iCloudThreads, includingPropertiesForKeys: nil) {
+                for url in iCloudEntries where url.lastPathComponent != ".sync_marker.json" {
+                    self.removeDirectory(at: url, isCoordinated: true)
+                }
+            }
+            if let iCloudArchive = self.iCloudArchiveDirectory,
+               let iCloudArchEntries = try? self.fileManager.contentsOfDirectory(at: iCloudArchive, includingPropertiesForKeys: nil) {
+                for url in iCloudArchEntries where url.lastPathComponent != ".sync_marker.json" {
+                    self.removeDirectory(at: url, isCoordinated: true)
+                }
+            }
+
+            self.threadFileCache.removeAll()
+            self.messageCache.removeAll()
+            self.touchSyncMarker(threadId: "bulk_delete")
+
+            let updateUI = {
+                self.threads = []
+                self.archivedThreads = []
+            }
+            if Thread.isMainThread {
+                updateUI()
+            } else {
+                DispatchQueue.main.async(execute: updateUI)
+            }
+            self.logger.info("Deleted all dispatch threads (\(allIds.count) total)")
+        }
+    }
+
     // MARK: - Low-Level Immutable Disk Readers & Writers
 
     private func coordinatedReadData(from url: URL, isCoordinated: Bool? = nil) -> Data? {
