@@ -183,6 +183,17 @@
                 When prompted by the app, authorize read access for <strong>Sleep Analysis</strong> and <strong>Workouts</strong>, plus <strong>Motion &amp; Fitness</strong>. Without this, health snapshots will remain empty.
               </div>
             </div>
+
+            <div class="editorial-card">
+              <div class="editorial-card-header">
+                <span class="editorial-utility">STEP 05</span>
+                <span class="token inverted">HOST OS</span>
+              </div>
+              <div class="editorial-card-title">Native macOS Host Required</div>
+              <div class="editorial-card-body">
+                The Hermes CLI and skill must execute on your native Mac workstation. Containerized environments (such as Docker, WSL, or remote Linux cloud servers) do not have access to Apple's local CloudDocs sync directory (<code>~/Library/Mobile Documents</code>).
+              </div>
+            </div>
           </div>
 
           <!-- iPhone Mockup of Settings Screen -->
@@ -227,18 +238,18 @@
           <!-- Item 1 -->
           <div class="faq-item active">
             <button type="button" class="faq-trigger">
-              <span>1. Skill reports: "No location file found" or path does not exist</span>
+              <span>1. Skill reports: "No location file found" or container does not exist yet</span>
               <span class="faq-symbol">+</span>
             </button>
             <div class="faq-content">
               <p>
-                This indicates that macOS has not yet materialized the iCloud container file locally. To resolve:
+                This indicates that macOS has not yet materialized the iCloud container file locally, or permissions need verification. To resolve:
               </p>
               <ol style="margin-left: 20px; margin-top: 8px; display: flex; flex-direction: column; gap: 8px;">
-                <li>Launch the Hermes Companion app on your iPhone and tap <strong>"Force GPS Fix"</strong> or move slightly to record the initial fix.</li>
-                <li>Verify in iPhone Settings that iCloud Drive is enabled for Hermes Companion.</li>
-                <li>On your Mac, run: <code>ls -la ~/Library/Mobile\ Documents/iCloud~com~hermes~HermesCompanion/Documents/</code>.</li>
-                <li>If the directory does not exist yet, allow iCloud Drive 30–60 seconds to perform its initial container provisioning handshake.</li>
+                <li>Run <code>python3 skills/hermes-companion/scripts/companion.py --doctor</code> on your Mac to immediately inspect host OS, iCloud directory presence, and permissions.</li>
+                <li>Ensure you are running on native macOS (not inside a Docker container, WSL, or remote Linux host).</li>
+                <li>Open the Hermes Companion app on your iPhone. The app automatically seeds the container on first launch so Apple's CloudDocs creates the Mac directory.</li>
+                <li>Allow iCloud Drive 30–60 seconds to perform its initial container synchronization handshake with macOS.</li>
               </ol>
             </div>
           </div>
@@ -318,6 +329,35 @@ hermes config set skills.config.hermes-companion.places_file "$HOME/places.json"
               </div>
             </div>
           </div>
+
+          <!-- Item 6 -->
+          <div class="faq-item">
+            <button type="button" class="faq-trigger">
+              <span>6. Hermes Post: How does two-way letter correspondence and background auto-reply work?</span>
+              <span class="faq-symbol">+</span>
+            </button>
+            <div class="faq-content">
+              <p>
+                Hermes Companion supports asynchronous, thread-safe letter exchange directly through iCloud Drive under <code>threads/</code>. You can compose letters in the iOS app under <strong>Hermes Post</strong>, and your agent reads and replies to them.
+              </p>
+              <p style="margin-top: 8px;">
+                To have Hermes automatically monitor for incoming letters and compose replies in the background, install the native macOS LaunchAgent:
+              </p>
+              <div class="terminal-block" style="margin-top: 12px;">
+                <div class="terminal-header">
+                  <span class="terminal-title">LAUNCHAGENT AUTO-RESPONDER SETUP</span>
+                  <button type="button" class="terminal-copy-btn" data-copy-target="code-inbox-service">[ COPY ]</button>
+                </div>
+                <div class="terminal-content">
+                  <pre id="code-inbox-service"><span class="cli-comment"># Install and start the background daemon:</span>
+python3 skills/hermes-companion/scripts/companion.py --inbox-service install
+
+<span class="cli-comment"># Check background daemon status:</span>
+python3 skills/hermes-companion/scripts/companion.py --inbox-service status</pre>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -343,15 +383,42 @@ hermes config set skills.config.hermes-companion.places_file "$HOME/places.json"
           </div>
 
           <div class="diag-tabs">
-            <button type="button" class="diag-tab active" data-diag-target="diag-1">1. VERIFY ICLOUD SYNC</button>
+            <button type="button" class="diag-tab active" data-diag-target="diag-0">0. PRE-FLIGHT DOCTOR</button>
+            <button type="button" class="diag-tab" data-diag-target="diag-1">1. VERIFY ICLOUD SYNC</button>
             <button type="button" class="diag-tab" data-diag-target="diag-2">2. EXECUTE SKILL</button>
             <button type="button" class="diag-tab" data-diag-target="diag-3">3. HEALTH SNAPSHOT</button>
             <button type="button" class="diag-tab" data-diag-target="diag-4">4. RAW JSON INSPECTION</button>
           </div>
 
           <div class="diag-body">
+            <!-- Screen 0 -->
+            <div id="diag-0" class="diag-screen">
+              <div class="editorial-utility" style="margin-bottom: var(--space-8);">AUTOMATED ENVIRONMENT DIAGNOSTICS:</div>
+              <div class="terminal-block">
+                <div class="terminal-content">
+<pre><span class="cli-prompt">$ </span>python3 skills/hermes-companion/scripts/companion.py --doctor</pre>
+                </div>
+              </div>
+              <div class="editorial-utility" style="margin: var(--space-16) 0 var(--space-8);">EXPECTED HEALTHY REPORT:</div>
+              <div class="terminal-block">
+                <div class="terminal-content" style="color: var(--ink);">
+<pre>Hermes Companion Pre-Flight Diagnostics:
+============================================================
+[PASS]  Operating System       macOS (native host)
+[PASS]  iCloud Drive           Active at ~/Library/Mobile Documents
+[PASS]  Privacy Permissions    Files and Folders access verified.
+[PASS]  App Container          Found at iCloud~com~hermes~HermesCompanion (write access: yes)
+[INFO]  Container Files        Synced files: location, health, threads, places
+[PASS]  Hermes CLI             Executable located at ~/.local/bin/hermes
+[PASS]  Background Service     LaunchAgent 'ai.hermes.companion-inbox' is active.
+============================================================
+Diagnostic summary: All critical checks passed.</pre>
+                </div>
+              </div>
+            </div>
+
             <!-- Screen 1 -->
-            <div id="diag-1" class="diag-screen">
+            <div id="diag-1" class="diag-screen" style="display: none;">
               <div class="editorial-utility" style="margin-bottom: var(--space-8);">COMMAND TO RUN ON MAC WORKSTATION:</div>
               <div class="terminal-block">
                 <div class="terminal-content">

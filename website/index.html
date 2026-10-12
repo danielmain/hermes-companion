@@ -402,6 +402,23 @@
 
         <div class="terminal-block" style="margin-top: var(--space-16);">
           <div class="terminal-header">
+            <span class="terminal-title">RUN PRE-FLIGHT DOCTOR // VERIFY ICLOUD &amp; CLI</span>
+            <button type="button" class="terminal-copy-btn" data-copy-target="code-doctor">[ COPY ]</button>
+          </div>
+          <div class="terminal-content">
+            <pre id="code-doctor"><span class="cli-prompt">$ </span>python3 ${HERMES_SKILL_DIR}/scripts/companion.py --doctor
+
+<span class="cli-comment"># Result:</span>
+[PASS]  Operating System       macOS (native host)
+[PASS]  iCloud Drive           Active at ~/Library/Mobile Documents
+[PASS]  App Container          Found at iCloud~com~hermes~HermesCompanion
+[PASS]  Hermes CLI             Executable located at ~/.local/bin/hermes
+Diagnostic summary: All critical checks passed.</pre>
+          </div>
+        </div>
+
+        <div class="terminal-block" style="margin-top: var(--space-16);">
+          <div class="terminal-header">
             <span class="terminal-title">QUERY YOUR AGENT PHYSICAL CONTEXT</span>
             <button type="button" class="terminal-copy-btn" data-copy-target="code-run">[ COPY ]</button>
           </div>
