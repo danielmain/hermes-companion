@@ -137,6 +137,7 @@ Timestamps in the JSON are UTC (`2026-10-01T09:53:05Z`). The script compares the
 Hermes Companion communicates directly through your private iCloud Drive container, requiring no intermediary relay server or network port. This introduces specific system requirements:
 
 #### 1. Hard Environmental Requirements
+- **Target Device (iPhone Only):** Hermes Companion is designed exclusively for iPhone (iOS 17.0+). iPad, Apple Watch (standalone app), and Mac Catalyst are intentionally disabled so telemetry relies on native iPhone motion sensors, CoreLocation wakeups, and watch-synced Apple Health.
 - **macOS Host OS (Strict):** Hermes must run directly on the macOS host under your user account — **not inside Docker, WSL, or a remote Linux VM**. Apple's native CloudDocs daemon (`bird`) mirrors iCloud files strictly into macOS `~/Library/Mobile Documents/`. Containerized environments cannot sync iCloud Drive.
 - **Shared Apple ID & iCloud Drive:** The iPhone and the Mac must be signed into the same Apple ID with iCloud Drive turned on.
 - **First-Run Sequence:** Launch the iPhone app at least once and allow permissions before querying telemetry from the Mac. Apple's cloud daemon provisions the local container on macOS (`~/Library/Mobile Documents/iCloud~com~hermes~HermesCompanion/`) only after the iPhone writes its initial record.

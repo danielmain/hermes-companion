@@ -15,7 +15,7 @@
 **Hermes Companion iOS** is an iOS application whose sole purpose is to **reliably transmit the user's live physical location to the Hermes AI Agent framework**, even when the app is in the background, suspended, or **completely closed/terminated by iOS or device reboot**.
 
 The project consists of four pieces:
-1. **iOS Native Client (`HermesCompanion/`)**: A Swift/SwiftUI application configured with CoreLocation background modes, significant location change monitoring, stationary perimeter geofencing, and automatic **iCloud/CloudKit sync** of location and Apple Health telemetry.
+1. **iOS Native Client (`HermesCompanion/`)**: An iPhone-only Swift/SwiftUI application (`TARGETED_DEVICE_FAMILY: "1"`) configured with CoreLocation background modes, significant location change monitoring, stationary perimeter geofencing, and automatic **iCloud/CloudKit sync** of location and Apple Health telemetry. iPad and other device families are explicitly disabled to eliminate multi-device screenshot and layout maintenance overhead.
 2. **Hermes Skill (`skills/hermes-companion/`)**: One published skill for place, motion, sleep, workouts, and recovery. `hermes skills install danielmain/hermes-companion/skills/hermes-companion`.
 3. **Optional MCP bridge (`server/`)**: Zero-dependency Python MCP server and integration tests that read the same iCloud files. The skill does not require it.
 4. **App Store & Documentation Web Presence (`website/`)**: Monochrome editorial Marketing URL (`index.html`), Support URL (`support.html`), and Privacy Declaration (`privacy.html`).
