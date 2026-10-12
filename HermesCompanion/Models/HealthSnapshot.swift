@@ -388,8 +388,8 @@ public struct HealthSnapshot: Codable, Equatable, Identifiable {
                 "core_sleep_minutes": s.coreSleepMinutes,
                 "awake_minutes": s.awakeMinutes,
                 "quality_rating": s.qualityRating.rawValue,
-                "bedtime": s.bedtime.map { ISO8601DateFormatter().string(from: $0) },
-                "wake_time": s.wakeTime.map { ISO8601DateFormatter().string(from: $0) }
+                "bedtime": (s.bedtime.map { ISO8601DateFormatter().string(from: $0) }) as Any,
+                "wake_time": (s.wakeTime.map { ISO8601DateFormatter().string(from: $0) }) as Any
             ]
         }
 
@@ -400,9 +400,9 @@ public struct HealthSnapshot: Codable, Equatable, Identifiable {
                 "duration_minutes": w.durationMinutes,
                 "active_calories": w.activeCalories,
                 "total_calories": w.totalCalories,
-                "average_heart_rate": w.averageHeartRateBPM,
+                "average_heart_rate": w.averageHeartRateBPM as Any,
                 "is_currently_active": w.isCurrentlyActive,
-                "minutes_since_completion": w.minutesSinceCompletion,
+                "minutes_since_completion": w.minutesSinceCompletion as Any,
                 "phase": w.phase.rawValue,
                 "start_date": ISO8601DateFormatter().string(from: w.startDate),
                 "end_date": ISO8601DateFormatter().string(from: w.endDate)

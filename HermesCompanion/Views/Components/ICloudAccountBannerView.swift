@@ -62,20 +62,26 @@ struct ICloudAccountBannerView: View {
     }
 }
 
+#if DEBUG
 #Preview("No iCloud Account") {
-    let syncManager = CloudKitSyncManager.shared
-    syncManager.setMockAccountStatus(.noAccount)
-    return ICloudAccountBannerView()
+    ICloudAccountBannerView()
         .environmentObject(LocationManager.shared)
-        .environmentObject(syncManager)
+        .environmentObject({
+            let syncManager = CloudKitSyncManager.shared
+            syncManager.setMockAccountStatus(.noAccount)
+            return syncManager
+        }())
         .padding()
 }
 
 #Preview("Restricted Account") {
-    let syncManager = CloudKitSyncManager.shared
-    syncManager.setMockAccountStatus(.restricted)
-    return ICloudAccountBannerView()
+    ICloudAccountBannerView()
         .environmentObject(LocationManager.shared)
-        .environmentObject(syncManager)
+        .environmentObject({
+            let syncManager = CloudKitSyncManager.shared
+            syncManager.setMockAccountStatus(.restricted)
+            return syncManager
+        }())
         .padding()
 }
+#endif
