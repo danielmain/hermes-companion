@@ -46,8 +46,42 @@ public final class CloudKitSyncManager: ObservableObject {
             .store(in: &cancellables)
     }
 
+    #if DEBUG
+    private var mockAccountStatusOverride: CKAccountStatus?
+    public func setMockAccountStatus(_ status: CKAccountStatus?) {
+        self.mockAccountStatusOverride = status
+        refreshAccountStatusSafely()
+    }
+    #endif
+
     // MARK: - Safe Account Status Refresh
     public func refreshAccountStatusSafely() {
+        #if DEBUG
+        if let mock = mockAccountStatusOverride {
+            self.accountStatus = mock
+            self.accountStatusDescription = "Mock (\(mock.rawValue))"
+            return
+        }
+        if let mockArg = ProcessInfo.processInfo.environment["HERMES_MOCK_ICLOUD"] ?? UserDefaults.standard.string(forKey: "MockICloudStatus") {
+            switch mockArg.lowercased() {
+            case "noaccount":
+                self.accountStatus = .noAccount
+                self.accountStatusDescription = "No Apple ID Signed In (Mock)"
+                return
+            case "restricted":
+                self.accountStatus = .restricted
+                self.accountStatusDescription = "iCloud Restricted (Mock)"
+                return
+            case "available":
+                self.accountStatus = .available
+                self.accountStatusDescription = "Available (Mock)"
+                return
+            default:
+                break
+            }
+        }
+        #endif
+
         if FileManager.default.ubiquityIdentityToken == nil {
             self.accountStatus = .noAccount
             self.accountStatusDescription = "No Apple ID Signed In"

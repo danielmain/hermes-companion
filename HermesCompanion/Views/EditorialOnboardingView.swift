@@ -30,7 +30,7 @@ struct EditorialOnboardingView: View {
                     OnboardingModule(
                         index: "01",
                         title: "CONNECT",
-                        description: "Use your private Apple iCloud account as the encrypted path between iPhone and Mac."
+                        description: "Use your private Apple iCloud account between iPhone and Mac (requires macOS host; Linux and Docker containers are not supported)."
                     )
                     EditorialRule()
                     OnboardingModule(
@@ -52,7 +52,7 @@ struct EditorialOnboardingView: View {
                 VStack(alignment: .leading, spacing: EditorialSpacing.medium) {
                     Text("YOUR CONSENT REMAINS THE CONTROL SURFACE")
                         .font(.editorialUtility)
-                    Text("Hermes does not collect analytics or send logs to us. Your data is stored on this iPhone and synced only to your private iCloud account. You can change Location and Health access at any time in iOS Settings.")
+                    Text("Hermes does not collect analytics or send logs to us. Your data is stored on this iPhone and synced only to your private iCloud account. Your Mac must be running macOS signed into the same Apple ID. You can change Location and Health access at any time in iOS Settings.")
                         .font(.body)
                         .foregroundStyle(EditorialColor.secondaryInk)
 

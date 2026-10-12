@@ -231,6 +231,7 @@ xcodebuild -project HermesCompanion.xcodeproj -scheme HermesCompanion -sdk iphon
 ```bash
 python3 server/test_integration.py
 python3 skills/hermes-companion/scripts/test_companion.py
+python3 skills/hermes-companion/scripts/test_doctor_mocks.py
 ```
 
 ---

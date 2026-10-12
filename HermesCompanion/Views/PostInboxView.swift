@@ -57,6 +57,8 @@ public struct PostInboxView: View {
                         subtitle: "Private, asynchronous postal channels and letters synchronized with your Hermes agent via iCloud."
                     )
 
+                    ICloudAccountBannerView()
+
                     actionBarSection
 
                     filterSegmentedBar

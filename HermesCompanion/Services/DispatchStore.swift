@@ -134,12 +134,22 @@ public final class DispatchStore: ObservableObject {
             }
 
             // 2. Try iCloud Documents/profiles.json
-            if let icloudURL = self.iCloudProfilesURL,
-               self.fileManager.fileExists(atPath: icloudURL.path),
-               let data = self.coordinatedReadData(from: icloudURL, isCoordinated: true),
-               let config = try? DispatchFormatters.jsonDecoder.decode(ProfilesConfig.self, from: data) {
-                profiles = config.profiles
-                try? data.write(to: self.localProfilesURL, options: .atomic)
+            if let icloudURL = self.iCloudProfilesURL {
+                if self.fileManager.fileExists(atPath: icloudURL.path),
+                   let data = self.coordinatedReadData(from: icloudURL, isCoordinated: true),
+                   let config = try? DispatchFormatters.jsonDecoder.decode(ProfilesConfig.self, from: data) {
+                    profiles = config.profiles
+                    try? data.write(to: self.localProfilesURL, options: .atomic)
+                } else if !self.fileManager.fileExists(atPath: icloudURL.path) {
+                    // Seed initial profiles.json and directory to establish ubiquity container in iCloud immediately
+                    let initialProfiles = profiles.isEmpty ? [AgentProfile.default] : profiles
+                    let initialConfig = ProfilesConfig(updatedAt: Date(), profiles: initialProfiles)
+                    if let data = try? DispatchFormatters.jsonEncoder.encode(initialConfig) {
+                        try? self.fileManager.createDirectory(at: icloudURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+                        try? data.write(to: icloudURL, options: .atomic)
+                        self.logger.info("Seeded initial profiles.json into iCloud Documents container")
+                    }
+                }
             }
 
             let resolved = profiles.isEmpty ? [AgentProfile.default] : profiles

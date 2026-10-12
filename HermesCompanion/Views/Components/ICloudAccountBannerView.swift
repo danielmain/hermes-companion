@@ -6,8 +6,7 @@ struct ICloudAccountBannerView: View {
     @EnvironmentObject private var cloudKitSyncManager: CloudKitSyncManager
 
     var body: some View {
-        if locationManager.configuration.syncDestination.isCloudKitEnabled,
-           cloudKitSyncManager.accountStatus != .available {
+        if cloudKitSyncManager.accountStatus != .available && cloudKitSyncManager.accountStatus != .couldNotDetermine {
             VStack(alignment: .leading, spacing: EditorialSpacing.medium) {
                 HStack(alignment: .top, spacing: EditorialSpacing.compact) {
                     Image(systemName: iconName)
@@ -54,11 +53,29 @@ struct ICloudAccountBannerView: View {
     private var bannerMessage: String {
         switch cloudKitSyncManager.accountStatus {
         case .noAccount:
-            "Sign in with your Apple Account so Hermes can use your private CloudKit archive."
+            "Sign in with your Apple Account in iOS Settings so Hermes can sync telemetry and letters to your Mac via iCloud."
         case .restricted:
-            "Screen Time or device-management policy is preventing access to the private archive."
+            "Screen Time or device-management policy is preventing access to private iCloud synchronization."
         default:
-            "Verify the Apple Account state and enable CloudKit before transmitting records."
+            "iCloud Drive access is required to sync telemetry and correspondence with your Hermes agent on macOS."
         }
     }
+}
+
+#Preview("No iCloud Account") {
+    let syncManager = CloudKitSyncManager.shared
+    syncManager.setMockAccountStatus(.noAccount)
+    return ICloudAccountBannerView()
+        .environmentObject(LocationManager.shared)
+        .environmentObject(syncManager)
+        .padding()
+}
+
+#Preview("Restricted Account") {
+    let syncManager = CloudKitSyncManager.shared
+    syncManager.setMockAccountStatus(.restricted)
+    return ICloudAccountBannerView()
+        .environmentObject(LocationManager.shared)
+        .environmentObject(syncManager)
+        .padding()
 }
