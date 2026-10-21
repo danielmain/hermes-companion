@@ -14,7 +14,7 @@ public final class LocationStore: ObservableObject {
 
     private let fileManager = FileManager.default
     private let queue = DispatchQueue(label: "com.hermes.locationstore", qos: .utility)
-    private let logger = Logger(subsystem: "com.hermes.HermesCompanion", category: "LocationStore")
+    private let logger = Logger(subsystem: "dev.funktional.HermesCompanion", category: "LocationStore")
 
     private var recordsFileURL: URL {
         let dir = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!

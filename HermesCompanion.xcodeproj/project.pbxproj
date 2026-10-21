@@ -321,7 +321,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.hermes.HermesCompanion;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.funktional.HermesCompanion;
 				PRODUCT_NAME = HermesCompanion;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = 1;
@@ -345,7 +345,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.hermes.HermesCompanion;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.funktional.HermesCompanion;
 				PRODUCT_NAME = HermesCompanion;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = 1;

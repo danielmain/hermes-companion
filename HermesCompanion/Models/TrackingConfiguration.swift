@@ -42,7 +42,7 @@ public struct TrackingConfiguration: Codable, Equatable {
     public var distanceFilterMeters: Double
     public var backgroundIndicatorEnabled: Bool
 
-    public static let defaultContainerIdentifier = "iCloud.com.hermes.HermesCompanion"
+    public static let defaultContainerIdentifier = "iCloud.dev.funktional.HermesCompanion"
 
     /// Previous factory default. Indoor GPS drift crosses 10 m, so a stored 10 m filter is treated as "never customized" and raised on launch.
     public static let legacyDistanceFilterMeters: Double = 10

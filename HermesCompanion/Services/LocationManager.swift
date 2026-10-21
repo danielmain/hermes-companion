@@ -32,7 +32,7 @@ public final class LocationManager: NSObject, ObservableObject {
     private var lastRecordedCoordinate: CLLocationCoordinate2D?
     private var currentGeofenceRegion: CLCircularRegion?
     private let userDefaultsKey = "com.hermes.companion.trackingConfig"
-    private let logger = Logger(subsystem: "com.hermes.HermesCompanion", category: "LocationManager")
+    private let logger = Logger(subsystem: "dev.funktional.HermesCompanion", category: "LocationManager")
 
     // MARK: - CoreMotion (real motion state, independent of the GPS fix age)
     private let motionManager = CMMotionActivityManager()

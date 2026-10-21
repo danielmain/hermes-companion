@@ -9,7 +9,7 @@ public final class PlacesStore: ObservableObject {
 
     private let fileManager = FileManager.default
     private let queue = DispatchQueue(label: "com.hermes.placesstore", qos: .utility)
-    private let logger = Logger(subsystem: "com.hermes.HermesCompanion", category: "PlacesStore")
+    private let logger = Logger(subsystem: "dev.funktional.HermesCompanion", category: "PlacesStore")
 
     private var localFileURL: URL {
         let dir = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!

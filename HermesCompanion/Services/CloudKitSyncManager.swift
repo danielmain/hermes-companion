@@ -19,7 +19,7 @@ public final class CloudKitSyncManager: ObservableObject {
 
     private var activeContainerIdentifier: String = TrackingConfiguration.defaultContainerIdentifier
     private var cancellables = Set<AnyCancellable>()
-    private let logger = Logger(subsystem: "com.hermes.HermesCompanion", category: "CloudKitSync")
+    private let logger = Logger(subsystem: "dev.funktional.HermesCompanion", category: "CloudKitSync")
     private let mirrorQueue = DispatchQueue(label: "com.hermes.cloudkit.mirror", qos: .utility)
     /// Last coordinates actually written to `latest_location.json`. Identical GPS is never rewritten.
     private var lastMirroredCoordinate: CLLocationCoordinate2D?

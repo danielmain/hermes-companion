@@ -20,7 +20,7 @@ targets:
     settings:
       base:
         PRODUCT_NAME: "HermesCompanion"
-        PRODUCT_BUNDLE_IDENTIFIER: "com.hermes.HermesCompanion"
+        PRODUCT_BUNDLE_IDENTIFIER: "dev.funktional.HermesCompanion"
         INFOPLIST_FILE: "HermesCompanion/Resources/Info.plist"
         CODE_SIGN_ENTITLEMENTS: "HermesCompanion/Resources/HermesCompanion.entitlements"
         CODE_SIGN_STYLE: "Automatic"

@@ -1,7 +1,7 @@
 import Foundation
 import os
 
-private let healthSnapshotLogger = Logger(subsystem: "com.hermes.HermesCompanion", category: "HealthSnapshot")
+private let healthSnapshotLogger = Logger(subsystem: "dev.funktional.HermesCompanion", category: "HealthSnapshot")
 
 // MARK: - Enums & Rich Types
 

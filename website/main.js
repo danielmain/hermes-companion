@@ -11,13 +11,20 @@
   function initClipboard() {
     document.querySelectorAll('.terminal-copy-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
-        const targetId = btn.getAttribute('data-copy-target');
-        const codeElement = targetId ? document.getElementById(targetId) : btn.closest('.terminal-block').querySelector('pre');
-        if (!codeElement) return;
+        let text = btn.getAttribute('data-copy-cmd');
+        if (!text) {
+          const targetId = btn.getAttribute('data-copy-target');
+          const codeElement = targetId ? document.getElementById(targetId) : btn.closest('.terminal-block').querySelector('pre');
+          if (!codeElement) return;
 
-        let text = codeElement.innerText;
-        // Clean out prompt characters for seamless terminal paste
-        text = text.replace(/^\$\s+/gm, '');
+          text = codeElement.innerText;
+          // Strip example output section if present
+          if (text.includes('# Result:')) {
+            text = text.split(/#\s*Result:/i)[0];
+          }
+          // Clean out leading prompt characters and comments
+          text = text.replace(/^\$\s+/gm, '').replace(/^#.*$/gm, '').trim();
+        }
 
         navigator.clipboard.writeText(text).then(() => {
           const original = btn.textContent;

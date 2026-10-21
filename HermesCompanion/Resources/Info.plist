@@ -41,7 +41,7 @@
 	<string>Companion for Hermes reads motion activity (stationary, walking, running, driving) so your companion agent knows whether you are moving right now, even when the location fix is a few minutes old.</string>
 	<key>NSUbiquitousContainers</key>
 	<dict>
-		<key>iCloud.com.hermes.HermesCompanion</key>
+		<key>iCloud.dev.funktional.HermesCompanion</key>
 		<dict>
 			<key>NSUbiquitousContainerIsDocumentScopePublic</key>
 			<true/>

@@ -15,32 +15,40 @@ let backgroundPath = "\(workspace)/assets/screenshots/source/generated-paper-bac
 
 let specs = [
     ScreenshotSpec(
-        source: "\(workspace)/assets/screenshots/big/Screenshot 2026-10-01 at 15.35.31.png",
+        source: "\(workspace)/assets/screenshots/original/Screenshot 2026-10-12 at 10.48.52.png",
         destination: "\(outputDirectory)/01-daily-context.png",
         kicker: "HERMES / DAILY CONTEXT",
         title: "Your day, in context.",
         subtitle: "Health, activity, and location at a glance."
     ),
     ScreenshotSpec(
-        source: "\(workspace)/assets/screenshots/big/Screenshot 2026-10-01 at 16.38.38.png",
-        destination: "\(outputDirectory)/02-private-archive.png",
-        kicker: "ARCHIVE / PRIVATE ICLOUD",
-        title: "A record that stays yours.",
-        subtitle: "Location history filed through your private iCloud."
+        source: "\(workspace)/assets/screenshots/original/Screenshot 2026-10-12 at 10.49.14.png",
+        destination: "\(outputDirectory)/02-hermes-post.png",
+        kicker: "HERMES / POST INBOX",
+        title: "A private postbox for your agent.",
+        subtitle: "Letters and briefings synchronized via your iCloud."
     ),
     ScreenshotSpec(
-        source: "\(workspace)/assets/screenshots/big/Screenshot 2026-10-01 at 15.35.17.png",
-        destination: "\(outputDirectory)/03-tracking-control.png",
-        kicker: "HERMES / OBSERVATION",
-        title: "Tracking on your terms.",
-        subtitle: "Choose accuracy, battery use, and background behavior."
+        source: "\(workspace)/assets/screenshots/original/Screenshot 2026-10-12 at 10.49.46.png",
+        destination: "\(outputDirectory)/03-health-archive.png",
+        kicker: "ARCHIVE / PRIVATE HEALTH",
+        title: "A record that stays yours.",
+        subtitle: "Sleep, steps, and activity filed directly to your iCloud."
+    ),
+    ScreenshotSpec(
+        source: "\(workspace)/assets/screenshots/original/Screenshot 2026-10-12 at 10.50.03.png",
+        destination: "\(outputDirectory)/04-known-places.png",
+        kicker: "HERMES / KNOWN PLACES",
+        title: "Places that matter to you.",
+        subtitle: "Named locations and geofence perimeters for your agent."
     )
 ]
 
-let canvasSize = NSSize(width: 1242, height: 2688)
-let screenshotWidth: CGFloat = 1040
+// Target dimensions required by App Store Connect: 1179 x 2556 px
+let canvasSize = NSSize(width: 1179, height: 2556)
+let screenshotWidth: CGFloat = 988
 let screenshotX = (canvasSize.width - screenshotWidth) / 2
-let screenshotBottom: CGFloat = 54
+let screenshotBottom: CGFloat = 52
 
 let ivory = NSColor(calibratedRed: 0.961, green: 0.949, blue: 0.918, alpha: 1)
 let ink = NSColor(calibratedWhite: 0.055, alpha: 1)
@@ -113,11 +121,26 @@ func writeOpaquePNG(_ image: NSImage, to destination: String) throws {
 
 let background = NSImage(contentsOfFile: backgroundPath)
 
+// Ensure output directory exists
+try? FileManager.default.createDirectory(atPath: outputDirectory, withIntermediateDirectories: true)
+
 for spec in specs {
-    guard let screenshot = NSImage(contentsOfFile: spec.source) else {
+    guard let screenshotData = try? Data(contentsOf: URL(fileURLWithPath: spec.source)),
+          let rep = NSBitmapImageRep(data: screenshotData) else {
         fputs("Missing screenshot: \(spec.source)\n", stderr)
         exit(1)
     }
+
+    // Clean status bar breadcrumb ("< Discord") if present
+    let bgColor = rep.colorAt(x: 10, y: 100) ?? ivory
+    for y in 100...160 {
+        for x in 20...300 {
+            rep.setColor(bgColor, atX: x, y: y)
+        }
+    }
+
+    let screenshot = NSImage(size: NSSize(width: rep.pixelsWide, height: rep.pixelsHigh))
+    screenshot.addRepresentation(rep)
 
     let screenshotHeight = screenshotWidth * screenshot.size.height / screenshot.size.width
     let screenshotRect = NSRect(
@@ -143,33 +166,35 @@ for spec in specs {
     shadow.set()
 
     NSColor.white.setFill()
-    NSBezierPath(roundedRect: screenshotRect, xRadius: 48, yRadius: 48).fill()
+    NSBezierPath(roundedRect: screenshotRect, xRadius: 45, yRadius: 45).fill()
+
+    NSShadow().set()
 
     NSGraphicsContext.current?.saveGraphicsState()
-    NSBezierPath(roundedRect: screenshotRect, xRadius: 48, yRadius: 48).addClip()
+    NSBezierPath(roundedRect: screenshotRect, xRadius: 45, yRadius: 45).addClip()
     screenshot.draw(in: screenshotRect, from: .zero, operation: .sourceOver, fraction: 1)
     NSGraphicsContext.current?.restoreGraphicsState()
 
     ink.setStroke()
-    let frame = NSBezierPath(roundedRect: screenshotRect, xRadius: 48, yRadius: 48)
+    let frame = NSBezierPath(roundedRect: screenshotRect, xRadius: 45, yRadius: 45)
     frame.lineWidth = 2
     frame.stroke()
 
     let kickerFont = makeFont(
         name: "SFMono-Semibold",
-        fallback: NSFont.monospacedSystemFont(ofSize: 27, weight: .semibold),
-        size: 27
+        fallback: NSFont.monospacedSystemFont(ofSize: 26, weight: .semibold),
+        size: 26
     )
     let titleFont = makeFont(
         name: "NewYork-Regular",
-        fallback: NSFont(name: "Georgia", size: 66) ?? NSFont.systemFont(ofSize: 66),
-        size: 66
+        fallback: NSFont(name: "Georgia", size: 63) ?? NSFont.systemFont(ofSize: 63),
+        size: 63
     )
-    let subtitleFont = NSFont.systemFont(ofSize: 30, weight: .regular)
+    let subtitleFont = NSFont.systemFont(ofSize: 29, weight: .regular)
 
     drawText(
         spec.kicker,
-        rect: NSRect(x: screenshotX, y: 2584, width: screenshotWidth, height: 42),
+        rect: NSRect(x: screenshotX, y: 2456, width: screenshotWidth, height: 40),
         attributes: [
             .font: kickerFont,
             .foregroundColor: secondaryInk,
@@ -178,7 +203,7 @@ for spec in specs {
     )
     drawText(
         spec.title,
-        rect: NSRect(x: screenshotX, y: 2468, width: screenshotWidth, height: 92),
+        rect: NSRect(x: screenshotX, y: 2344, width: screenshotWidth, height: 88),
         attributes: [
             .font: titleFont,
             .foregroundColor: ink
@@ -186,7 +211,7 @@ for spec in specs {
     )
     drawText(
         spec.subtitle,
-        rect: NSRect(x: screenshotX, y: 2385, width: screenshotWidth, height: 52),
+        rect: NSRect(x: screenshotX, y: 2268, width: screenshotWidth, height: 50),
         attributes: [
             .font: subtitleFont,
             .foregroundColor: secondaryInk

@@ -29,9 +29,11 @@
   /* Spacing Scale */
   --space-2: 2px;
   --space-4: 4px;
+  --space-6: 6px;
   --space-8: 8px;
   --space-12: 12px;
   --space-16: 16px;
+  --space-20: 20px;
   --space-24: 24px;
   --space-32: 32px;
   --space-48: 48px;
@@ -85,6 +87,7 @@ body {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  overflow-x: hidden;
 }
 
 /* Selection */
@@ -138,6 +141,8 @@ hr, .editorial-rule {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-8, 8px);
   padding: var(--space-8) 0;
   font-family: var(--font-mono);
   font-size: 0.6875rem;
@@ -605,58 +610,82 @@ hr, .editorial-rule {
 }
 
 .diagram-flow {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-16);
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-16, 16px);
 }
 
-@media (min-width: 820px) {
+@media (min-width: 640px) {
   .diagram-flow {
-    flex-direction: row;
-    align-items: stretch;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-20, 20px);
+  }
+}
+
+@media (min-width: 1000px) {
+  .diagram-flow {
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--space-20, 20px);
   }
 }
 
 .diagram-node {
-  flex: 1;
   border: 1px solid var(--hairline-strong);
   background: var(--paper);
-  padding: var(--space-16);
+  padding: var(--space-20, 20px);
   display: flex;
   flex-direction: column;
   justify-content: space-between;
 }
 
+.diagram-node-header {
+  margin-bottom: var(--space-8, 8px);
+  border-bottom: 1px solid var(--hairline);
+  padding-bottom: var(--space-6, 6px);
+}
+
 .diagram-node-idx {
   font-family: var(--font-mono);
-  font-size: 0.625rem;
+  font-size: 0.6875rem;
   letter-spacing: 0.12em;
   color: var(--secondary-ink);
-  margin-bottom: var(--space-8);
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .diagram-node-title {
   font-family: var(--font-display);
-  font-size: 1.125rem;
-  margin-bottom: var(--space-8);
+  font-size: 1.25rem;
+  margin-bottom: var(--space-8, 8px);
   font-weight: 500;
+  color: var(--ink);
 }
 
 .diagram-node-desc {
   font-family: var(--font-mono);
-  font-size: 0.75rem;
+  font-size: 0.8125rem;
   color: var(--secondary-ink);
-  line-height: 1.5;
+  line-height: 1.6;
+  flex-grow: 1;
 }
 
-.diagram-arrow {
+.diagram-node-connector {
+  margin-top: var(--space-16, 16px);
+  padding-top: var(--space-8, 8px);
+  border-top: 1px dashed var(--hairline-strong);
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
   font-family: var(--font-mono);
-  font-size: 0.75rem;
-  color: var(--secondary-ink);
-  padding: var(--space-8);
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--ink);
+}
+
+.diagram-arrow-symbol {
+  font-weight: 600;
+  color: var(--ink);
 }
 
 /* Editorial Cards Grid */
@@ -683,6 +712,26 @@ hr, .editorial-rule {
 @media (min-width: 768px) {
   .cards-grid-3 {
     grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.cards-grid-4 {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-24, 24px);
+  margin-top: var(--space-24, 24px);
+}
+
+@media (min-width: 640px) {
+  .cards-grid-4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 1040px) {
+  .cards-grid-4 {
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--space-24, 24px);
   }
 }
 
@@ -768,6 +817,8 @@ hr, .editorial-rule {
   border: 1px solid var(--ink);
   background-color: var(--surface);
   margin: var(--space-16) 0;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .terminal-header {
@@ -812,8 +863,11 @@ hr, .editorial-rule {
   font-size: 0.8125rem;
   line-height: 1.55;
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   color: var(--ink);
   background: var(--paper);
+  max-width: 100%;
+  min-width: 0;
 }
 
 .terminal-content pre {
@@ -1112,23 +1166,54 @@ hr, .editorial-rule {
   margin-top: var(--space-48);
 }
 
-.iphone-triptych-grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: var(--space-48);
-  margin-top: var(--space-32);
+.iphone-triptych-grid,
+.iphone-showcase-grid {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  gap: var(--space-24, 24px);
+  margin-top: var(--space-32, 32px);
+  align-items: stretch;
+  overflow-x: auto;
+  padding-bottom: var(--space-16, 16px);
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
 }
 
-@media (min-width: 768px) {
-  .iphone-triptych-grid {
-    grid-template-columns: repeat(2, 1fr);
+.iphone-showcase-grid .iphone-card-container {
+  flex: 0 0 240px;
+  max-width: 250px;
+  scroll-snap-align: center;
+}
+
+.iphone-showcase-grid::-webkit-scrollbar {
+  height: 6px;
+}
+
+.iphone-showcase-grid::-webkit-scrollbar-track {
+  background: var(--surface);
+  border-radius: 3px;
+}
+
+.iphone-showcase-grid::-webkit-scrollbar-thumb {
+  background: var(--hairline-strong);
+  border-radius: 3px;
+}
+
+@media (min-width: 860px) {
+  .iphone-triptych-grid,
+  .iphone-showcase-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--space-20, 20px);
+    overflow-x: visible;
+    padding-bottom: 0;
   }
-}
 
-@media (min-width: 1040px) {
-  .iphone-triptych-grid {
-    grid-template-columns: repeat(3, 1fr);
-    gap: var(--space-32);
+  .iphone-showcase-grid .iphone-card-container {
+    flex: initial;
+    max-width: 100%;
+    width: 100%;
   }
 }
 
@@ -1136,26 +1221,43 @@ hr, .editorial-rule {
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  height: 100%;
 }
 
 /* iPhone Chassis with Hardware Bezels */
 .iphone-device {
   position: relative;
   width: 100%;
-  max-width: 290px;
+  max-width: 244px;
   aspect-ratio: 472 / 1024;
-  background-color: var(--ink);
+  background-color: #0c0c0d;
   border-radius: 44px;
   padding: 10px;
   box-shadow: 4px 6px 0px var(--hairline-strong);
-  border: 1px solid var(--hairline-strong);
+  border: 1px solid #27272a;
   margin: 0 auto;
   transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+@media (prefers-color-scheme: dark) {
+  .iphone-device {
+    background-color: #0c0c0d;
+    border: 1px solid #38383c;
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.16);
+  }
 }
 
 .iphone-device:hover {
   transform: translateY(-4px);
   box-shadow: 6px 10px 0px var(--ink);
+}
+
+@media (prefers-color-scheme: dark) {
+  .iphone-device:hover {
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.95), 0 0 0 1px rgba(255, 255, 255, 0.3);
+  }
 }
 
 /* Physical Hardware Buttons (Volume & Power) */
@@ -1166,9 +1268,9 @@ hr, .editorial-rule {
   top: 92px;
   width: 3px;
   height: 48px;
-  background-color: var(--ink);
+  background-color: #0c0c0d;
   border-radius: 2px 0 0 2px;
-  box-shadow: 0 64px 0 var(--ink), 0 -24px 0 var(--ink); /* Volume down & Action button */
+  box-shadow: 0 64px 0 #0c0c0d, 0 -24px 0 #0c0c0d; /* Volume down & Action button */
 }
 
 .iphone-device::after {
@@ -1178,7 +1280,7 @@ hr, .editorial-rule {
   top: 110px;
   width: 3px;
   height: 60px;
-  background-color: var(--ink);
+  background-color: #0c0c0d;
   border-radius: 0 2px 2px 0; /* Side Power button */
 }
 
@@ -1255,21 +1357,24 @@ hr, .editorial-rule {
 /* Editorial Spec Plate Below Device */
 .iphone-plate {
   width: 100%;
-  max-width: 290px;
-  margin-top: var(--space-16);
+  max-width: 244px;
+  margin-top: var(--space-20, 20px);
   border: 1px solid var(--hairline-strong);
   background-color: var(--surface);
-  padding: var(--space-12) var(--space-16);
+  padding: var(--space-12, 12px) var(--space-16, 16px);
   text-align: left;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
 }
 
 .iphone-plate-meta {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  margin-bottom: var(--space-6);
+  margin-bottom: var(--space-6, 6px);
   border-bottom: 1px solid var(--hairline);
-  padding-bottom: var(--space-4);
+  padding-bottom: var(--space-4, 4px);
 }
 
 .iphone-plate-title {
@@ -1284,7 +1389,8 @@ hr, .editorial-rule {
   font-size: 0.8125rem;
   color: var(--secondary-ink);
   line-height: 1.45;
-  margin-top: var(--space-6);
+  margin-top: var(--space-6, 6px);
+  flex-grow: 1;
 }
 
 /* Responsive adjustments */

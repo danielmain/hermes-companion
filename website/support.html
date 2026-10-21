@@ -38,7 +38,7 @@
       <div class="topbar-meta">
         <span>ARCHIVAL HELPDESK • REF. HC-SUP-2026</span>
         <span>STATUS: ACTIVE SUPPORT DESK</span>
-        <span>SECURITY: PRIVATE ICLOUD</span>
+        <span>NO VPN / TAILSCALE • PRIVATE ICLOUD</span>
       </div>
 
       <nav class="topbar-nav" aria-label="Support Navigation">
@@ -59,6 +59,7 @@
           <li><a href="#diagnostics" class="nav-link">Diagnostics</a></li>
           <li><a href="#contact" class="nav-link">Contact</a></li>
           <li><a href="privacy.html" class="nav-link">Privacy Policy</a></li>
+          <li><a href="impressum.html" class="nav-link">Impressum</a></li>
         </ul>
       </nav>
     </div>
@@ -246,7 +247,7 @@
                 This indicates that macOS has not yet materialized the iCloud container file locally, or permissions need verification. To resolve:
               </p>
               <ol style="margin-left: 20px; margin-top: 8px; display: flex; flex-direction: column; gap: 8px;">
-                <li>Run <code>python3 skills/hermes-companion/scripts/companion.py --doctor</code> on your Mac to immediately inspect host OS, iCloud directory presence, and permissions.</li>
+                <li>Run <code>python3 ${HERMES_SKILL_DIR:-$HOME/.hermes/skills/hermes-companion}/scripts/companion.py --doctor</code> (or <code>python3 skills/hermes-companion/scripts/companion.py --doctor</code> from repo root) on your Mac to immediately inspect host OS, iCloud directory presence, and permissions.</li>
                 <li>Ensure you are running on native macOS (not inside a Docker container, WSL, or remote Linux host).</li>
                 <li>Open the Hermes Companion app on your iPhone. The app automatically seeds the container on first launch so Apple's CloudDocs creates the Mac directory.</li>
                 <li>Allow iCloud Drive 30–60 seconds to perform its initial container synchronization handshake with macOS.</li>
@@ -349,13 +350,66 @@ hermes config set skills.config.hermes-companion.places_file "$HOME/places.json"
                   <button type="button" class="terminal-copy-btn" data-copy-target="code-inbox-service">[ COPY ]</button>
                 </div>
                 <div class="terminal-content">
-                  <pre id="code-inbox-service"><span class="cli-comment"># Install and start the background daemon:</span>
-python3 skills/hermes-companion/scripts/companion.py --inbox-service install
+                  <pre id="code-inbox-service"><span class="cli-comment"># Install and start the resident background daemon:</span>
+python3 ${HERMES_SKILL_DIR:-$HOME/.hermes/skills/hermes-companion}/scripts/companion.py --install-service
 
-<span class="cli-comment"># Check background daemon status:</span>
-python3 skills/hermes-companion/scripts/companion.py --inbox-service status</pre>
+<span class="cli-comment"># Check background daemon launchd status:</span>
+python3 ${HERMES_SKILL_DIR:-$HOME/.hermes/skills/hermes-companion}/scripts/companion.py --service-status</pre>
                 </div>
               </div>
+            </div>
+          </div>
+
+          <!-- Item 7 -->
+          <div class="faq-item">
+            <button type="button" class="faq-trigger">
+              <span>7. How do I register and manage Known Places?</span>
+              <span class="faq-symbol">+</span>
+            </button>
+            <div class="faq-content">
+              <p>
+                You can manage named locations directly from the iOS app's <strong>Places</strong> tab, or using the CLI on macOS:
+              </p>
+              <ul style="margin-left: 20px; margin-top: 8px; display: flex; flex-direction: column; gap: 8px;">
+                <li><strong>In-App:</strong> Tap the <strong>Places</strong> tab on iPhone. Tap <em>+ Add Place</em>, enter a label (e.g. "Fitness First Cannstatt"), assign a category (<code>gym</code>, <code>work</code>, <code>home</code>), and tap <em>Use Current Fix</em> or enter coordinates. Adjust the geofence perimeter slider (50m to 500m).</li>
+                <li><strong>Via CLI:</strong> Run <code>python3 ${HERMES_SKILL_DIR:-$HOME/.hermes/skills/hermes-companion}/scripts/companion.py --add --name "Gym" --category gym --lat 48.80196 --lon 9.22026 --radius 150</code>.</li>
+                <li>Places sync automatically into your private iCloud container (<code>Documents/places.json</code>) and merge seamlessly between devices.</li>
+              </ul>
+            </div>
+          </div>
+
+          <!-- Item 8 -->
+          <div class="faq-item">
+            <button type="button" class="faq-trigger">
+              <span>8. Why are battery percentage and travel speed not visible?</span>
+              <span class="faq-symbol">+</span>
+            </button>
+            <div class="faq-content">
+              <p>
+                <strong>This is by intentional architectural design.</strong> Phone battery percentage and speed are neither tracked, recorded in JSON, nor reported to your AI agent.
+              </p>
+              <p style="margin-top: 8px;">
+                Omitting battery and fine-grained velocity eliminates constant sensor polling and prevents fingerprinting. Your agent only needs qualitative motion classification (<code>stationary</code>, <code>walking</code>, <code>running</code>, <code>cycling</code>, <code>automotive</code>) and arrival context to understand your day.
+              </p>
+            </div>
+          </div>
+
+          <!-- Item 9 -->
+          <div class="faq-item">
+            <button type="button" class="faq-trigger">
+              <span>9. Do I need Tailscale, WireGuard, Cloudflare Tunnels, or open router ports?</span>
+              <span class="faq-symbol">+</span>
+            </button>
+            <div class="faq-content">
+              <p>
+                <strong>No. This is the primary architectural differentiator of Hermes Companion compared to other apps.</strong>
+              </p>
+              <p style="margin-top: 8px;">
+                Other companion or self-hosted agent tools require persistent VPN profiles on iOS (Tailscale, WireGuard), open router ports, or third-party reverse tunnels (Cloudflare, ngrok). Those tunnels prevent the iPhone from deep sleeping, drain battery rapidly in your pocket, drop sockets when switching between Wi-Fi and 5G cellular, and create firewall headaches.
+              </p>
+              <p style="margin-top: 8px;">
+                Hermes Companion requires <strong>zero tunnels, zero VPNs, and zero open ports</strong>. The iOS app writes files to its local flash sandbox, and Apple's native CloudDocs system synchronizes them to your Mac via your personal Apple ID. It works seamlessly behind carrier CGNAT, strict guest Wi-Fi firewalls, and while traveling.
+              </p>
             </div>
           </div>
         </div>
@@ -388,6 +442,7 @@ python3 skills/hermes-companion/scripts/companion.py --inbox-service status</pre
             <button type="button" class="diag-tab" data-diag-target="diag-2">2. EXECUTE SKILL</button>
             <button type="button" class="diag-tab" data-diag-target="diag-3">3. HEALTH SNAPSHOT</button>
             <button type="button" class="diag-tab" data-diag-target="diag-4">4. RAW JSON INSPECTION</button>
+            <button type="button" class="diag-tab" data-diag-target="diag-5">5. HERMES POST INBOX</button>
           </div>
 
           <div class="diag-body">
@@ -396,7 +451,7 @@ python3 skills/hermes-companion/scripts/companion.py --inbox-service status</pre
               <div class="editorial-utility" style="margin-bottom: var(--space-8);">AUTOMATED ENVIRONMENT DIAGNOSTICS:</div>
               <div class="terminal-block">
                 <div class="terminal-content">
-<pre><span class="cli-prompt">$ </span>python3 skills/hermes-companion/scripts/companion.py --doctor</pre>
+<pre><span class="cli-prompt">$ </span>python3 ${HERMES_SKILL_DIR:-$HOME/.hermes/skills/hermes-companion}/scripts/companion.py --doctor</pre>
                 </div>
               </div>
               <div class="editorial-utility" style="margin: var(--space-16) 0 var(--space-8);">EXPECTED HEALTHY REPORT:</div>
@@ -422,7 +477,7 @@ Diagnostic summary: All critical checks passed.</pre>
               <div class="editorial-utility" style="margin-bottom: var(--space-8);">COMMAND TO RUN ON MAC WORKSTATION:</div>
               <div class="terminal-block">
                 <div class="terminal-content">
-<pre><span class="cli-prompt">$ </span>python3 skills/hermes-companion/scripts/companion.py</pre>
+<pre><span class="cli-prompt">$ </span>python3 ${HERMES_SKILL_DIR:-$HOME/.hermes/skills/hermes-companion}/scripts/companion.py</pre>
                 </div>
               </div>
               <div class="editorial-utility" style="margin: var(--space-16) 0 var(--space-8);">EXPECTED HEALTHY OUTPUT:</div>
@@ -444,7 +499,7 @@ status: still_at_place</pre>
               <div class="editorial-utility" style="margin-bottom: var(--space-8);">COMMAND FOR COMBINED PHYSICAL CONTEXT:</div>
               <div class="terminal-block">
                 <div class="terminal-content">
-<pre><span class="cli-prompt">$ </span>python3 skills/hermes-companion/scripts/companion.py --context</pre>
+<pre><span class="cli-prompt">$ </span>python3 ${HERMES_SKILL_DIR:-$HOME/.hermes/skills/hermes-companion}/scripts/companion.py --context</pre>
                 </div>
               </div>
               <div class="editorial-utility" style="margin: var(--space-16) 0 var(--space-8);">EXPECTED HEALTHY OUTPUT:</div>
@@ -466,7 +521,7 @@ last_workout_minutes: 45</pre>
               <div class="editorial-utility" style="margin-bottom: var(--space-8);">COMMAND FOR SLEEP &amp; HEALTH ANALYSIS:</div>
               <div class="terminal-block">
                 <div class="terminal-content">
-<pre><span class="cli-prompt">$ </span>python3 skills/hermes-companion/scripts/companion.py --health</pre>
+<pre><span class="cli-prompt">$ </span>python3 ${HERMES_SKILL_DIR:-$HOME/.hermes/skills/hermes-companion}/scripts/companion.py --health</pre>
                 </div>
               </div>
               <div class="editorial-utility" style="margin: var(--space-16) 0 var(--space-8);">EXPECTED HEALTHY OUTPUT:</div>
@@ -502,6 +557,34 @@ workout_type: running</pre>
   "motion_activity": "stationary",
   "movement_reason": "moved"
 }</pre>
+                </div>
+              </div>
+            </div>
+
+            <!-- Screen 5 -->
+            <div id="diag-5" class="diag-screen" style="display: none;">
+              <div class="editorial-utility" style="margin-bottom: var(--space-8);">QUERY INBOX THREADS &amp; LETTERS:</div>
+              <div class="terminal-block">
+                <div class="terminal-content">
+<pre><span class="cli-prompt">$ </span>python3 ${HERMES_SKILL_DIR:-$HOME/.hermes/skills/hermes-companion}/scripts/companion.py --inbox</pre>
+                </div>
+              </div>
+              <div class="editorial-utility" style="margin: var(--space-16) 0 var(--space-8);">EXPECTED POSTAL CHANNEL OUTPUT:</div>
+              <div class="terminal-block">
+                <div class="terminal-content" style="color: var(--ink);">
+<pre>[INBOX] 2 active threads in Documents/threads:
+------------------------------------------------------------
+Thread:  th_20261010T075230_e406be
+Status:  replied
+Subject: llover
+Profile: default
+Memos:   7 (last updated: 1d ago)
+
+Thread:  th_20261009T183012_f219c4
+Status:  pending_agent
+Subject: Morning Briefing
+Profile: work
+Memos:   3 (last updated: 5m ago)</pre>
                 </div>
               </div>
             </div>
@@ -589,6 +672,7 @@ workout_type: running</pre>
             <li><a href="index.html">Marketing Overview</a></li>
             <li><a href="support.html">Support &amp; Troubleshooting</a></li>
             <li><a href="privacy.html">Privacy Policy</a></li>
+            <li><a href="impressum.html">Impressum</a></li>
             <li><a href="https://github.com/danielmain/hermes-companion" target="_blank" rel="noopener">GitHub Repository ↗</a></li>
           </ul>
         </div>

@@ -42,7 +42,7 @@ public final class DispatchStore: ObservableObject {
 
     private let fileManager = FileManager.default
     private let queue = DispatchQueue(label: "com.hermes.dispatchstore", qos: .utility)
-    private let logger = Logger(subsystem: "com.hermes.HermesCompanion", category: "DispatchStore")
+    private let logger = Logger(subsystem: "dev.funktional.HermesCompanion", category: "DispatchStore")
 
     // MARK: - Performance Cache & Sync Marker Gating
 
