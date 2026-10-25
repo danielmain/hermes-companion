@@ -6,6 +6,7 @@ and formats them for terminal ASCII/ANSI display.
 
 from __future__ import annotations
 
+import re
 from typing import Final, List, Optional, Sequence, Tuple
 
 
@@ -80,7 +81,7 @@ _VERSION_SPECS: Final = {
     (5, 1): (134, 26, 1, 108, 0, 0, (6, 30)),
     (5, 0): (134, 24, 2, 43, 0, 0, (6, 30)),
     # V6: 41x41
-    (6, 1): (172, 36, 2, 68, 0, 0, (6, 34)),
+    (6, 1): (172, 18, 2, 68, 0, 0, (6, 34)),
     (6, 0): (172, 16, 4, 27, 0, 0, (6, 34)),
 }
 
@@ -110,6 +111,15 @@ class QRCode:
         else:
             self.version = version
             self.ecc_level = ecc_level
+
+        spec = _VERSION_SPECS.get((self.version, self.ecc_level))
+        if not spec:
+            raise ValueError(f"Unsupported QR version/ECC combination: V{self.version} ECC {self.ecc_level}")
+        total_data = (spec[2] * spec[3]) + (spec[4] * spec[5])
+        if len(self.raw_data) + 2 > total_data:
+            raise ValueError(
+                f"Data length ({len(self.raw_data)} bytes) exceeds capacity of Version {self.version} ECC {self.ecc_level} ({total_data - 2} bytes)"
+            )
 
         self.size = 17 + 4 * self.version
         self.modules: List[List[Optional[bool]]] = [[None] * self.size for _ in range(self.size)]
@@ -327,55 +337,53 @@ class QRCode:
 
         format_val = ((format_data << 10) | rem) ^ 0x5412
 
-        # Write 15 bits of format info
-        # Top-left and Split around finder patterns
-        format_bits = [(format_val >> i) & 1 for i in range(15)]
+        # 15 bits of format info: Bit 14 is MSB, Bit 0 is LSB
+        def get_bit(k: int) -> bool:
+            return bool((format_val >> k) & 1)
 
-        # Position mapping
-        # Bits 0-5 -> (8, 0..5)
+        # Primary copy (Top-left around finders)
+        # Bits 14..9 -> (8, 0..5)
         for i in range(6):
-            self.modules[8][i] = bool(format_bits[i])
-        # Bit 6 -> (8, 7)
-        self.modules[8][7] = bool(format_bits[6])
+            self.modules[8][i] = get_bit(14 - i)
+        # Bit 8 -> (8, 7)
+        self.modules[8][7] = get_bit(8)
         # Bit 7 -> (8, 8)
-        self.modules[8][8] = bool(format_bits[7])
-        # Bit 8 -> (7, 8)
-        self.modules[7][8] = bool(format_bits[8])
-        # Bits 9-14 -> (5..0, 8)
+        self.modules[8][8] = get_bit(7)
+        # Bit 6 -> (7, 8)
+        self.modules[7][8] = get_bit(6)
+        # Bits 5..0 -> (5..0, 8)
         for i in range(6):
-            self.modules[5 - i][8] = bool(format_bits[9 + i])
+            self.modules[5 - i][8] = get_bit(5 - i)
 
-        # Second copy:
-        # Bits 0-7 -> (size-1..size-8, 8)
-        for i in range(8):
-            self.modules[self.size - 1 - i][8] = bool(format_bits[i])
-        # Bits 8-14 -> (8, size-7..size-1)
+        # Secondary copy (Split between bottom-left and top-right)
+        # Bits 14..8 -> (size-1..size-7, 8) [7 bits, stopping before dark module at size-8]
         for i in range(7):
-            self.modules[8][self.size - 7 + i] = bool(format_bits[8 + i])
+            self.modules[self.size - 1 - i][8] = get_bit(14 - i)
+        # Bits 7..0 -> (8, size-8..size-1) [8 bits]
+        for i in range(8):
+            self.modules[8][self.size - 8 + i] = get_bit(7 - i)
 
     def to_ascii(self) -> str:
-        """Render QR code as ASCII with double-blocks for terminal display."""
-        border = 2
+        """Render QR code as ASCII with half-blocks and explicit ANSI colors for terminal display."""
+        border = 4
         full_size = self.size + border * 2
         lines = []
 
-        # Terminal characters: use half blocks (▀, ▄, █, ' ') to make it square and compact
-        # Two vertical QR modules per character row!
         grid: List[List[bool]] = [[False] * full_size for _ in range(full_size)]
         for r in range(self.size):
             for c in range(self.size):
                 if self.modules[r][c]:
                     grid[r + border][c + border] = True
 
-        # Render rows two-by-two
-        # Black modules in QR should appear as dark, white as light.
-        # In a standard dark terminal:
-        # ' ' is black/background, '█' is white/foreground,
-        # '▀' has top white/bottom black, '▄' has top black/bottom white.
-        # Since QR codes require dark modules on white background, inverted rendering is best:
-        # Background is white (quiet zone).
+        # Render rows two-by-two using Unicode half-blocks.
+        # With explicit ANSI background 40 (black) and foreground 37;1 (bright white),
+        # dark modules render dark and light modules render light on ANY terminal background:
+        # ' ' (space) = top dark, bot dark (black background)
+        # '█' (full block) = top light, bot light (bright white foreground)
+        # '▄' (lower half) = top dark, bot light (lower half is white)
+        # '▀' (upper half) = top light, bot dark (upper half is white)
         for r in range(0, full_size, 2):
-            line = []
+            line = ["\033[40;37;1m"]
             for c in range(full_size):
                 top_dark = grid[r][c]
                 bot_dark = grid[r + 1][c] if r + 1 < full_size else False
@@ -388,6 +396,7 @@ class QRCode:
                     line.append("▄")
                 else:
                     line.append("▀")
+            line.append("\033[0m")
             lines.append("".join(line))
 
         return "\n".join(lines)
@@ -397,3 +406,227 @@ def generate_qr_ascii(data: str) -> str:
     """Convenience function to generate terminal ASCII QR code."""
     qr = QRCode(data)
     return qr.to_ascii()
+
+
+def decode_qr(modules: Sequence[Sequence[bool]]) -> str:
+    """Reference pure-Python QR decoder for ISO/IEC 18004 QR symbols (Versions 1-6, Byte mode)."""
+    size = len(modules)
+    if (size - 17) % 4 != 0:
+        raise ValueError(f"Invalid QR dimension: {size}")
+    version = (size - 17) // 4
+    if not (1 <= version <= 6):
+        raise ValueError(f"Unsupported QR version: {version}")
+
+    # Read format info bits from primary top-left strip (bit 14 down to 0)
+    val = 0
+    coords = (
+        [(8, c) for c in range(6)]
+        + [(8, 7), (8, 8), (7, 8)]
+        + [(r, 8) for r in range(5, -1, -1)]
+    )
+    for i, (r, c) in enumerate(coords):
+        bit = 1 if modules[r][c] else 0
+        val |= (bit << (14 - i))
+
+    raw = val ^ 0x5412
+    data = raw >> 10
+    ecc_bits = (data >> 3) & 3
+    mask_idx = data & 7
+    ecc_level = 0 if ecc_bits == 0 else 1
+
+    spec = _VERSION_SPECS.get((version, ecc_level))
+    if not spec:
+        raise ValueError(f"Unsupported QR version/ECC spec: V{version} ECC {ecc_level}")
+    total_codewords = spec[0]
+
+    # Reconstruct function module mask
+    is_func = [[False] * size for _ in range(size)]
+    for r_orig, c_orig in [(0, 0), (0, size - 7), (size - 7, 0)]:
+        for r in range(-1, 8):
+            for c in range(-1, 8):
+                if 0 <= r_orig + r < size and 0 <= c_orig + c < size:
+                    is_func[r_orig + r][c_orig + c] = True
+
+    # Alignment patterns
+    for r_pos in spec[6]:
+        for c_pos in spec[6]:
+            if (r_pos < 9 and c_pos < 9) or (r_pos < 9 and c_pos > size - 9) or (r_pos > size - 9 and c_pos < 9):
+                continue
+            for r in range(-2, 3):
+                for c in range(-2, 3):
+                    is_func[r_pos + r][c_pos + c] = True
+
+    # Timing patterns
+    for i in range(size):
+        is_func[6][i] = True
+        is_func[i][6] = True
+
+    # Dark module & format info
+    is_func[4 * version + 9][8] = True
+    for i in range(9):
+        is_func[8][i] = True
+        is_func[i][8] = True
+    for i in range(8):
+        is_func[8][size - 1 - i] = True
+        is_func[size - 1 - i][8] = True
+
+    mask_fn = {
+        0: lambda r, c: (r + c) % 2 == 0,
+        1: lambda r, c: r % 2 == 0,
+        2: lambda r, c: c % 3 == 0,
+        3: lambda r, c: (r + c) % 3 == 0,
+        4: lambda r, c: ((r // 2) + (c // 3)) % 2 == 0,
+        5: lambda r, c: ((r * c) % 2) + ((r * c) % 3) == 0,
+        6: lambda r, c: (((r * c) % 2) + ((r * c) % 3)) % 2 == 0,
+        7: lambda r, c: (((r + c) % 2) + ((r * c) % 3)) % 2 == 0,
+    }[mask_idx]
+
+    # Read unmasked data bits in 2-column zig-zag
+    bits: List[int] = []
+    row = size - 1
+    col = size - 1
+    direction = -1
+    while col > 0:
+        if col == 6:
+            col -= 1
+        for c_offset in range(2):
+            curr_col = col - c_offset
+            if not is_func[row][curr_col]:
+                masked_val = bool(modules[row][curr_col])
+                orig_val = masked_val ^ mask_fn(row, curr_col)
+                bits.append(1 if orig_val else 0)
+        row += direction
+        if row < 0:
+            row = 0
+            direction = 1
+            col -= 2
+        elif row >= size:
+            row = size - 1
+            direction = -1
+            col -= 2
+
+    # Group into codewords
+    codewords: List[int] = []
+    for i in range(0, total_codewords * 8, 8):
+        byte = 0
+        for b in range(8):
+            byte = (byte << 1) | bits[i + b]
+        codewords.append(byte)
+
+    num_blocks = spec[2] + spec[4]
+    ec_len = spec[1]
+
+    # De-interleave data codewords
+    data_blocks: List[List[int]] = [[] for _ in range(num_blocks)]
+    max_data = max(spec[3], spec[5] if spec[4] else 0)
+    idx = 0
+    for i in range(max_data):
+        for b in range(num_blocks):
+            b_len = spec[3] if b < spec[2] else spec[5]
+            if i < b_len:
+                data_blocks[b].append(codewords[idx])
+                idx += 1
+
+    # De-interleave error correction codewords
+    ec_blocks: List[List[int]] = [[] for _ in range(num_blocks)]
+    for i in range(ec_len):
+        for b in range(num_blocks):
+            ec_blocks[b].append(codewords[idx])
+            idx += 1
+
+    # Verify Reed-Solomon checksum for each block
+    gen = _rs_generator_poly(ec_len)
+    for b in range(num_blocks):
+        msg = list(data_blocks[b]) + list(ec_blocks[b])
+        for i in range(len(data_blocks[b])):
+            lead = msg[i]
+            if lead != 0:
+                for j in range(len(gen)):
+                    msg[i + j] ^= _gf_mul(lead, gen[len(gen) - 1 - j])
+        rem = msg[len(data_blocks[b]):]
+        if any(r != 0 for r in rem):
+            raise ValueError(f"Reed-Solomon check failed for block {b}")
+
+    # Concatenate data bytes
+    data_bytes: List[int] = []
+    for b in data_blocks:
+        data_bytes.extend(b)
+
+    # Decode Byte mode stream
+    data_bits: List[int] = []
+    for byte in data_bytes:
+        for b in range(7, -1, -1):
+            data_bits.append((byte >> b) & 1)
+
+    bit_pos = 0
+    mode = 0
+    for _ in range(4):
+        mode = (mode << 1) | data_bits[bit_pos]
+        bit_pos += 1
+    if mode != 4:
+        raise ValueError(f"Unsupported QR mode indicator: {mode} (only Byte mode 4 supported)")
+
+    count = 0
+    for _ in range(8):
+        count = (count << 1) | data_bits[bit_pos]
+        bit_pos += 1
+
+    out = bytearray()
+    for _ in range(count):
+        char = 0
+        for _ in range(8):
+            char = (char << 1) | data_bits[bit_pos]
+            bit_pos += 1
+        out.append(char)
+
+    return out.decode("utf-8")
+
+
+def decode_qr_ascii(ascii_text: str) -> str:
+    """Decode a QR code rendered as terminal ASCII half-blocks."""
+    clean_lines = [
+        re.sub(r"\x1b\[[0-9;]*m", "", line).strip("\r")
+        for line in ascii_text.splitlines()
+    ]
+    clean_lines = [
+        line for line in clean_lines
+        if line and set(line) <= set(" █▄▀")
+    ]
+    if not clean_lines:
+        raise ValueError("No QR code ASCII lines found")
+
+    grid: List[List[bool]] = []
+    for line in clean_lines:
+        row_top = []
+        row_bot = []
+        for ch in line:
+            if ch == " ":
+                row_top.append(True)
+                row_bot.append(True)
+            elif ch == "█":
+                row_top.append(False)
+                row_bot.append(False)
+            elif ch == "▄":
+                row_top.append(True)
+                row_bot.append(False)
+            elif ch == "▀":
+                row_top.append(False)
+                row_bot.append(True)
+        if row_top:
+            grid.append(row_top)
+            grid.append(row_bot)
+
+    full_cols = len(grid[0])
+    first_dark_col = 0
+    while first_dark_col < full_cols and not any(grid[r][first_dark_col] for r in range(len(grid))):
+        first_dark_col += 1
+
+    first_dark_row = 0
+    while first_dark_row < len(grid) and not any(grid[first_dark_row]):
+        first_dark_row += 1
+
+    border = min(first_dark_col, first_dark_row)
+    size = full_cols - border * 2
+    modules = [grid[border + r][border : border + size] for r in range(size)]
+    return decode_qr(modules)
+

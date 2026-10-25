@@ -1,0 +1,1 @@
+../skills/hermes-companion/scripts/qr.py

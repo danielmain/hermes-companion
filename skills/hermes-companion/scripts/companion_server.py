@@ -628,9 +628,24 @@ def run_pairing_assistant(
     print("Settings -> Sync Provider -> Direct Connection -> Scan Pairing QR Code")
     print()
 
-    # Try native Swift QR generator on macOS first if available for pixel-perfect quality
     rendered_qr: Optional[str] = None
-    if sys.platform == "darwin" and shutil.which("swift"):
+
+    # Prefer shelling out to qrencode CLI when available
+    if shutil.which("qrencode"):
+        try:
+            res = subprocess.run(
+                ["qrencode", "-t", "ANSIUTF8", "-l", "L", "-m", "4", payload_json],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if res.returncode == 0 and res.stdout.strip():
+                rendered_qr = res.stdout.rstrip()
+        except Exception:
+            pass
+
+    # On macOS, try native Swift QR generator if qrencode was not found
+    if not rendered_qr and sys.platform == "darwin" and shutil.which("swift"):
         try:
             swift_script = """
 import CoreImage
@@ -638,7 +653,7 @@ import Foundation
 let raw = CommandLine.arguments[1]
 let filter = CIFilter(name: "CIQRCodeGenerator")!
 filter.setValue(raw.data(using: .utf8)!, forKey: "inputMessage")
-filter.setValue("M", forKey: "inputCorrectionLevel")
+filter.setValue("L", forKey: "inputCorrectionLevel")
 let output = filter.outputImage!
 let extent = output.extent
 let width = Int(extent.width)
@@ -647,7 +662,7 @@ var bitmap = [UInt8](repeating: 0, count: width * height * 4)
 let context = CIContext()
 context.render(output, toBitmap: &bitmap, rowBytes: width * 4, bounds: extent, format: .RGBA8, colorSpace: nil)
 for y in stride(from: 0, to: height, by: 2) {
-    var line = ""
+    var line = "\\u{001B}[40;37;1m"
     for x in 0..<width {
         let topDark = bitmap[(y * width + x) * 4] < 128
         let botDark = (y + 1 < height) ? (bitmap[((y + 1) * width + x) * 4] < 128) : false
@@ -656,24 +671,28 @@ for y in stride(from: 0, to: height, by: 2) {
         else if topDark && !botDark { line += "▄" }
         else { line += "▀" }
     }
+    line += "\\u{001B}[0m"
     print(line)
 }
 """
             res = subprocess.run(["swift", "-e", swift_script, payload_json], capture_output=True, text=True, timeout=5)
             if res.returncode == 0 and res.stdout.strip():
-                rendered_qr = res.stdout.strip()
+                rendered_qr = res.stdout.rstrip()
         except Exception:
             pass
 
+    # Fall back to pure-Python generator
     if not rendered_qr:
-        # Fall back to pure-Python generator
         try:
             rendered_qr = generate_qr_ascii(payload_json)
-        except Exception as exc:
-            print(f"Notice: Terminal QR generation skipped ({exc})")
+        except Exception:
+            pass
 
     if rendered_qr:
         print(rendered_qr)
+        print()
+    else:
+        print("Notice: QR code generation unavailable. Enter endpoint + token manually in Settings -> Sync Provider -> Direct Connection")
         print()
 
     print("-" * 60)
