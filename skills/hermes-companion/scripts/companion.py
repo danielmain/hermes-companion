@@ -3261,6 +3261,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--notes", default="")
     parser.add_argument("--serve", action="store_true", help="Start the Direct Connection HTTP daemon (Linux, Windows, macOS)")
     parser.add_argument("--pair", action="store_true", help="Display pairing URL, auth token, and QR code for iOS Direct Connection")
+    parser.add_argument("--endpoint", help="Public pairing endpoint URL (e.g. https://host); overrides --host/--port")
     parser.add_argument("--host", default="0.0.0.0", help="Host address to bind HTTP daemon (default 0.0.0.0)")
     parser.add_argument("--port", type=int, default=8787, help="Port to listen on for HTTP daemon (default 8787)")
     parser.add_argument("--token", help="Bearer token for HTTP daemon (generated if missing)")
@@ -3292,7 +3293,7 @@ def main(argv: Optional[Sequence[str]] = None, now: Optional[datetime] = None) -
             from companion_server import run_pairing_assistant
         except ImportError:
             from server.companion_server import run_pairing_assistant
-        run_pairing_assistant(port=args.port, token=args.token)
+        run_pairing_assistant(port=args.port, token=args.token, endpoint=args.endpoint)
         return 0
     if args.places is None:
         args.places = default_places_file()

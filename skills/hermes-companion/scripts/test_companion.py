@@ -970,6 +970,121 @@ def test_environment_diagnostics_and_doctor() -> None:
         check("missing explanation contains guidance", "iPhone" in explanation or "macOS" in explanation)
 
 
+def test_direct_connection_pairing_endpoint_resolution() -> None:
+    import io
+    from contextlib import redirect_stdout
+    import companion_server
+
+    orig_env = os.environ.get("HERMES_COMPANION_PUBLIC_URL")
+    orig_get_local_ip = companion_server.get_local_ip
+    try:
+        # 1. Fallback: neither endpoint arg nor env var is provided
+        os.environ.pop("HERMES_COMPANION_PUBLIC_URL", None)
+        companion_server.get_local_ip = lambda: "192.168.1.42"
+        resolved = companion_server.resolve_pairing_endpoint(port=8787)
+        check("pairing fallback resolves to http://<local-ip>:<port>", resolved == "http://192.168.1.42:8787")
+
+        # Fallback with host_override
+        resolved_host = companion_server.resolve_pairing_endpoint(port=9000, host_override="10.0.0.1")
+        check("pairing fallback honours host_override", resolved_host == "http://10.0.0.1:9000")
+
+        # 2. Explicit endpoint argument
+        ep1 = companion_server.resolve_pairing_endpoint(endpoint="https://hermescompanion.funktional.dev", port=8787)
+        check("explicit endpoint used verbatim without port", ep1 == "https://hermescompanion.funktional.dev")
+
+        # Trailing slash handling
+        ep2 = companion_server.resolve_pairing_endpoint(endpoint="https://hermescompanion.funktional.dev/", port=8787)
+        check("explicit endpoint strips single trailing slash", ep2 == "https://hermescompanion.funktional.dev")
+
+        ep3 = companion_server.resolve_pairing_endpoint(endpoint="https://hermescompanion.funktional.dev///", port=8787)
+        check("explicit endpoint strips multiple trailing slashes", ep3 == "https://hermescompanion.funktional.dev")
+
+        # Whitespace handling
+        ep4 = companion_server.resolve_pairing_endpoint(endpoint="  https://hermescompanion.funktional.dev/  ", port=8787)
+        check("explicit endpoint strips surrounding whitespace", ep4 == "https://hermescompanion.funktional.dev")
+
+        # http scheme works
+        ep_http = companion_server.resolve_pairing_endpoint(endpoint="http://proxy.local:8080/", port=8787)
+        check("http scheme accepted", ep_http == "http://proxy.local:8080")
+
+        # 3. Environment variable resolution
+        os.environ["HERMES_COMPANION_PUBLIC_URL"] = "https://env.funktional.dev/"
+        ep_env = companion_server.resolve_pairing_endpoint(endpoint=None, port=8787)
+        check("env var endpoint used when no explicit endpoint", ep_env == "https://env.funktional.dev")
+
+        os.environ["HERMES_COMPANION_PUBLIC_URL"] = "  https://env.funktional.dev///  "
+        ep_env_clean = companion_server.resolve_pairing_endpoint(endpoint=None, port=8787)
+        check("env var strips whitespace and trailing slashes", ep_env_clean == "https://env.funktional.dev")
+
+        # 4. Explicit endpoint overrides env var
+        os.environ["HERMES_COMPANION_PUBLIC_URL"] = "https://env.funktional.dev"
+        ep_override = companion_server.resolve_pairing_endpoint(endpoint="https://explicit.funktional.dev", port=8787)
+        check("explicit endpoint overrides env var", ep_override == "https://explicit.funktional.dev")
+
+        # Blank env var falls back to local IP
+        os.environ["HERMES_COMPANION_PUBLIC_URL"] = "   "
+        ep_blank_env = companion_server.resolve_pairing_endpoint(endpoint=None, port=8787)
+        check("blank env var falls back to local IP", ep_blank_env == "http://192.168.1.42:8787")
+
+        # 5. Invalid scheme handling
+        invalid_schemes = [
+            "ftp://hermescompanion.funktional.dev",
+            "hermescompanion.funktional.dev",
+            "ws://hermescompanion.funktional.dev",
+            "",
+            "   ",
+            "http://",
+            "https://",
+            "://bad",
+        ]
+        for inv in invalid_schemes:
+            threw = False
+            try:
+                companion_server.resolve_pairing_endpoint(endpoint=inv, port=8787)
+            except ValueError:
+                threw = True
+            check(f"invalid endpoint '{inv}' raises ValueError", threw)
+
+        # Invalid scheme via env var
+        os.environ["HERMES_COMPANION_PUBLIC_URL"] = "ftp://invalid-env.com"
+        threw_env = False
+        try:
+            companion_server.resolve_pairing_endpoint(endpoint=None, port=8787)
+        except ValueError:
+            threw_env = True
+        check("invalid env var URL raises ValueError", threw_env)
+
+        # 6. End-to-end run_pairing_assistant and companion.main CLI tests
+        os.environ.pop("HERMES_COMPANION_PUBLIC_URL", None)
+
+        # Test CLI with explicit --endpoint
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            code = companion.main(["--pair", "--endpoint", "https://hermescompanion.funktional.dev"])
+        check("companion.py --pair --endpoint exits 0", code == 0)
+        cli_out = buf.getvalue()
+        check("cli output includes public endpoint in raw json", '"endpoint":"https://hermescompanion.funktional.dev"' in cli_out)
+        check("cli output does not append :8787 to public endpoint", ":8787" not in cli_out)
+        check("cli output contains ascii QR or notice", "Direct Connection Configuration Parameters:" in cli_out)
+
+        # Test CLI with HERMES_COMPANION_PUBLIC_URL env var
+        os.environ["HERMES_COMPANION_PUBLIC_URL"] = "https://hermescompanion.funktional.dev"
+        buf_env = io.StringIO()
+        with redirect_stdout(buf_env):
+            code_env = companion.main(["--pair"])
+        check("companion.py --pair with env var exits 0", code_env == 0)
+        cli_env_out = buf_env.getvalue()
+        check("env var output includes public endpoint in raw json", '"endpoint":"https://hermescompanion.funktional.dev"' in cli_env_out)
+        check("env var output does not append :8787", ":8787" not in cli_env_out)
+
+    finally:
+        companion_server.get_local_ip = orig_get_local_ip
+        if orig_env is None:
+            os.environ.pop("HERMES_COMPANION_PUBLIC_URL", None)
+        else:
+            os.environ["HERMES_COMPANION_PUBLIC_URL"] = orig_env
+
+
 def main() -> int:
     test_still_home_after_hours()
     test_walking_at_home()
@@ -1005,6 +1120,7 @@ def main() -> int:
     test_icloud_placeholder_cache_fallback()
     test_turn_based_concurrency_guards_and_sequence_indexing()
     test_environment_diagnostics_and_doctor()
+    test_direct_connection_pairing_endpoint_resolution()
     print("ok")
     return 0
 

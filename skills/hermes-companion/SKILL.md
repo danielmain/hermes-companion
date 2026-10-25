@@ -130,9 +130,14 @@ For users running on Linux, Windows, WSL, or preferring direct local network com
 # Display pairing ASCII QR code, endpoint URL, and Bearer token:
 python3 ${HERMES_SKILL_DIR:-$HOME/.hermes/skills/hermes-companion}/scripts/companion.py --pair
 
+# Public endpoint behind a reverse proxy (HTTPS on 443; also respects HERMES_COMPANION_PUBLIC_URL):
+python3 ${HERMES_SKILL_DIR:-$HOME/.hermes/skills/hermes-companion}/scripts/companion.py --pair --endpoint https://hermescompanion.funktional.dev
+
 # Run the direct connection HTTP daemon in the foreground:
 python3 ${HERMES_SKILL_DIR:-$HOME/.hermes/skills/hermes-companion}/scripts/companion.py --serve --port 8787
 ```
+
+If your host is served behind a reverse proxy or public domain, pass `--endpoint <url>` or set the `HERMES_COMPANION_PUBLIC_URL` environment variable to override the local IP and port in the pairing QR payload.
 
 ## Quick Reference
 

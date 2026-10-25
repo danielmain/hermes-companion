@@ -568,18 +568,53 @@ def run_server(
         print("Hermes Companion HTTP daemon terminated cleanly.")
 
 
+def resolve_pairing_endpoint(
+    port: int = DEFAULT_PORT,
+    host_override: Optional[str] = None,
+    endpoint: Optional[str] = None,
+) -> str:
+    """Resolve direct connection pairing endpoint URL.
+
+    Resolution order:
+      1. Explicit endpoint argument.
+      2. HERMES_COMPANION_PUBLIC_URL environment variable.
+      3. Fallback: http://{host_override or get_local_ip()}:{port}.
+
+    When an override is used (1 or 2):
+      - Strip leading/trailing whitespace and trailing slashes.
+      - Require scheme to start with http:// or https:// (raises ValueError otherwise).
+      - Use verbatim without appending :port.
+    """
+    raw_endpoint = endpoint
+    if raw_endpoint is None:
+        env_val = os.environ.get("HERMES_COMPANION_PUBLIC_URL")
+        if env_val is not None and env_val.strip():
+            raw_endpoint = env_val
+
+    if raw_endpoint is not None:
+        clean = raw_endpoint.strip().rstrip("/")
+        if not (clean.startswith("http://") or clean.startswith("https://")):
+            raise ValueError(
+                f"Invalid pairing endpoint URL: '{raw_endpoint}'. Must start with http:// or https://"
+            )
+        return clean
+
+    ip = host_override or get_local_ip()
+    return f"http://{ip}:{port}"
+
+
 def run_pairing_assistant(
     port: int = DEFAULT_PORT,
     token: Optional[str] = None,
     host_override: Optional[str] = None,
-) -> None:
+    endpoint: Optional[str] = None,
+) -> Dict[str, str]:
     """Output pairing payload and ASCII QR code for terminal scanning."""
     auth_token = get_or_create_token(token)
-    ip = host_override or get_local_ip()
-    endpoint = f"http://{ip}:{port}"
+    resolved_endpoint = resolve_pairing_endpoint(port=port, host_override=host_override, endpoint=endpoint)
 
     pairing_payload = {
-        "endpoint": endpoint,
+        "endpoint": resolved_endpoint,
         "token": auth_token,
     }
     payload_json = json.dumps(pairing_payload, separators=(",", ":"))
@@ -643,17 +678,19 @@ for y in stride(from: 0, to: height, by: 2) {
 
     print("-" * 60)
     print("Direct Connection Configuration Parameters:")
-    print(f"  • Endpoint URL: {endpoint}")
+    print(f"  • Endpoint URL: {resolved_endpoint}")
     print(f"  • Bearer Token: {auth_token}")
     print(f"  • Raw JSON:     {payload_json}")
     print("-" * 60)
     print()
+    return pairing_payload
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Hermes Companion Direct Connection HTTP Daemon")
     parser.add_argument("--serve", action="store_true", help="Start the HTTP server")
     parser.add_argument("--pair", action="store_true", help="Display pairing QR code and token")
+    parser.add_argument("--endpoint", help="Public pairing endpoint URL (e.g. https://host); overrides --host/--port")
     parser.add_argument("--host", default=DEFAULT_HOST, help=f"Host address to bind (default {DEFAULT_HOST})")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT, help=f"Port to listen on (default {DEFAULT_PORT})")
     parser.add_argument("--token", help="Pre-shared Bearer token (generated if not provided)")
@@ -662,7 +699,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args = parser.parse_args(argv)
 
     if args.pair or (len(sys.argv) > 1 and sys.argv[1] == "pair"):
-        run_pairing_assistant(port=args.port, token=args.token)
+        run_pairing_assistant(port=args.port, token=args.token, endpoint=getattr(args, "endpoint", None))
         return 0
 
     # Default action or --serve
