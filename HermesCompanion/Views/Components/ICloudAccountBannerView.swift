@@ -6,7 +6,8 @@ struct ICloudAccountBannerView: View {
     @EnvironmentObject private var cloudKitSyncManager: CloudKitSyncManager
 
     var body: some View {
-        if cloudKitSyncManager.accountStatus != .available && cloudKitSyncManager.accountStatus != .couldNotDetermine {
+        if locationManager.configuration.syncDestination == .cloudKit,
+           cloudKitSyncManager.accountStatus != .available && cloudKitSyncManager.accountStatus != .couldNotDetermine {
             VStack(alignment: .leading, spacing: EditorialSpacing.medium) {
                 HStack(alignment: .top, spacing: EditorialSpacing.compact) {
                     Image(systemName: iconName)

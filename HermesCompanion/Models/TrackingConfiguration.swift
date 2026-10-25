@@ -20,14 +20,36 @@ public enum TrackingMode: String, Codable, CaseIterable, Identifiable {
 }
 
 public enum SyncDestination: String, Codable, CaseIterable, Identifiable {
-    case cloudKit = "Apple iCloud / CloudKit (Zero Network)"
+    case cloudKit = "Apple iCloud"
+    case direct = "Direct Connection"
 
     public var id: String { rawValue }
 
-    public var isCloudKitEnabled: Bool { true }
+    public var isCloudKitEnabled: Bool { self == .cloudKit }
+    public var isDirectEnabled: Bool { self == .direct }
 
     public var subtitle: String {
-        "Zero servers, zero open ports, zero TCP. Syncs securely via Apple iCloud across NAT and cellular networks directly to macOS Hermes."
+        switch self {
+        case .cloudKit:
+            return "Zero servers, zero open ports. Syncs securely via Apple iCloud across NAT directly to macOS Hermes."
+        case .direct:
+            return "Direct HTTP(S) REST communication with a Hermes agent host (Linux, Windows, or macOS)."
+        }
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let raw = try container.decode(String.self)
+        if raw.lowercased().contains("direct") {
+            self = .direct
+        } else {
+            self = .cloudKit
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
     }
 }
 
@@ -35,6 +57,8 @@ public struct TrackingConfiguration: Codable, Equatable {
     public var trackingMode: TrackingMode
     public var syncDestination: SyncDestination
     public var cloudKitContainerIdentifier: String
+    public var directHostEndpoint: String
+    public var directSyncIntervalSeconds: Double
     public var deviceName: String
     public var autoSyncEnabled: Bool
     public var dynamicGeofenceEnabled: Bool
@@ -43,6 +67,7 @@ public struct TrackingConfiguration: Codable, Equatable {
     public var backgroundIndicatorEnabled: Bool
 
     public static let defaultContainerIdentifier = "iCloud.dev.funktional.HermesCompanion"
+    public static let defaultDirectHostEndpoint = "http://192.168.1.50:8787"
 
     /// Previous factory default. Indoor GPS drift crosses 10 m, so a stored 10 m filter is treated as "never customized" and raised on launch.
     public static let legacyDistanceFilterMeters: Double = 10
@@ -64,6 +89,8 @@ public struct TrackingConfiguration: Codable, Equatable {
         trackingMode: .smartAlways,
         syncDestination: .cloudKit,
         cloudKitContainerIdentifier: defaultContainerIdentifier,
+        directHostEndpoint: "",
+        directSyncIntervalSeconds: 30.0,
         deviceName: "iPhone Companion",
         autoSyncEnabled: true,
         dynamicGeofenceEnabled: true,
@@ -76,6 +103,8 @@ public struct TrackingConfiguration: Codable, Equatable {
         trackingMode: TrackingMode = .smartAlways,
         syncDestination: SyncDestination = .cloudKit,
         cloudKitContainerIdentifier: String = defaultContainerIdentifier,
+        directHostEndpoint: String = "",
+        directSyncIntervalSeconds: Double = 30.0,
         deviceName: String = "iPhone Companion",
         autoSyncEnabled: Bool = true,
         dynamicGeofenceEnabled: Bool = true,
@@ -86,6 +115,8 @@ public struct TrackingConfiguration: Codable, Equatable {
         self.trackingMode = trackingMode
         self.syncDestination = syncDestination
         self.cloudKitContainerIdentifier = cloudKitContainerIdentifier
+        self.directHostEndpoint = directHostEndpoint
+        self.directSyncIntervalSeconds = directSyncIntervalSeconds
         self.deviceName = deviceName
         self.autoSyncEnabled = autoSyncEnabled
         self.dynamicGeofenceEnabled = dynamicGeofenceEnabled
@@ -98,8 +129,10 @@ public struct TrackingConfiguration: Codable, Equatable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.trackingMode = try container.decodeIfPresent(TrackingMode.self, forKey: .trackingMode) ?? .smartAlways
-        self.syncDestination = .cloudKit
+        self.syncDestination = try container.decodeIfPresent(SyncDestination.self, forKey: .syncDestination) ?? .cloudKit
         self.cloudKitContainerIdentifier = try container.decodeIfPresent(String.self, forKey: .cloudKitContainerIdentifier) ?? Self.defaultContainerIdentifier
+        self.directHostEndpoint = try container.decodeIfPresent(String.self, forKey: .directHostEndpoint) ?? ""
+        self.directSyncIntervalSeconds = try container.decodeIfPresent(Double.self, forKey: .directSyncIntervalSeconds) ?? 30.0
         self.deviceName = try container.decodeIfPresent(String.self, forKey: .deviceName) ?? "iPhone Companion"
         self.autoSyncEnabled = try container.decodeIfPresent(Bool.self, forKey: .autoSyncEnabled) ?? true
         self.dynamicGeofenceEnabled = try container.decodeIfPresent(Bool.self, forKey: .dynamicGeofenceEnabled) ?? true

@@ -78,6 +78,7 @@ ICLOUD_DIRS: Final[Tuple[Path, ...]] = (
     Path.home() / "Library/Mobile Documents/iCloud~com~hermes~HermesCompanion",
     Path.home() / "Library/Mobile Documents/com~apple~CloudDocs/HermesCompanion",
     Path.home() / "Library/Mobile Documents/com~apple~CloudDocs/Hermes Companion",
+    Path.home() / ".hermes/hermes-companion/data",
 )
 
 
@@ -369,6 +370,9 @@ def icloud_directories(override: Optional[str]) -> List[Path]:
     env = os.environ.get("HERMES_COMPANION_ICLOUD_DIR", "").strip()
     if env:
         return [expand(env)]
+    storage_env = os.environ.get("HERMES_COMPANION_STORAGE_DIR", "").strip()
+    if storage_env:
+        return [expand(storage_env)]
     return list(ICLOUD_DIRS)
 
 
@@ -1143,18 +1147,25 @@ def emit(payload: Mapping[str, object], as_json: bool, text: str) -> int:
 
 def missing_icloud_explanation(directories: Sequence[Path], item_type: str = "location") -> str:
     """Generate helpful diagnostics message when an expected telemetry file is missing."""
+    data_dir = Path.home() / ".hermes" / "hermes-companion" / "data"
     if sys.platform != "darwin":
+        if data_dir.is_dir():
+            return (
+                f"No accepted {item_type} file from the iPhone yet in {data_dir}.\n"
+                "Direct Connection is active. Ensure the HTTP daemon is running ('companion.py --serve') "
+                "and your iPhone app has connected and pushed its initial telemetry."
+            )
         return (
             f"No accepted {item_type} file from the iPhone yet.\n"
-            "Notice: Hermes Companion strictly requires macOS with native iCloud Drive access. "
-            "Non-macOS environments (Linux, Docker containers, Windows) cannot sync local iCloud containers."
+            "Notice: On Linux, Windows, or non-iCloud setups, use Direct Connection. "
+            "Run 'companion.py --serve' and 'companion.py --pair' to connect your iPhone directly without Apple iCloud."
         )
     container_exists = any(d.is_dir() for d in directories)
     if not container_exists:
         return (
             f"No accepted {item_type} file from the iPhone yet.\n"
             "iCloud container has not synced to this Mac yet. Open Hermes Companion on your iPhone to initialize the container.\n"
-            "Run 'companion.py --doctor' to diagnose system requirements."
+            "(Alternatively, on any OS you can use Direct Connection via 'companion.py --serve' and 'companion.py --pair')."
         )
     return f"No accepted {item_type} file from the iPhone yet."
 
@@ -2543,7 +2554,7 @@ def check_environment_diagnostics(icloud_dir: Optional[str] = None) -> List[Tupl
     """
     results: List[Tuple[str, str, str, str]] = []
 
-    # 1. Operating System & Container Check
+    # 1. Operating System & Sync Mode Check
     is_darwin = sys.platform == "darwin"
     is_container = (
         Path("/.dockerenv").exists()
@@ -2551,33 +2562,38 @@ def check_environment_diagnostics(icloud_dir: Optional[str] = None) -> List[Tupl
         or os.environ.get("DOCKER_CONTAINER") == "1"
         or Path("/run/.containerenv").exists()
     )
-    if not is_darwin or is_container:
-        os_desc = "Container (Docker/Podman)" if is_container else sys.platform
-        results.append((
-            "FAIL",
-            "Operating System",
-            f"{os_desc} is not supported. Hermes Companion strictly requires a native macOS host.",
-            "Run Hermes directly on macOS under your user account. Containers and Linux/Windows cannot access native iCloud Drive synchronization (~/Library/Mobile Documents)."
-        ))
-    else:
+    if is_darwin and not is_container:
         mac_ver = platform.mac_ver()[0] or platform.release()
         results.append((
             "PASS",
             "Operating System",
-            f"macOS {mac_ver} (native host)",
+            f"macOS {mac_ver} (native host - supports Apple iCloud & Direct Connection)",
+            ""
+        ))
+    else:
+        os_desc = "Container (Docker/Podman)" if is_container else f"{platform.system()} {platform.release()}"
+        results.append((
+            "PASS",
+            "Operating System",
+            f"{os_desc} (supports Direct Connection)",
             ""
         ))
 
     # 2. iCloud Drive Root Directory
     mobile_docs = Path.home() / "Library" / "Mobile Documents"
     if not is_darwin:
-        pass
+        results.append((
+            "INFO",
+            "iCloud Drive",
+            "N/A on non-macOS (Direct Connection mode is used)",
+            ""
+        ))
     elif not mobile_docs.is_dir():
         results.append((
             "FAIL",
             "iCloud Drive",
             f"Directory '{mobile_docs}' not found.",
-            "Sign in to your Apple Account and enable iCloud Drive in System Settings -> Apple Account -> iCloud."
+            "Sign in to your Apple Account and enable iCloud Drive in System Settings -> Apple Account -> iCloud, or use Direct Connection via 'companion.py --serve'."
         ))
     else:
         results.append((
@@ -2649,11 +2665,15 @@ def check_environment_diagnostics(icloud_dir: Optional[str] = None) -> List[Tupl
         inv_msg = ", ".join(inventory) if inventory else "empty (awaiting first sync)"
         results.append(("INFO", "Container Files", f"Synced files: {inv_msg}", ""))
     else:
+        remedy_msg = (
+            "If using Apple iCloud: Apple creates this folder after the iPhone writes its first record. Open the Hermes Companion iOS app, allow permissions, and wait for iCloud sync.\n"
+            "        -> If using Direct Connection (Linux/Windows/macOS): Run 'companion.py --serve' and 'companion.py --pair' to receive files directly."
+        )
         results.append((
             "WARN",
             "App Container",
-            "iCloud~com~hermes~HermesCompanion container directory not found yet.",
-            "Apple's CloudDocs only creates this folder after the iPhone app writes its first record. Open the Hermes Companion iOS app, allow permissions, and wait 1–2 minutes for iCloud sync."
+            "Hermes Companion container directory not found yet.",
+            remedy_msg
         ))
 
     # 5. Hermes Executable Discovery
@@ -2673,7 +2693,7 @@ def check_environment_diagnostics(icloud_dir: Optional[str] = None) -> List[Tupl
             "Install Hermes CLI (brew install / pipx / uv) or ensure its binary directory is added to PATH. If using the Hermes macOS app, symlink its binary (e.g. /Applications/Hermes.app/Contents/MacOS/hermes) to /opt/homebrew/bin/hermes or ~/.local/bin/hermes."
         ))
 
-    # 6. LaunchAgent Background Inbox Service
+    # 6. Background Inbox Service
     if is_darwin:
         plist_path = get_launch_agent_path()
         if plist_path.is_file():
@@ -2699,6 +2719,13 @@ def check_environment_diagnostics(icloud_dir: Optional[str] = None) -> List[Tupl
                 "Not installed (run 'companion.py --install-service' for automatic background letter replies).",
                 ""
             ))
+    else:
+        results.append((
+            "INFO",
+            "Background Service",
+            "On Linux/Windows, run 'companion.py --serve' or '--daemon' as a systemd user service or background daemon.",
+            ""
+        ))
 
     return results
 
@@ -3232,11 +3259,41 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--lon", type=float)
     parser.add_argument("--radius", type=float, default=150.0)
     parser.add_argument("--notes", default="")
+    parser.add_argument("--serve", action="store_true", help="Start the Direct Connection HTTP daemon (Linux, Windows, macOS)")
+    parser.add_argument("--pair", action="store_true", help="Display pairing URL, auth token, and QR code for iOS Direct Connection")
+    parser.add_argument("--host", default="0.0.0.0", help="Host address to bind HTTP daemon (default 0.0.0.0)")
+    parser.add_argument("--port", type=int, default=8787, help="Port to listen on for HTTP daemon (default 8787)")
+    parser.add_argument("--token", help="Bearer token for HTTP daemon (generated if missing)")
+    parser.add_argument("--storage-dir", type=Path, help="Storage directory for HTTP daemon telemetry")
     return parser
 
 
 def main(argv: Optional[Sequence[str]] = None, now: Optional[datetime] = None) -> int:
-    args = build_parser().parse_args(argv)
+    if argv is None:
+        argv_list = list(sys.argv[1:])
+    else:
+        argv_list = list(argv)
+
+    if argv_list and argv_list[0] in ("serve", "pair"):
+        argv_list[0] = f"--{argv_list[0]}"
+
+    args = build_parser().parse_args(argv_list)
+
+    if getattr(args, "serve", False):
+        try:
+            from companion_server import run_server
+        except ImportError:
+            from server.companion_server import run_server
+        run_server(host=args.host, port=args.port, token=args.token, storage_dir=args.storage_dir)
+        return 0
+
+    if getattr(args, "pair", False):
+        try:
+            from companion_server import run_pairing_assistant
+        except ImportError:
+            from server.companion_server import run_pairing_assistant
+        run_pairing_assistant(port=args.port, token=args.token)
+        return 0
     if args.places is None:
         args.places = default_places_file()
     else:

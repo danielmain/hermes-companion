@@ -67,6 +67,7 @@ private struct DashboardHeroHeader: View {
 private struct DashboardLocationStatusSection: View {
     @EnvironmentObject private var locationManager: LocationManager
     @EnvironmentObject private var cloudKitSyncManager: CloudKitSyncManager
+    @EnvironmentObject private var syncCoordinator: SyncCoordinator
 
     var body: some View {
         VStack(alignment: .leading, spacing: EditorialSpacing.medium) {
@@ -92,10 +93,18 @@ private struct DashboardLocationStatusSection: View {
                 )
                 EditorialRule()
                 DashboardStatusRow(
-                    label: "PRIVATE SYNC",
+                    label: locationManager.configuration.syncDestination == .direct ? "DIRECT SYNC" : "PRIVATE SYNC",
                     value: syncStatus,
-                    systemImage: cloudKitSyncManager.isSyncing ? "arrow.triangle.2.circlepath" : "icloud"
+                    systemImage: syncIcon
                 )
+                if locationManager.configuration.syncDestination == .direct && syncCoordinator.directOfflineQueueCount > 0 {
+                    EditorialRule()
+                    DashboardStatusRow(
+                        label: "OFFLINE QUEUE",
+                        value: "\(syncCoordinator.directOfflineQueueCount) pending",
+                        systemImage: "tray.full"
+                    )
+                }
             }
             .overlay {
                 Rectangle().stroke(EditorialColor.hairline, lineWidth: EditorialBorder.hairline)
@@ -147,17 +156,41 @@ private struct DashboardLocationStatusSection: View {
         return locationManager.isTrackingActive ? "Acquiring..." : "Unavailable"
     }
 
+    private var syncIcon: String {
+        if locationManager.configuration.syncDestination == .direct {
+            if syncCoordinator.isSyncing {
+                return "arrow.triangle.2.circlepath"
+            }
+            return "bolt.horizontal.circle"
+        } else {
+            return cloudKitSyncManager.isSyncing ? "arrow.triangle.2.circlepath" : "icloud"
+        }
+    }
+
     private var syncStatus: String {
         if !locationManager.configuration.autoSyncEnabled {
             return "Disabled"
         }
-        if cloudKitSyncManager.isSyncing {
-            return "Syncing"
+        if locationManager.configuration.syncDestination == .direct {
+            if syncCoordinator.isSyncing {
+                return "Syncing"
+            }
+            if let latency = syncCoordinator.directLatencyMs {
+                return "Online (\(Int(latency))ms)"
+            }
+            if let lastSync = syncCoordinator.lastSyncDate {
+                return lastSync.formatted(.relative(presentation: .named))
+            }
+            return syncCoordinator.lastSyncStatus
+        } else {
+            if cloudKitSyncManager.isSyncing {
+                return "Syncing"
+            }
+            if let lastSync = cloudKitSyncManager.lastSyncDate {
+                return lastSync.formatted(.relative(presentation: .named))
+            }
+            return cloudKitSyncManager.accountStatusDescription
         }
-        if let lastSync = cloudKitSyncManager.lastSyncDate {
-            return lastSync.formatted(.relative(presentation: .named))
-        }
-        return cloudKitSyncManager.accountStatusDescription
     }
 }
 
@@ -190,4 +223,5 @@ private struct DashboardStatusRow: View {
         .environmentObject(LocationStore.shared)
         .environmentObject(CloudKitSyncManager.shared)
         .environmentObject(HealthKitManager.shared)
+        .environmentObject(SyncCoordinator.shared)
 }

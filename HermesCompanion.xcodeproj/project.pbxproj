@@ -14,23 +14,29 @@
 		2915E882B297A7B6DDC4CE11 /* DispatchThread.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C2222D1ECB14B14A059D481 /* DispatchThread.swift */; };
 		2AFDDE94090C3D9B5687B52C /* TrackingConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E346E61B87FBF95529DFA97 /* TrackingConfiguration.swift */; };
 		2E75C045551A8FF00EAB09BF /* LocationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3231767A4F3C749850EDCD51 /* LocationStore.swift */; };
+		301EF4217DD000C32E69FDA5 /* QRCodeScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F447316837E1F828982ACEF5 /* QRCodeScannerView.swift */; };
 		391D0DF35B83873766C5DE76 /* MetricTileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 655FC160BE3D9698CE13C341 /* MetricTileView.swift */; };
 		39533FEBD10F0D1AA79BD1FB /* AppDiagnosticEvent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 485A91DA6EC9A98E1AF9027B /* AppDiagnosticEvent.swift */; };
 		3C4B1B6861FEC87882AB44F9 /* LocationRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC4FF56BB8CDA7A346691612 /* LocationRecord.swift */; };
 		4006B37325696A198594068F /* EditorialLoadingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9CA33808A50BEF00B6C2338 /* EditorialLoadingView.swift */; };
+		402CF9AC035089F425C32CA2 /* SyncCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12198FC154137EE00C829A68 /* SyncCoordinator.swift */; };
 		425C3943A223A2A6B851E29D /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 158496746D6DB3BF103D99F3 /* AppDelegate.swift */; };
 		480E74AD265AED43BD4171C4 /* HealthOverviewCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57511556AE5269E42E5009D8 /* HealthOverviewCard.swift */; };
 		4C558C0FE3B3C778EA833664 /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A76C9B08427B07439AE47D1E /* MainTabView.swift */; };
 		5BD3F7A90AC5977112B1565E /* PlacesStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3598323BB305AA350E1DCC0E /* PlacesStore.swift */; };
 		5DF60949E493F4422C547FE3 /* PlacesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0EFE0931FA7D1F772DF2DA51 /* PlacesView.swift */; };
+		65364FF2C0ED3953BE2989B7 /* SyncTransportProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECA152199D6644269B0BEBEB /* SyncTransportProtocol.swift */; };
 		6FAABD5A3125E1D0FE9A82F0 /* HermesCompanionApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA5FEEEFC2590B1CFF74C949 /* HermesCompanionApp.swift */; };
 		7967632A74989A6A5B219DBF /* BackgroundTaskManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1CCEDA5B4EA8AC59750808B /* BackgroundTaskManager.swift */; };
+		7D091AB383570B624E176E08 /* ICloudSyncTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E77235E00D640DFC442C13E /* ICloudSyncTransport.swift */; };
 		80F8DCBE2B689E3DAB128D47 /* LocationRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70997C2DFDCBB92162F22A42 /* LocationRowView.swift */; };
 		8D1C50BEA55F8A9624F06270 /* HealthSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D31B68B16CFA0619FB293A5 /* HealthSnapshot.swift */; };
+		8DFA6C69498367EA78F5D2CC /* DirectHttpSyncTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7829DF5FD89E0B41A84FFF2 /* DirectHttpSyncTransport.swift */; };
 		8E2FEC7B43A3250163CFF287 /* ICloudAccountBannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41936FF57240EAB288E175C2 /* ICloudAccountBannerView.swift */; };
 		942C65960E512ECFDCAF7F75 /* AgentProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43FE4F61A1294A9F4688DF15 /* AgentProfile.swift */; };
 		AB05082DE43399C35A507360 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8F99D2373E2B88B93E58B81 /* SettingsView.swift */; };
 		AF8096125F0073D4D8DB9B82 /* HealthKitManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2187FF074AF20A5A8489B88E /* HealthKitManager.swift */; };
+		B8D8DD6ED4C05F303028EC9D /* KeychainManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DC263AA35F24A30C703F118 /* KeychainManager.swift */; };
 		C7CD349E260C56EA76CBB3CD /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = ACD3FF5E5C9AE57B0F7C65B5 /* Assets.xcassets */; };
 		DD2E34F805F40022995F2DB8 /* LocationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C691BD9A582EDEE8459543D6 /* LocationManager.swift */; };
 		E29462E6F149BCCD9C12C5F3 /* EditorialDesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 877A2ABB264BA461E7E6175D /* EditorialDesignSystem.swift */; };
@@ -45,6 +51,7 @@
 /* Begin PBXFileReference section */
 		0EFE0931FA7D1F772DF2DA51 /* PlacesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlacesView.swift; sourceTree = "<group>"; };
 		10F3163AF5FF0449464E85D2 /* EditorialOnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorialOnboardingView.swift; sourceTree = "<group>"; };
+		12198FC154137EE00C829A68 /* SyncCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncCoordinator.swift; sourceTree = "<group>"; };
 		158496746D6DB3BF103D99F3 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		199001EF17CEBCAEA2655885 /* HistoryLogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryLogView.swift; sourceTree = "<group>"; };
 		2187FF074AF20A5A8489B88E /* HealthKitManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitManager.swift; sourceTree = "<group>"; };
@@ -57,6 +64,7 @@
 		43FE4F61A1294A9F4688DF15 /* AgentProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentProfile.swift; sourceTree = "<group>"; };
 		482DFD3630EAAC5A5D148E16 /* HermesCompanion.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HermesCompanion.entitlements; sourceTree = "<group>"; };
 		485A91DA6EC9A98E1AF9027B /* AppDiagnosticEvent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDiagnosticEvent.swift; sourceTree = "<group>"; };
+		4E77235E00D640DFC442C13E /* ICloudSyncTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ICloudSyncTransport.swift; sourceTree = "<group>"; };
 		57511556AE5269E42E5009D8 /* HealthOverviewCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthOverviewCard.swift; sourceTree = "<group>"; };
 		5DDC170C34A4EF2F9E770624 /* HealthDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthDetailView.swift; sourceTree = "<group>"; };
 		655FC160BE3D9698CE13C341 /* MetricTileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetricTileView.swift; sourceTree = "<group>"; };
@@ -67,6 +75,7 @@
 		877A2ABB264BA461E7E6175D /* EditorialDesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorialDesignSystem.swift; sourceTree = "<group>"; };
 		8C2222D1ECB14B14A059D481 /* DispatchThread.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DispatchThread.swift; sourceTree = "<group>"; };
 		8C31DC2507E266A61FD54AAF /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		8DC263AA35F24A30C703F118 /* KeychainManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainManager.swift; sourceTree = "<group>"; };
 		9AABB5A5B4D8FAAAB0657EB5 /* PermissionBannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionBannerView.swift; sourceTree = "<group>"; };
 		A64856389980D1D73A2DC3C3 /* HermesCompanion.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HermesCompanion.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A76C9B08427B07439AE47D1E /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
@@ -78,7 +87,10 @@
 		CC4FF56BB8CDA7A346691612 /* LocationRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationRecord.swift; sourceTree = "<group>"; };
 		CD9CCDD8BC1F05D3F64A7992 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
 		DA5FEEEFC2590B1CFF74C949 /* HermesCompanionApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesCompanionApp.swift; sourceTree = "<group>"; };
+		ECA152199D6644269B0BEBEB /* SyncTransportProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncTransportProtocol.swift; sourceTree = "<group>"; };
 		F3F837EEC8319BE295D0739B /* CloudKitSyncManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudKitSyncManager.swift; sourceTree = "<group>"; };
+		F447316837E1F828982ACEF5 /* QRCodeScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRCodeScannerView.swift; sourceTree = "<group>"; };
+		F7829DF5FD89E0B41A84FFF2 /* DirectHttpSyncTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectHttpSyncTransport.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -87,11 +99,16 @@
 			children = (
 				C1CCEDA5B4EA8AC59750808B /* BackgroundTaskManager.swift */,
 				F3F837EEC8319BE295D0739B /* CloudKitSyncManager.swift */,
+				F7829DF5FD89E0B41A84FFF2 /* DirectHttpSyncTransport.swift */,
 				85E88E858A8A67B535254A02 /* DispatchStore.swift */,
 				2187FF074AF20A5A8489B88E /* HealthKitManager.swift */,
+				4E77235E00D640DFC442C13E /* ICloudSyncTransport.swift */,
+				8DC263AA35F24A30C703F118 /* KeychainManager.swift */,
 				C691BD9A582EDEE8459543D6 /* LocationManager.swift */,
 				3231767A4F3C749850EDCD51 /* LocationStore.swift */,
 				3598323BB305AA350E1DCC0E /* PlacesStore.swift */,
+				12198FC154137EE00C829A68 /* SyncCoordinator.swift */,
+				ECA152199D6644269B0BEBEB /* SyncTransportProtocol.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -130,6 +147,7 @@
 				70997C2DFDCBB92162F22A42 /* LocationRowView.swift */,
 				655FC160BE3D9698CE13C341 /* MetricTileView.swift */,
 				9AABB5A5B4D8FAAAB0657EB5 /* PermissionBannerView.swift */,
+				F447316837E1F828982ACEF5 /* QRCodeScannerView.swift */,
 				6E9910DB1DD2868FFFE04B8F /* StatusCardView.swift */,
 			);
 			path = Components;
@@ -224,7 +242,7 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
-				LastUpgradeCheck = 2700;
+				LastUpgradeCheck = 1600;
 				TargetAttributes = {
 					2FCC291CB54A965A8FBCF67F = {
 						ProvisioningStyle = Automatic;
@@ -272,6 +290,7 @@
 				7967632A74989A6A5B219DBF /* BackgroundTaskManager.swift in Sources */,
 				F0A80981BBC8B6168E73D9A4 /* CloudKitSyncManager.swift in Sources */,
 				1B2E78F66602838584AC2864 /* DashboardView.swift in Sources */,
+				8DFA6C69498367EA78F5D2CC /* DirectHttpSyncTransport.swift in Sources */,
 				F632412B12E981840D40C4C8 /* DispatchStore.swift in Sources */,
 				2915E882B297A7B6DDC4CE11 /* DispatchThread.swift in Sources */,
 				E29462E6F149BCCD9C12C5F3 /* EditorialDesignSystem.swift in Sources */,
@@ -284,6 +303,8 @@
 				6FAABD5A3125E1D0FE9A82F0 /* HermesCompanionApp.swift in Sources */,
 				E50B06B300899EE43F70AA19 /* HistoryLogView.swift in Sources */,
 				8E2FEC7B43A3250163CFF287 /* ICloudAccountBannerView.swift in Sources */,
+				7D091AB383570B624E176E08 /* ICloudSyncTransport.swift in Sources */,
+				B8D8DD6ED4C05F303028EC9D /* KeychainManager.swift in Sources */,
 				DD2E34F805F40022995F2DB8 /* LocationManager.swift in Sources */,
 				3C4B1B6861FEC87882AB44F9 /* LocationRecord.swift in Sources */,
 				80F8DCBE2B689E3DAB128D47 /* LocationRowView.swift in Sources */,
@@ -295,8 +316,11 @@
 				5BD3F7A90AC5977112B1565E /* PlacesStore.swift in Sources */,
 				5DF60949E493F4422C547FE3 /* PlacesView.swift in Sources */,
 				F418CFCA68ECF5CE891DF8CE /* PostInboxView.swift in Sources */,
+				301EF4217DD000C32E69FDA5 /* QRCodeScannerView.swift in Sources */,
 				AB05082DE43399C35A507360 /* SettingsView.swift in Sources */,
 				E49D6E26EADC4F184C331174 /* StatusCardView.swift in Sources */,
+				402CF9AC035089F425C32CA2 /* SyncCoordinator.swift in Sources */,
+				65364FF2C0ED3953BE2989B7 /* SyncTransportProtocol.swift in Sources */,
 				2AFDDE94090C3D9B5687B52C /* TrackingConfiguration.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -356,7 +380,6 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
-				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
@@ -390,7 +413,6 @@
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -411,7 +433,6 @@
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
-				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
@@ -422,7 +443,6 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
-				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
@@ -456,7 +476,6 @@
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
@@ -470,7 +489,6 @@
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
-				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 5.0;

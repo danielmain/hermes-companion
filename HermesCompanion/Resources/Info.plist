@@ -27,6 +27,15 @@
 	<string>4</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>NSCameraUsageDescription</key>
+	<string>Companion for Hermes uses your camera to scan pairing QR codes from your Hermes host.</string>
 	<key>NSHealthShareUsageDescription</key>
 	<string>Companion for Hermes reads your sleep stages, workouts, heart rate, and daily activity from Apple Health so your personal Hermes agent can understand your physical recovery, workout status, and sleep quality.</string>
 	<key>NSHealthUpdateUsageDescription</key>

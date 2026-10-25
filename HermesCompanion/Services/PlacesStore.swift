@@ -105,6 +105,11 @@ public final class PlacesStore: ObservableObject {
                 try? self.fileManager.createDirectory(at: iCloudURL.deletingLastPathComponent(), withIntermediateDirectories: true)
                 try? data.write(to: iCloudURL, options: .atomic)
             }
+
+            // If Direct Connection is active, sync places via HTTP
+            if LocationManager.shared.configuration.syncDestination == .direct {
+                DirectHttpSyncTransport.shared.syncPlaces(places: placesToSave, completion: nil)
+            }
         }
     }
 }

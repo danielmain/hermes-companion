@@ -30,6 +30,19 @@ iOS aggressively suspends and terminates apps in the background. An external age
 ### The iCloud/CloudKit Sync Solution
 The iOS app writes location and health JSON into its **iCloud/CloudKit ubiquity container**. Apple's iCloud Drive syncs those files down to the Mac, where macOS materialises them on disk (`~/Library/Mobile Documents/iCloud~com~hermes~HermesCompanion/Documents/`). When Hermes Agent needs the user's location, it reads that local file instantly via MCP — **no relay, no open ports, no NAT traversal**.
 
+### Direct Connection Sync Solution (Linux, Windows & macOS)
+For hosts without access to Apple's private iCloud Drive (e.g. Linux servers, Windows/WSL2 machines, Docker/container runtimes, or macOS users preferring direct LAN/WAN sync), Hermes Companion provides a **Direct Connection** sync provider:
+- **Pluggable Sync Architecture (`SyncTransportProtocol`):** Abstracted through `SyncCoordinator`, `ICloudSyncTransport`, and `DirectHttpSyncTransport`. Switching sync modes in Settings dynamically redirects all telemetry writes (`latest_location.json`, `location_history.json`, `latest_health.json`, `places.json`) and Hermes Post letters without breaking existing local archives or dashboard telemetry cards.
+- **Direct Connection Host Daemon (`server/companion_server.py` & `skills/hermes-companion/scripts/companion_server.py`):** A zero-dependency Python stdlib HTTP service running via `companion.py --serve --port 8787`:
+  - `GET /api/v1/health`: Handshake and latency testing endpoint.
+  - `PUT /api/v1/telemetry/{filename}`: Atomic ingestion and schema validation for `latest_location.json`, `location_history.json`, `latest_health.json`, and `places.json`.
+  - `GET /api/v1/places` & `PUT /api/v1/places`: Bidirectional synchronization of user-defined places and geofences.
+  - `GET /api/v1/inbox/pending`: Returns pending agent reply letters for the iOS app.
+  - `POST /api/v1/inbox/messages`: Ingests new user letters/memos sent from the iOS Post tab.
+- **Pairing Assistant (`companion.py --pair`):** Outputs the server URL, Bearer token, and renders an ASCII QR code in the terminal with zero third-party dependencies (using native CoreImage on macOS and a pure Python fallback on Linux/Windows).
+- **Secure Token Storage & ATS:** Auth tokens are stored securely in the iOS Keychain (`KeychainManager`). App Transport Security (`NSAppTransportSecurity`) is configured to permit arbitrary local network and LAN connections.
+- **Offline Reliability Queue:** When the host daemon is temporarily unreachable or the iPhone is offline, unsent telemetry payloads are staged in `Application Support/DirectSyncQueue/` and automatically flushed on subsequent background wakeups or network restoration.
+
 ### GPS Write-On-Change (Movement, Not Indoor Drift)
 A GPS fix is persisted only when `GPSPersistDecision` accepts it as movement. Named thresholds live on `TrackingConfiguration`:
 
@@ -188,23 +201,33 @@ hermes-companion-ios/
 - [HermesCompanion/Services/BackgroundTaskManager.swift](HermesCompanion/Services/BackgroundTaskManager.swift): Registers `BGAppRefreshTask` and `BGProcessingTask` with `BGTaskScheduler`.
 - [HermesCompanion/Models/TrackingConfiguration.swift](HermesCompanion/Models/TrackingConfiguration.swift): Stores user preferences (tracking mode, CloudKit container identifier, geofence radius, distance filter) and the named persist-gate constants (30 m default filter, 150 m stationary override, 1 m/s speed override, 120 s motion freshness, slider 0...50).
 - [HermesCompanion/Models/AppDiagnosticEvent.swift](HermesCompanion/Models/AppDiagnosticEvent.swift): Represents system lifecycle logs with severity (`INFO`, `SUCCESS`, `WARN`, `ERROR`).
+- [HermesCompanion/Services/SyncTransportProtocol.swift](HermesCompanion/Services/SyncTransportProtocol.swift): Clean transport protocol abstraction (`uploadTelemetryPayload`, `testConnection`, `syncPlaces`, `postInboxMessage`, `fetchPendingInboxMessages`).
+- [HermesCompanion/Services/ICloudSyncTransport.swift](HermesCompanion/Services/ICloudSyncTransport.swift): Implements `SyncTransportProtocol` using native Apple iCloud Ubiquity container and CloudKit private database.
+- [HermesCompanion/Services/DirectHttpSyncTransport.swift](HermesCompanion/Services/DirectHttpSyncTransport.swift): Implements `SyncTransportProtocol` using direct HTTP(S) REST communication with the host daemon, featuring latency testing, offline queue staging in `Application Support/DirectSyncQueue/`, and automatic background flushes.
+- [HermesCompanion/Services/SyncCoordinator.swift](HermesCompanion/Services/SyncCoordinator.swift): Unified coordinator managing the active transport (`.cloudKit` vs `.direct`), exposing published connection statuses, latencies, and offline queue counts.
+- [HermesCompanion/Services/KeychainManager.swift](HermesCompanion/Services/KeychainManager.swift): Secure Keychain storage for the Direct Connection Bearer auth token.
+- [HermesCompanion/Views/Components/QRCodeScannerView.swift](HermesCompanion/Views/Components/QRCodeScannerView.swift): Editorial `AVCaptureSession` camera viewfinder and metadata output for scanning pairing QR codes into host endpoint URL and token.
 - [HermesCompanion/Views/MainTabView.swift](HermesCompanion/Views/MainTabView.swift): Root tab view hosting `Today`, `Post`, `Health`, `Places`, and `Settings`.
 - [HermesCompanion/Views/PostInboxView.swift](HermesCompanion/Views/PostInboxView.swift): Editorial postal interface for asynchronous correspondence with Hermes Agent profiles (`threads/`), message composition, and thread status filtering.
-- [HermesCompanion/Views/DashboardView.swift](HermesCompanion/Views/DashboardView.swift): Real-time transmitter dashboard displaying connection state, telemetry tiles, tracking mode selector, recent fixes, and explainer sheets.
+- [HermesCompanion/Views/DashboardView.swift](HermesCompanion/Views/DashboardView.swift): Real-time transmitter dashboard displaying connection state (iCloud or Direct Connection latency and offline queue), telemetry tiles, tracking mode selector, and recent fixes.
 - [HermesCompanion/Views/HistoryLogView.swift](HermesCompanion/Views/HistoryLogView.swift): Segmented view for transmission history and diagnostic logs with source filtering, file export, and `LocationDetailView` displaying signal metadata and an interactive `AppleMapsPreviewFrame` that launches Apple Maps on tap.
-- [HermesCompanion/Views/SettingsView.swift](HermesCompanion/Views/SettingsView.swift): Configuration screen for the CloudKit sync container ID, geofence radius slider, and iOS settings shortcut.
-- [HermesCompanion/Views/Components/ICloudAccountBannerView.swift](HermesCompanion/Views/Components/ICloudAccountBannerView.swift): Banner alerting the user when an iCloud / Apple Account sign-in is required with a direct button redirecting to iOS Settings.
-- [HermesCompanion/Resources/Info.plist](HermesCompanion/Resources/Info.plist): Contains Apple background modes (`location`, `fetch`, `processing`, `remote-notification`), background task identifiers, `NSUbiquitousContainers`, required location usage descriptions, `NSMotionUsageDescription` (CoreMotion activity), `NSHealthShareUsageDescription`, and `NSHealthUpdateUsageDescription`.
+- [HermesCompanion/Views/SettingsView.swift](HermesCompanion/Views/SettingsView.swift): Configuration screen with Sync Provider selector (Apple iCloud vs Direct Connection), host endpoint URL, Keychain token input, QR scanner sheet, connection test button, geofence radius slider, and iOS settings shortcut.
+- [HermesCompanion/Views/Components/ICloudAccountBannerView.swift](HermesCompanion/Views/Components/ICloudAccountBannerView.swift): Banner alerting the user when an iCloud / Apple Account sign-in is required (automatically hidden when Direct Connection is selected).
+- [HermesCompanion/Resources/Info.plist](HermesCompanion/Resources/Info.plist): Contains Apple background modes (`location`, `fetch`, `processing`, `remote-notification`), background task identifiers, `NSUbiquitousContainers`, `NSCameraUsageDescription`, `NSAppTransportSecurity` (arbitrary loads & local networking enabled), required location usage descriptions, `NSMotionUsageDescription` (CoreMotion activity), `NSHealthShareUsageDescription`, and `NSHealthUpdateUsageDescription`.
 - [HermesCompanion/Resources/HermesCompanion.entitlements](HermesCompanion/Resources/HermesCompanion.entitlements): Declares iCloud container `iCloud.dev.funktional.HermesCompanion` for `CloudKit` and `CloudDocuments`, and `com.apple.developer.healthkit` capability.
 
 #### Server & Agent Integration
-- [server/places.py](server/places.py): Place recognition. Matches the fix to a named place in the user's places file (`HERMES_COMPANION_PLACES`, `HERMES_HOME/state/places.json`, or the only Hermes profile that already has one). Internal `context_summary` strings stay for the resolver tests. The skill and MCP tools do not present them as lines to say.
-- [skills/hermes-companion/SKILL.md](skills/hermes-companion/SKILL.md): The single published Hermes skill (version 1.2.0). Replaces `user-location` and `user-health`. Frontmatter follows the skill authoring format (`name`, `description` under 60 characters, `version`, `author`, `license`, `platforms`, `metadata.hermes.tags`, `category: health`, and `config`). The description and the Requires the iPhone app section say the skill works only with this iOS app. Product page: https://hermescompanion.funktional.dev. Install with `hermes skills install danielmain/hermes-companion/skills/hermes-companion`. The Language section tells the model to answer in the user's language. A pull request into Hermes Agent belongs at `optional-skills/health/hermes-companion/`, which is the skill directory only.
-- [skills/hermes-companion/scripts/companion.py](skills/hermes-companion/scripts/companion.py): Stdlib reader. Resolves known places, checks freshness, and prints key/value facts (`place_name`, `still_there`, motion freshness, `movement_reason`, health codes). Flags stale fixes without fresh motion as `still_there: unconfirmed`. Reads rolling history via `--timeline` (summarizing stays, dwell times, transits, and telemetry gaps) or executes in-memory SQL queries via `--sql`. Logs `INFO` / `WARN` / `ERROR` on stderr.
-- [server/mcp_server.py](server/mcp_server.py): Model Context Protocol (MCP) server communicating over stdio (JSON-RPC). Exposes `get_user_location`, `get_user_health`, `get_user_physical_context`, `get_location_history`, `add_known_place`, and `list_known_places`. Reads from both local SQLite cache and iCloud `location_history.json`.
-- [server/client.py](server/client.py): Python helper for direct zero-network reading of location, rolling location history (sorted descending by timestamp, returning the newest waypoints up to `limit`), and Apple Health telemetry from the locally synced iCloud/CloudKit files, falling back to the local SQLite cache.
+- [server/companion_server.py](server/companion_server.py): Zero-dependency Python stdlib HTTP REST daemon implementing `/api/v1/health`, `/api/v1/telemetry/{filename}`, `/api/v1/places`, and `/api/v1/inbox/*` with Bearer auth and atomic writes. Also provides pairing CLI (`pair`) with ASCII QR code.
+- [server/qr.py](server/qr.py): Pure Python / CoreImage ASCII QR code generator with zero third-party dependencies.
+- [server/test_companion_server.py](server/test_companion_server.py): Test suite verifying all daemon REST endpoints, auth validation, and failure cases.
+- [server/places.py](server/places.py): Place recognition. Matches the fix to a named place in the user's places file, checking both iCloud and Direct Connection data directories (`~/.hermes/hermes-companion/data/`).
+- [skills/hermes-companion/SKILL.md](skills/hermes-companion/SKILL.md): The single published Hermes skill (version 1.2.0). Documents both iCloud and Direct Connection daemon/pairing commands.
+- [skills/hermes-companion/scripts/companion.py](skills/hermes-companion/scripts/companion.py): Stdlib reader and CLI. Supports `--timeline`, `--health`, `--inbox`, as well as `--serve` (launch HTTP daemon) and `--pair` (output pairing QR code).
+- [skills/hermes-companion/scripts/companion_server.py](skills/hermes-companion/scripts/companion_server.py) & [skills/hermes-companion/scripts/qr.py](skills/hermes-companion/scripts/qr.py): Synchronized skill copies of the host daemon and QR generator.
+- [server/mcp_server.py](server/mcp_server.py): Model Context Protocol (MCP) server communicating over stdio (JSON-RPC). Exposes `get_user_location`, `get_user_health`, `get_user_physical_context`, `get_location_history`, `add_known_place`, and `list_known_places`. Reads from both local SQLite cache and iCloud/Direct `location_history.json`.
+- [server/client.py](server/client.py): Python helper for direct reading of location, rolling location history, and Apple Health telemetry from locally synced iCloud or Direct Connection data directory (`~/.hermes/hermes-companion/data/`).
 - [server/HERMES_AGENT_PROMPT.md](server/HERMES_AGENT_PROMPT.md): Generic notes for an agent that reads location and health. Personal voice stays in the agent's own profile, not in this repository.
-- [server/test_integration.py](server/test_integration.py): Integration test verifying iCloud/CloudKit file parsing (location + health) and MCP tool execution with place resolution, with no relay or network.
+- [server/test_integration.py](server/test_integration.py): Integration test verifying file parsing (location + health) and MCP tool execution with place resolution, with no relay or network.
 
 ---
 
@@ -229,6 +252,7 @@ xcodebuild -project HermesCompanion.xcodeproj -scheme HermesCompanion -sdk iphon
 
 ### Run Python Integration Tests (Uses isolated temporary DB)
 ```bash
+python3 server/test_companion_server.py
 python3 server/test_integration.py
 python3 skills/hermes-companion/scripts/test_companion.py
 python3 skills/hermes-companion/scripts/test_doctor_mocks.py

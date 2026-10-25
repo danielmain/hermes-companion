@@ -36,6 +36,7 @@ ICLOUD_CONTAINER_PATHS: Final[List[Path]] = [
     Path.home() / "Library/Mobile Documents/com~apple~CloudDocs/Hermes Companion/latest_location.json",
     Path.home() / "Library/Mobile Documents/iCloud~com~hermes~HermesCompanion/Documents/latest_location.json",
     Path.home() / "Library/Mobile Documents/iCloud~com~hermes~HermesCompanion/latest_location.json",
+    Path.home() / ".hermes/hermes-companion/data/latest_location.json",
     Path("/tmp/hermes_latest_location.json"),
 ]
 
@@ -44,6 +45,7 @@ ICLOUD_HEALTH_CONTAINER_PATHS: Final[List[Path]] = [
     Path.home() / "Library/Mobile Documents/com~apple~CloudDocs/Hermes Companion/latest_health.json",
     Path.home() / "Library/Mobile Documents/iCloud~com~hermes~HermesCompanion/Documents/latest_health.json",
     Path.home() / "Library/Mobile Documents/iCloud~com~hermes~HermesCompanion/latest_health.json",
+    Path.home() / ".hermes/hermes-companion/data/latest_health.json",
     Path("/tmp/hermes_latest_health.json"),
 ]
 
@@ -52,6 +54,7 @@ ICLOUD_HISTORY_CONTAINER_PATHS: Final[List[Path]] = [
     Path.home() / "Library/Mobile Documents/com~apple~CloudDocs/Hermes Companion/location_history.json",
     Path.home() / "Library/Mobile Documents/iCloud~com~hermes~HermesCompanion/Documents/location_history.json",
     Path.home() / "Library/Mobile Documents/iCloud~com~hermes~HermesCompanion/location_history.json",
+    Path.home() / ".hermes/hermes-companion/data/location_history.json",
     Path("/tmp/hermes_location_history.json"),
 ]
 

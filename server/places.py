@@ -294,6 +294,11 @@ class PlacesManager:
         if icloud_docs.is_file() and (not self.places_file.is_file() or icloud_docs.resolve() != self.places_file.resolve()):
             files_to_check.append(icloud_docs)
 
+        # Check Direct Connection data directory
+        direct_places = Path.home() / ".hermes/hermes-companion/data/places.json"
+        if direct_places.is_file() and (not self.places_file.is_file() or direct_places.resolve() != self.places_file.resolve()):
+            files_to_check.append(direct_places)
+
         now_str = datetime.now(timezone.utc).isoformat()
         with self._get_connection() as conn:
             for pf in files_to_check:
@@ -359,6 +364,13 @@ class PlacesManager:
         if icloud_docs.parent.is_dir() and icloud_docs.resolve() != self.places_file.resolve():
             try:
                 icloud_docs.write_text(content, encoding="utf-8")
+            except Exception:
+                pass
+
+        direct_places = Path.home() / ".hermes/hermes-companion/data/places.json"
+        if direct_places.parent.is_dir() and direct_places.resolve() != self.places_file.resolve():
+            try:
+                direct_places.write_text(content, encoding="utf-8")
             except Exception:
                 pass
 

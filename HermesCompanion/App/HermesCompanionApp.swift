@@ -9,6 +9,7 @@ struct HermesCompanionApp: App {
     @StateObject private var cloudKitSyncManager = CloudKitSyncManager.shared
     @StateObject private var healthKitManager = HealthKitManager.shared
     @StateObject private var dispatchStore = DispatchStore.shared
+    @StateObject private var syncCoordinator = SyncCoordinator.shared
 
     var body: some Scene {
         WindowGroup {
@@ -18,6 +19,7 @@ struct HermesCompanionApp: App {
                 .environmentObject(cloudKitSyncManager)
                 .environmentObject(healthKitManager)
                 .environmentObject(dispatchStore)
+                .environmentObject(syncCoordinator)
                 .tint(EditorialColor.ink)
         }
     }

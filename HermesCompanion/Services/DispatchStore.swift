@@ -232,6 +232,9 @@ public final class DispatchStore: ObservableObject {
 
     public func loadThreads(force: Bool = false) {
         loadProfiles()
+        if LocationManager.shared.configuration.syncDestination == .direct {
+            pullDirectInboxUpdates()
+        }
         queue.async { [weak self] in
             guard let self = self else { return }
 
@@ -253,6 +256,80 @@ public final class DispatchStore: ObservableObject {
                 case .failure(let error):
                     self.logger.error("Failed to load threads: \(error.localizedDescription)")
                 }
+            }
+        }
+    }
+
+    // MARK: - Direct Connection Inbox Pull
+
+    public func pullDirectInboxUpdates() {
+        guard LocationManager.shared.configuration.syncDestination == .direct else { return }
+
+        DirectHttpSyncTransport.shared.fetchPendingInbox { [weak self] result in
+            guard let self = self else { return }
+            switch result {
+            case .success(let remoteThreads):
+                guard !remoteThreads.isEmpty else { return }
+                self.queue.async {
+                    var modifiedAny = false
+                    for remote in remoteThreads {
+                        let threadFolder = self.localThreadsDirectory.appendingPathComponent(remote.id, isDirectory: true)
+                        let messagesFolder = threadFolder.appendingPathComponent("messages", isDirectory: true)
+                        try? self.fileManager.createDirectory(at: messagesFolder, withIntermediateDirectories: true)
+
+                        if let msgs = remote.messages {
+                            for msg in msgs {
+                                let datePart = msg.timestamp.replacingOccurrences(of: ":", with: "").replacingOccurrences(of: "-", with: "")
+                                let existingFiles = (try? self.fileManager.contentsOfDirectory(at: messagesFolder, includingPropertiesForKeys: nil)) ?? []
+                                if !existingFiles.contains(where: { $0.lastPathComponent.contains(msg.id) }) {
+                                    let seq = self.highestMessageSequenceOnDisk(threadId: remote.id) + 1
+                                    let filename = String(format: "%03d_%@_%@_%@.json", seq, msg.sender, datePart, msg.id)
+                                    let fileURL = messagesFolder.appendingPathComponent(filename)
+                                    if let timestampDate = ISO8601DateFormatter().date(from: msg.timestamp) ?? DispatchFormatters.iso8601Zulu.date(from: msg.timestamp) {
+                                        let messageObj = DispatchMessage(
+                                            id: msg.id,
+                                            threadId: remote.id,
+                                            sender: DispatchSender(rawValue: msg.sender) ?? .agent,
+                                            timestamp: timestampDate,
+                                            body: msg.body
+                                        )
+                                        if let encoded = try? DispatchFormatters.jsonEncoder.encode(messageObj) {
+                                            try? encoded.write(to: fileURL, options: .atomic)
+                                            modifiedAny = true
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        let metaURL = threadFolder.appendingPathComponent("meta.json")
+                        let createdDate = (remote.createdAt.flatMap { DispatchFormatters.iso8601Zulu.date(from: $0) }) ?? Date()
+                        let updatedDate = (remote.updatedAt.flatMap { DispatchFormatters.iso8601Zulu.date(from: $0) }) ?? Date()
+                        let status = DispatchStatus(rawValue: remote.status) ?? .replied
+
+                        let threadObj = DispatchThread(
+                            id: remote.id,
+                            subject: remote.subject,
+                            targetProfile: remote.targetProfile ?? "default",
+                            status: status,
+                            createdAt: createdDate,
+                            updatedAt: updatedDate,
+                            messageCount: remote.messageCount ?? (remote.messages?.count ?? 1),
+                            lastSnippet: remote.lastSnippet ?? ""
+                        )
+
+                        if let metaData = try? DispatchFormatters.jsonEncoder.encode(threadObj) {
+                            try? metaData.write(to: metaURL, options: .atomic)
+                        }
+                    }
+
+                    if modifiedAny {
+                        self.touchSyncMarker(threadId: "direct_pull")
+                        self.loadThreads(force: true)
+                    }
+                }
+            case .failure(let error):
+                self.logger.warning("Failed to pull Direct inbox updates: \(error.localizedDescription)")
             }
         }
     }
@@ -506,6 +583,15 @@ public final class DispatchStore: ObservableObject {
             switch writeResult {
             case .success:
                 touchSyncMarker(threadId: threadId)
+                if LocationManager.shared.configuration.syncDestination == .direct {
+                    DirectHttpSyncTransport.shared.sendInboxMessage(
+                        threadId: threadId,
+                        subject: cleanSubject,
+                        body: cleanBody,
+                        targetProfile: cleanProfile,
+                        messageId: initialMessage.id
+                    ) { _ in }
+                }
                 let updated = (self.threads.filter { $0.id != threadId } + [newThread]).sorted(by: { $0.updatedAt > $1.updatedAt })
                 self.threads = updated
                 self.logger.info("Created dispatch thread '\(cleanSubject)' (\(threadId))")
@@ -590,6 +676,15 @@ public final class DispatchStore: ObservableObject {
             switch writeResult {
             case .success:
                 touchSyncMarker(threadId: threadId)
+                if LocationManager.shared.configuration.syncDestination == .direct && sender == .user {
+                    DirectHttpSyncTransport.shared.sendInboxMessage(
+                        threadId: threadId,
+                        subject: currentThread.subject,
+                        body: cleanBody,
+                        targetProfile: currentThread.targetProfile,
+                        messageId: message.id
+                    ) { _ in }
+                }
                 let updatedList = (self.threads.filter { $0.id != threadId } + [updatedThread]).sorted(by: { $0.updatedAt > $1.updatedAt })
                 self.threads = updatedList
                 self.logger.info("Appended message \(message.id) (seq: \(nextIndex)) to thread \(threadId) by \(sender.rawValue)")

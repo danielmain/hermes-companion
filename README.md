@@ -19,16 +19,18 @@
 
 ---
 
-The phone is in a pocket, often on cellular, often with the app swiped away. Nothing on the internet can open a connection to it. Hermes Companion lets iOS wake the app, writes JSON files into the app's private iCloud container, and lets the Hermes agent on your Mac read the copies macOS has already synced.
+The phone is in a pocket, often on cellular, often with the app swiped away. Nothing on the internet can open a connection to it. Hermes Companion supports two synchronization modes:
+
+1. **Apple iCloud (Default on macOS):** Writes JSON files into the app's private iCloud container, letting the Hermes agent on macOS read the copies macOS has already synced. Zero relay, zero open ports.
+2. **Direct Connection (Linux, Windows, WSL, macOS):** iPhone pushes telemetry and Post letters directly to your Hermes host daemon via HTTP(S) REST endpoints with pre-shared Bearer token authentication.
 
 ```
-iPhone  →  iCloud Drive  →  Mac disk  →  Hermes skill
-                latest_location.json
-                location_history.json
-                latest_health.json
+iPhone  ──(iCloud Drive)──>  Mac disk (~/Library/Mobile Documents/...)  ──>  Hermes skill
+  or
+iPhone  ──(HTTP/S REST)───>  Host daemon (companion.py --serve)         ──>  Hermes skill
 ```
 
-No account with us. No analytics. No open port. The files stay in your Apple ID.
+No account with us. No analytics. Telemetry stays completely private between your phone and your host.
 
 <p align="center">
   <img src="assets/lilith-black.png" alt="" width="720">
@@ -140,15 +142,20 @@ Timestamps in the JSON are UTC (`2026-10-01T09:53:05Z`). The script compares the
 
 ### System Requirements & Pre-Flight Diagnostics (`--doctor`)
 
-Hermes Companion communicates directly through your private iCloud Drive container, requiring no intermediary relay server or network port. This introduces specific system requirements:
+Hermes Companion supports two synchronization modes with different environment requirements:
 
-#### 1. Hard Environmental Requirements
+#### 1. Environmental Requirements by Sync Provider
 - **Target Device (iPhone Only):** Hermes Companion is designed exclusively for iPhone (iOS 17.0+). iPad, Apple Watch (standalone app), and Mac Catalyst are intentionally disabled so telemetry relies on native iPhone motion sensors, CoreLocation wakeups, and watch-synced Apple Health.
-- **macOS Host OS (Strict):** Hermes must run directly on the macOS host under your user account — **not inside Docker, WSL, or a remote Linux VM**. Apple's native CloudDocs daemon (`bird`) mirrors iCloud files strictly into macOS `~/Library/Mobile Documents/`. Containerized environments cannot sync iCloud Drive.
-- **Shared Apple ID & iCloud Drive:** The iPhone and the Mac must be signed into the same Apple ID with iCloud Drive turned on.
-- **First-Run Sequence:** Launch the iPhone app at least once and allow permissions before querying telemetry from the Mac. Apple's cloud daemon provisions the local container on macOS (`~/Library/Mobile Documents/iCloud~com~hermes~HermesCompanion/`) only after the iPhone writes its initial record.
-- **Hermes CLI Discovery & PATH:** When the background LaunchAgent auto-dispatches replies to pending letters in Hermes Post, it invokes the Hermes CLI (`hermes chat ...`). The executable must be discoverable across PATH or standard candidate locations:
-  - Homebrew: `/opt/homebrew/bin/hermes` or `/usr/local/bin/hermes`
+- **Apple iCloud Provider (macOS Host):**
+  - Requires Hermes running directly on macOS under your user account with iCloud Drive active.
+  - iPhone and Mac must be signed into the same Apple ID with iCloud Drive turned on.
+  - Native CloudDocs (`bird`) mirrors files into `~/Library/Mobile Documents/`.
+- **Direct Connection Provider (Linux, Windows, WSL2, macOS & Docker):**
+  - Works on **any operating system** (Linux, Windows, WSL2, Docker containers, or macOS).
+  - Does **not** require iCloud, an Apple ID, or Apple hardware on the host.
+  - iPhone pushes telemetry directly over HTTP(S) REST endpoints to the host daemon (`companion.py --serve`).
+- **Hermes CLI Discovery & PATH:** When auto-dispatching replies to pending letters in Hermes Post, the companion daemon invokes the Hermes CLI (`hermes chat ...`). The executable must be discoverable across PATH or standard candidate locations:
+  - Homebrew / Unix: `/opt/homebrew/bin/hermes`, `/usr/local/bin/hermes`, or `/usr/bin/hermes`
   - Python / Pipx / Cargo: `~/.local/bin/hermes`, `~/.cargo/bin/hermes`, or `~/.hermes/bin/hermes`
   - Hermes macOS Desktop App: `/Applications/Hermes.app/Contents/MacOS/hermes` or `~/Applications/Hermes.app/Contents/MacOS/hermes`
 
@@ -159,14 +166,36 @@ Run the built-in diagnostic tool to test your environment and inspect container 
 python3 skills/hermes-companion/scripts/companion.py --doctor
 ```
 
-The doctor command verifies:
-1. **Operating System:** Validates macOS host and ensures process is not containerized.
-2. **iCloud Drive:** Verifies `~/Library/Mobile Documents` exists and has active TCC permissions.
-3. **App Container:** Confirms the container directory is synced and writable, listing currently synchronized files.
+The doctor command adapts automatically to your environment:
+1. **Operating System & Sync Mode:** Detects macOS (supports both iCloud and Direct Connection) or Linux/Windows/Container (supports Direct Connection).
+2. **iCloud Drive / Storage:** On macOS, verifies `~/Library/Mobile Documents` and TCC permissions. On Linux/Windows, verifies Direct Connection data container.
+3. **App Container:** Confirms data directory is accessible and lists currently synchronized files.
 4. **Hermes CLI Discovery:** Confirms the `hermes` binary is present and executable.
-5. **Background Auto-Responder:** Checks if the LaunchAgent service (`ai.hermes.companion-inbox`) is loaded and running.
+5. **Background Auto-Responder:** Checks LaunchAgent state (macOS) or background service readiness.
 
-If any check fails (such as the container not being provisioned yet, or missing permissions in *System Settings → Privacy & Security → Files and Folders*), actionable remediation steps are printed immediately.
+If any check fails, actionable remediation steps are printed immediately.
+
+### Direct Connection (Linux, Windows, WSL & macOS)
+
+If your Hermes host runs on Linux, Windows, or inside Docker/WSL2 where Apple iCloud Drive is unavailable, you can switch Hermes Companion to **Direct Connection**:
+
+1. **Start the host daemon**:
+   ```bash
+   # Run the direct connection HTTP daemon (defaults to port 8787):
+   python3 skills/hermes-companion/scripts/companion.py --serve --port 8787
+   ```
+2. **Pair with your iPhone**:
+   ```bash
+   # Output endpoint URL, Bearer auth token, and ASCII QR code:
+   python3 skills/hermes-companion/scripts/companion.py --pair
+   ```
+3. **Configure the iPhone App**:
+   - Open **Settings** in the Hermes Companion app.
+   - Switch **Sync Provider** from *Apple iCloud* to *Direct Connection*.
+   - Tap **Scan Pairing QR Code** and point your camera at the terminal to automatically set the Host URL and secure Keychain Bearer Token.
+   - Tap **Test Connection** to verify reachability and latency.
+
+Telemetry (`latest_location.json`, `location_history.json`, `latest_health.json`, `places.json`) and Hermes Post letters will now be pushed directly to `~/.hermes/hermes-companion/data/` on your host machine. If your host is temporarily offline or unreachable, the iOS app stages payloads in its local offline queue and flushes them automatically upon reconnection.
 
 ## Letters from the phone (Hermes Post)
 

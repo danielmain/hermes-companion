@@ -537,9 +537,9 @@ extension LocationManager: CLLocationManagerDelegate {
     private func triggerRecordSync() {
         guard configuration.autoSyncEnabled else { return }
         let records = LocationStore.shared.records
-        CloudKitSyncManager.shared.syncPendingRecords(config: configuration, records: records)
+        SyncCoordinator.shared.syncPendingRecords(config: configuration, records: records, latestRecord: latestRecord)
         if let health = HealthKitManager.shared.latestSnapshot {
-            CloudKitSyncManager.shared.syncHealthRecord(config: configuration, snapshot: health)
+            SyncCoordinator.shared.syncHealthRecord(config: configuration, snapshot: health)
         }
     }
 

@@ -33,13 +33,30 @@ private struct TransmissionSettingsSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: EditorialSpacing.medium) {
-            EditorialSectionHeader(index: "#01", title: "TRANSMISSION", trailing: "PRIVATE PIPELINE")
+            EditorialSectionHeader(index: "#01", title: "TRANSMISSION", trailing: "PIPELINE")
 
-            SettingsValueRow(label: "SYNC PIPELINE", value: "Apple iCloud", systemImage: "icloud")
+            VStack(alignment: .leading, spacing: EditorialSpacing.small) {
+                Text("SYNC PROVIDER")
+                    .font(.editorialUtilitySmall)
+                    .foregroundStyle(EditorialColor.secondaryInk)
+
+                Picker("Sync Provider", selection: $locationManager.configuration.syncDestination) {
+                    ForEach(SyncDestination.allCases) { dest in
+                        Text(dest.rawValue).tag(dest)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                Text(locationManager.configuration.syncDestination.subtitle)
+                    .font(.footnote)
+                    .foregroundStyle(EditorialColor.secondaryInk)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             EditorialRule()
             EditorialToggleRow(
                 title: "Auto-sync location updates",
-                detail: "File new records in the private CloudKit archive.",
+                detail: "Transmit updates to your chosen sync provider.",
                 isOn: $locationManager.configuration.autoSyncEnabled
             )
             EditorialRule()
@@ -56,12 +73,25 @@ private struct TransmissionSettingsSection: View {
 private struct CloudSettingsSection: View {
     @EnvironmentObject private var locationManager: LocationManager
     @EnvironmentObject private var cloudKitSyncManager: CloudKitSyncManager
+    @EnvironmentObject private var syncCoordinator: SyncCoordinator
 
     @State private var pingMessage: String?
     @State private var pingSucceeded = false
     @State private var isPinging = false
 
+    @State private var bearerTokenText: String = ""
+    @State private var isShowingQRScanner = false
+
     var body: some View {
+        if locationManager.configuration.syncDestination == .cloudKit {
+            cloudKitSection
+        } else {
+            directConnectionSection
+        }
+    }
+
+    // MARK: - iCloud Pipeline
+    private var cloudKitSection: some View {
         VStack(alignment: .leading, spacing: EditorialSpacing.medium) {
             EditorialSectionHeader(index: "#02", title: "ARCHIVE", trailing: "CLOUDKIT")
 
@@ -119,11 +149,130 @@ private struct CloudSettingsSection: View {
         .editorialPanel(cutCorner: true)
     }
 
+    // MARK: - Direct Connection Pipeline
+    private var directConnectionSection: some View {
+        VStack(alignment: .leading, spacing: EditorialSpacing.medium) {
+            EditorialSectionHeader(index: "#02", title: "DIRECT LINK", trailing: "HTTP REST")
+
+            SettingsValueRow(
+                label: "HOST STATUS",
+                value: syncCoordinator.lastSyncStatus,
+                systemImage: syncCoordinator.directLatencyMs != nil ? "network" : "network.badge.shield.half.filled"
+            )
+
+            EditorialRule()
+
+            EditorialField(
+                label: "HOST ENDPOINT URL",
+                prompt: TrackingConfiguration.defaultDirectHostEndpoint,
+                text: $locationManager.configuration.directHostEndpoint
+            )
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .keyboardType(.URL)
+
+            EditorialRule()
+
+            VStack(alignment: .leading, spacing: EditorialSpacing.xSmall) {
+                Text("BEARER TOKEN (KEYCHAIN)")
+                    .font(.editorialUtilitySmall)
+                    .foregroundStyle(EditorialColor.secondaryInk)
+
+                SecureField("hermes_sec_...", text: $bearerTokenText)
+                    .font(.body)
+                    .foregroundStyle(EditorialColor.ink)
+                    .padding(EditorialSpacing.compact)
+                    .background(EditorialColor.surface)
+                    .overlay {
+                        Rectangle().stroke(EditorialColor.hairline, lineWidth: EditorialBorder.hairline)
+                    }
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .onChange(of: bearerTokenText) { _, newVal in
+                        KeychainManager.shared.saveToken(newVal)
+                    }
+            }
+
+            Button {
+                isShowingQRScanner = true
+            } label: {
+                Label("Scan Pairing QR Code", systemImage: "qrcode.viewfinder")
+            }
+            .buttonStyle(EditorialButtonStyle(isPrimary: false))
+
+            EditorialRule()
+
+            if isPinging {
+                EditorialLoadingState(message: "TESTING DIRECT LINK")
+            } else if let pingMessage {
+                if pingSucceeded {
+                    HStack(alignment: .top, spacing: EditorialSpacing.compact) {
+                        Image(systemName: "checkmark.square")
+                            .accessibilityHidden(true)
+                        Text(pingMessage)
+                            .font(.body)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .editorialPanel()
+                    .accessibilityElement(children: .combine)
+                } else {
+                    EditorialErrorState(message: pingMessage)
+                }
+            }
+
+            Button(action: runDirectConnectionTest) {
+                Label("Test Connection", systemImage: "network")
+            }
+            .buttonStyle(EditorialButtonStyle(isPrimary: true))
+            .disabled(isPinging || locationManager.configuration.directHostEndpoint.trimmingCharacters(in: .whitespaces).isEmpty)
+
+            if syncCoordinator.directOfflineQueueCount > 0 {
+                HStack(spacing: EditorialSpacing.compact) {
+                    Image(systemName: "tray.full")
+                        .foregroundStyle(EditorialColor.secondaryInk)
+                    Text("PENDING OFFLINE QUEUE: \(syncCoordinator.directOfflineQueueCount) PAYLOAD(S)")
+                        .font(.editorialUtilitySmall)
+                        .foregroundStyle(EditorialColor.secondaryInk)
+                }
+            }
+
+            if let lastSync = syncCoordinator.lastSyncDate {
+                Text("LAST TRANSMITTED / \(lastSync.formatted(.dateTime.year().month().day().hour().minute()))")
+                    .font(.editorialUtilitySmall)
+                    .foregroundStyle(EditorialColor.secondaryInk)
+            }
+        }
+        .editorialPanel(cutCorner: true)
+        .onAppear {
+            bearerTokenText = KeychainManager.shared.getToken() ?? ""
+        }
+        .sheet(isPresented: $isShowingQRScanner) {
+            QRCodeScannerView { scannedEndpoint, scannedToken in
+                locationManager.configuration.directHostEndpoint = scannedEndpoint
+                bearerTokenText = scannedToken
+                KeychainManager.shared.saveToken(scannedToken)
+                runDirectConnectionTest()
+            }
+        }
+    }
+
     private func runCloudKitTest() {
         isPinging = true
         pingMessage = nil
 
         cloudKitSyncManager.sendTestPing(config: locationManager.configuration) { success, message in
+            isPinging = false
+            pingSucceeded = success
+            pingMessage = message
+            UINotificationFeedbackGenerator().notificationOccurred(success ? .success : .error)
+        }
+    }
+
+    private func runDirectConnectionTest() {
+        isPinging = true
+        pingMessage = nil
+
+        DirectHttpSyncTransport.shared.testConnection(config: locationManager.configuration) { success, message in
             isPinging = false
             pingSucceeded = success
             pingMessage = message

@@ -100,10 +100,7 @@ public final class BackgroundTaskManager {
             let config = LocationManager.shared.configuration
             let records = LocationStore.shared.records
             if config.autoSyncEnabled {
-                CloudKitSyncManager.shared.syncPendingRecords(config: config, records: records)
-                if let health = HealthKitManager.shared.latestSnapshot {
-                    CloudKitSyncManager.shared.syncHealthRecord(config: config, snapshot: health)
-                }
+                SyncCoordinator.shared.performBackgroundSync(config: config)
             }
             if HealthKitManager.shared.authorizationStatus == .accessRequested {
                 HealthKitManager.shared.refreshHealthSnapshot { _ in }
