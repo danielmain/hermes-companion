@@ -39,7 +39,13 @@ For hosts without access to Apple's private iCloud Drive (e.g. Linux servers, Wi
   - `GET /api/v1/places` & `PUT /api/v1/places`: Bidirectional synchronization of user-defined places and geofences.
   - `GET /api/v1/inbox/pending`: Returns pending agent reply letters for the iOS app.
   - `POST /api/v1/inbox/messages`: Ingests new user letters/memos sent from the iOS Post tab.
-- **Pairing Assistant (`companion.py --pair`):** Outputs the server URL, Bearer token, and renders an ASCII QR code in the terminal with zero third-party dependencies (using native CoreImage on macOS and a pure Python fallback on Linux/Windows).
+- **Pairing Assistant & QR Export (`companion.py --pair`):**
+  - Outputs the server URL, Bearer token, and renders an ASCII QR code in the terminal with zero third-party dependencies (using native CoreImage on macOS, qrencode if available, and a pure-Python fallback on Linux/Windows).
+  - `--qr-file PATH`: Exports scannable pairing QR code to a file (`.png` or `.svg`) with permission mode `0600` (`-rw-------`), printing `Pairing file: <abspath>`.
+  - PNG export uses `qrencode -o PATH -l L -m 4` when `shutil.which("qrencode")` is present, or falls back to a dependency-free stdlib PNG writer (`zlib` + `struct`) from the existing `QRCode` matrix.
+  - SVG export generates clean, dependency-free SVG with a 4-module quiet zone, parseable back to the matrix with `parse_qr_svg()` and decodable via `decode_qr()`.
+  - `--endpoint URL` & `HERMES_COMPANION_PUBLIC_URL`: Configures public HTTPS reverse proxy pairing endpoints (e.g. `https://<public-host>`) overriding local IP/port.
+  - Zero-Friction Agent Onboarding: The agent handles "connect my iPhone" (or "pair the companion app", "sync my phone") in one turn without asking, running `companion.py --pair --qr-file /tmp/hermes-companion-pair.png` and replying with `MEDIA:/tmp/hermes-companion-pair.png`.
 - **Secure Token Storage & ATS:** Auth tokens are stored securely in the iOS Keychain (`KeychainManager`). App Transport Security (`NSAppTransportSecurity`) is configured to permit arbitrary local network and LAN connections.
 - **Offline Reliability Queue:** When the host daemon is temporarily unreachable or the iPhone is offline, unsent telemetry payloads are staged in `Application Support/DirectSyncQueue/` and automatically flushed on subsequent background wakeups or network restoration.
 

@@ -38,7 +38,7 @@
       <div class="topbar-meta">
         <span>LEGAL POLICY • REF. HC-PRIV-2026</span>
         <span>EFFECTIVE: OCTOBER 1, 2026</span>
-        <span>ZERO RELAY • NO VPN / TAILSCALE • LOCAL FIRST</span>
+        <span>ZERO RELAY • NO VPN / TAILSCALE • ICLOUD &amp; DIRECT SYNC</span>
       </div>
 
       <nav class="topbar-nav" aria-label="Privacy Navigation">
@@ -92,7 +92,7 @@
           </div>
           <h2 class="editorial-section-title">Data Collection &amp; Use</h2>
           <p class="editorial-lead">
-            All data processed by Hermes Companion remains strictly on your personal devices and inside your personal Apple ID iCloud sandbox.
+            All data processed by Hermes Companion remains strictly on your personal devices, inside your personal Apple ID iCloud sandbox, or directly within your self-hosted host directory.
           </p>
         </div>
 
@@ -109,7 +109,7 @@
                 <strong>Purpose:</strong> The app utilizes Apple CoreLocation (GPS, cell-tower significant changes, and dynamic perimeter geofences) to provide your local Hermes AI agent with situational context (e.g., whether you are at Home, at Work, or In Transit).
               </p>
               <p style="margin-top: 12px;">
-                <strong>Storage:</strong> Coordinates are written directly to your private iCloud container (<code>iCloud~com~hermes~HermesCompanion</code>). They are never transmitted to the developers or third-party servers.
+                <strong>Storage:</strong> Coordinates are written directly to your private iCloud container (<code>iCloud~com~hermes~HermesCompanion</code>) or transmitted via HTTP(S) directly to your self-hosted host daemon with pre-shared Bearer token authentication. They are never transmitted to the developers or third-party servers.
               </p>
             </div>
           </div>
@@ -160,7 +160,7 @@
                 <strong>Purpose:</strong> Asynchronous letters, inquiries, and briefings exchanged with your Hermes agent profiles.
               </p>
               <p style="margin-top: 12px;">
-                <strong>Sovereign Custody:</strong> Letters reside exclusively in your personal iCloud container (<code>threads/</code> and <code>archive/</code>). There are no relay servers, no external chat databases, and no intermediary cloud services. You can permanently delete individual threads at any time.
+                <strong>Sovereign Custody:</strong> Letters reside exclusively in your personal iCloud container or your self-hosted host data directory (<code>threads/</code> and <code>archive/</code>). There are no relay servers, no external chat databases, and no intermediary cloud services. You can permanently delete individual threads at any time.
               </p>
             </div>
           </div>
@@ -200,11 +200,11 @@
           <div class="editorial-card">
             <div class="editorial-card-header">
               <span class="editorial-utility">STORAGE</span>
-              <span class="token faint">APPLE ICLOUD</span>
+              <span class="token faint">ICLOUD &amp; DIRECT HOST</span>
             </div>
-            <div class="editorial-card-title">Encrypted by Apple</div>
+            <div class="editorial-card-title">Sovereign Encryption &amp; Storage</div>
             <p class="editorial-body" style="font-size: 0.9375rem;">
-              Files are stored in Apple's iCloud Drive infrastructure, protected by your Apple ID credentials and Apple's security protocols.
+              Files are stored in Apple's iCloud Drive infrastructure or within your private self-hosted host directory (<code>~/.hermes/hermes-companion/data/</code>), protected by your Apple ID credentials or pre-shared Bearer tokens in iOS Keychain.
             </p>
           </div>
 

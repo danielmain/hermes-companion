@@ -87,7 +87,7 @@
 
             <p class="editorial-lead">
               Your agent knows your mind. Now she understands your day. Live place, physical motion, sleep quality,
-              workout recovery, and a private asynchronous postbox — synced directly to your AI companion through your own private iCloud with zero relay servers, no open ports, and no VPN or Tailscale tunnels.
+              workout recovery, and a private asynchronous postbox — synced directly to your AI companion through your own private iCloud or zero-cloud Direct Connection with no open ports and no VPN or Tailscale tunnels.
             </p>
 
             <div class="hero-actions">
@@ -140,9 +140,9 @@
             <div class="spec-desc">Asynchronous letters &amp; memos to your agent</div>
           </div>
           <div class="spec-cell">
-            <div class="spec-label">04 / ZERO INFRASTRUCTURE</div>
-            <div class="spec-val">NO VPN / TAILSCALE</div>
-            <div class="spec-desc">No tunnels, open ports, or relays. Pure iCloud</div>
+            <div class="spec-label">04 / DUAL SYNC MODES</div>
+            <div class="spec-val">ICLOUD &amp; DIRECT</div>
+            <div class="spec-desc">Apple iCloud or direct HTTP daemon with token auth</div>
           </div>
         </div>
       </div>
@@ -476,6 +476,39 @@
           </p>
         </div>
 
+        <div class="cards-grid-3" style="margin-bottom: var(--space-24);">
+          <div class="editorial-card">
+            <div class="editorial-card-header">
+              <span class="editorial-utility">STEP 01</span>
+              <span class="token faint">ONE-LINE SETUP</span>
+            </div>
+            <div class="editorial-card-title">Install the Skill</div>
+            <p class="editorial-body" style="font-size: 0.875rem;">
+              Run <code>hermes skills install --force danielmain/hermes-companion/skills/hermes-companion</code> on your host machine.
+            </p>
+          </div>
+          <div class="editorial-card">
+            <div class="editorial-card-header">
+              <span class="editorial-utility">STEP 02</span>
+              <span class="token faint">ZERO-FRICTION</span>
+            </div>
+            <div class="editorial-card-title">"Connect My iPhone"</div>
+            <p class="editorial-body" style="font-size: 0.875rem;">
+              Tell your agent in chat (Telegram, Discord, Web): <em>"Connect my iPhone"</em>. She returns a scannable QR photo in one turn.
+            </p>
+          </div>
+          <div class="editorial-card">
+            <div class="editorial-card-header">
+              <span class="editorial-utility">STEP 03</span>
+              <span class="token faint">CAMERA SCAN</span>
+            </div>
+            <div class="editorial-card-title">Scan &amp; Sync</div>
+            <p class="editorial-body" style="font-size: 0.875rem;">
+              In the app, switch <em>Settings &rarr; Sync Provider</em> to Direct Connection and scan the QR code right off your screen.
+            </p>
+          </div>
+        </div>
+
         <div class="terminal-block">
           <div class="terminal-header">
             <span class="terminal-title">TERMINAL // INSTALL SKILL</span>
@@ -485,6 +518,23 @@
             <pre
               id="code-install"><span class="cli-comment"># Use --force to authorize the LaunchAgent background responder:</span>
 <span class="cli-prompt">$ </span>hermes skills install --force danielmain/hermes-companion/skills/hermes-companion</pre>
+          </div>
+        </div>
+
+        <div class="terminal-block" style="margin-top: var(--space-16);">
+          <div class="terminal-header">
+            <span class="terminal-title">PAIRING ASSISTANT // DIRECT CONNECTION &amp; QR EXPORT</span>
+            <button type="button" class="terminal-copy-btn" data-copy-target="code-pair" data-copy-cmd="python3 ~/.hermes/skills/hermes-companion/scripts/companion.py --pair --qr-file /tmp/hermes-companion-pair.png">[ COPY ]</button>
+          </div>
+          <div class="terminal-content">
+            <pre id="code-pair"><span class="cli-comment"># Generate pairing QR image file and terminal code:</span>
+<span class="cli-prompt">$ </span>python3 ~/.hermes/skills/hermes-companion/scripts/companion.py --pair --qr-file /tmp/hermes-companion-pair.png
+
+<span class="cli-comment"># Behind an HTTPS reverse proxy (HTTPS on 443):</span>
+<span class="cli-prompt">$ </span>python3 ~/.hermes/skills/hermes-companion/scripts/companion.py --pair --endpoint https://hermescompanion.funktional.dev --qr-file /tmp/hermes-companion-pair.png
+
+<span class="cli-comment"># Start the HTTP sync daemon (Linux, Windows, WSL, macOS):</span>
+<span class="cli-prompt">$ </span>python3 ~/.hermes/skills/hermes-companion/scripts/companion.py --serve --port 8787</pre>
           </div>
         </div>
 

@@ -38,7 +38,7 @@
       <div class="topbar-meta">
         <span>ARCHIVAL HELPDESK • REF. HC-SUP-2026</span>
         <span>STATUS: ACTIVE SUPPORT DESK</span>
-        <span>NO VPN / TAILSCALE • PRIVATE ICLOUD</span>
+        <span>NO VPN / TAILSCALE • ICLOUD &amp; DIRECT CONNECTION</span>
       </div>
 
       <nav class="topbar-nav" aria-label="Support Navigation">
@@ -82,7 +82,7 @@
             </h1>
 
             <p class="editorial-lead">
-              Resolution procedures, configuration verification, and troubleshooting trees for Hermes Companion iOS and the Hermes skill on macOS.
+              Resolution procedures, configuration verification, and troubleshooting trees for Hermes Companion iOS and the Hermes skill on macOS, Linux, and Windows.
             </p>
 
             <div class="hero-actions">
@@ -111,12 +111,12 @@
                 Archival Pipeline Readout
               </div>
               <p style="font-size: 0.875rem; color: var(--secondary-ink); line-height: 1.6; margin-bottom: var(--space-16);">
-                Because Hermes Companion uses your native Apple iCloud Drive sandbox, there are no external servers to experience outages. If iCloud Drive is operational on Apple's System Status, synchronization is functional.
+                Hermes Companion supports dual synchronization modes: Apple iCloud Drive (zero relay servers) and Direct Connection (self-hosted HTTP daemon with pre-shared Bearer token authentication). There are zero third-party clouds or relays to experience outages.
               </p>
               <div class="editorial-rule"></div>
               <div style="display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-12); font-family: var(--font-mono); font-size: 0.6875rem;">
                 <span>SYNC PROTOCOL</span>
-                <span class="token faint">UBIQUITY CONTAINER</span>
+                <span class="token faint">ICLOUD &amp; DIRECT REST</span>
               </div>
             </div>
           </div>
@@ -190,9 +190,9 @@
                 <span class="editorial-utility">STEP 05</span>
                 <span class="token inverted">HOST OS</span>
               </div>
-              <div class="editorial-card-title">Native macOS Host Required</div>
+              <div class="editorial-card-title">macOS for iCloud / Any OS for Direct Sync</div>
               <div class="editorial-card-body">
-                The Hermes CLI and skill must execute on your native Mac workstation. Containerized environments (such as Docker, WSL, or remote Linux cloud servers) do not have access to Apple's local CloudDocs sync directory (<code>~/Library/Mobile Documents</code>).
+                When using Apple iCloud, the host must be native macOS where CloudDocs mirrors files to <code>~/Library/Mobile Documents</code>. When using Direct Connection, Hermes runs on any OS (Linux, Windows, WSL, Docker, macOS) via the built-in HTTP daemon (<code>companion.py --serve</code>).
               </div>
             </div>
           </div>
@@ -408,8 +408,27 @@ python3 ~/.hermes/skills/hermes-companion/scripts/companion.py --service-status<
                 Other companion or self-hosted agent tools require persistent VPN profiles on iOS (Tailscale, WireGuard), open router ports, or third-party reverse tunnels (Cloudflare, ngrok). Those tunnels prevent the iPhone from deep sleeping, drain battery rapidly in your pocket, drop sockets when switching between Wi-Fi and 5G cellular, and create firewall headaches.
               </p>
               <p style="margin-top: 8px;">
-                Hermes Companion requires <strong>zero tunnels, zero VPNs, and zero open ports</strong>. The iOS app writes files to its local flash sandbox, and Apple's native CloudDocs system synchronizes them to your Mac via your personal Apple ID. It works seamlessly behind carrier CGNAT, strict guest Wi-Fi firewalls, and while traveling.
+                With <strong>Apple iCloud mode</strong>, Hermes Companion requires <strong>zero tunnels, zero VPNs, and zero open ports</strong>. The iOS app writes files to its local flash sandbox, and Apple's native CloudDocs system synchronizes them to your Mac via your personal Apple ID. With <strong>Direct Connection mode</strong>, the phone talks directly to your host over local LAN or standard HTTPS reverse proxy with zero persistent tunnels required.
               </p>
+            </div>
+          </div>
+
+          <!-- Item 10 -->
+          <div class="faq-item">
+            <button type="button" class="faq-trigger">
+              <span>10. How do I configure Direct Connection and zero-friction pairing ("Connect my iPhone")?</span>
+              <span class="faq-symbol">+</span>
+            </button>
+            <div class="faq-content">
+              <p>
+                Direct Connection allows you to run Hermes on Linux, Windows, WSL, Docker, or macOS without relying on Apple iCloud:
+              </p>
+              <ol style="margin-left: 20px; margin-top: 8px; display: flex; flex-direction: column; gap: 8px;">
+                <li><strong>Zero-Friction Chat Pairing:</strong> Simply tell your agent in chat (Telegram, Discord, Web): <em>"Connect my iPhone"</em> (or <em>"pair the companion app"</em>). The agent generates a pairing QR code in one turn and replies with the image.</li>
+                <li><strong>Terminal Pairing Command:</strong> Run <code>python3 ~/.hermes/skills/hermes-companion/scripts/companion.py --pair --qr-file /tmp/hermes-companion-pair.png</code> (add <code>--endpoint https://&lt;public-host&gt;</code> if using a reverse proxy).</li>
+                <li><strong>Scan in App:</strong> In Hermes Companion, navigate to <em>Settings &rarr; Sync Provider &rarr; Direct Connection &rarr; Scan Pairing QR Code</em> and point your camera at the screen. The host URL and secure Keychain Bearer token configure automatically.</li>
+                <li><strong>Start Host Daemon:</strong> Run <code>python3 ~/.hermes/skills/hermes-companion/scripts/companion.py --serve --port 8787</code> on your host machine. Telemetry and Post letters sync to <code>~/.hermes/hermes-companion/data/</code>.</li>
+              </ol>
             </div>
           </div>
         </div>
@@ -443,6 +462,7 @@ python3 ~/.hermes/skills/hermes-companion/scripts/companion.py --service-status<
             <button type="button" class="diag-tab" data-diag-target="diag-3">3. HEALTH SNAPSHOT</button>
             <button type="button" class="diag-tab" data-diag-target="diag-4">4. RAW JSON INSPECTION</button>
             <button type="button" class="diag-tab" data-diag-target="diag-5">5. HERMES POST INBOX</button>
+            <button type="button" class="diag-tab" data-diag-target="diag-6">6. DIRECT PAIRING &amp; DAEMON</button>
           </div>
 
           <div class="diag-body">
@@ -585,6 +605,37 @@ Status:  pending_agent
 Subject: Morning Briefing
 Profile: work
 Memos:   3 (last updated: 5m ago)</pre>
+                </div>
+              </div>
+            </div>
+
+            <!-- Screen 6 -->
+            <div id="diag-6" class="diag-screen" style="display: none;">
+              <div class="editorial-utility" style="margin-bottom: var(--space-8);">GENERATE PAIRING QR CODE &amp; EXPORT IMAGE:</div>
+              <div class="terminal-block">
+                <div class="terminal-content">
+<pre><span class="cli-prompt">$ </span>python3 ~/.hermes/skills/hermes-companion/scripts/companion.py --pair --qr-file /tmp/hermes-companion-pair.png</pre>
+                </div>
+              </div>
+              <div class="editorial-utility" style="margin: var(--space-16) 0 var(--space-8);">EXPECTED PAIRING ASSISTANT OUTPUT:</div>
+              <div class="terminal-block">
+                <div class="terminal-content" style="color: var(--ink);">
+<pre>Hermes Companion Direct Connection Pairing:
+============================================================
+Server URL:   http://192.168.1.150:8787
+Auth Token:   hc_live_b74e19830f2c4a9386d9e03c1584df21
+Pairing file: /tmp/hermes-companion-pair.png
+
+QR Payload:   hermescompanion://pair?url=http%3A%2F%2F192.168.1.150%3A8787&amp;token=hc_live_b74e19830f2c4a9386d9e03c1584df21
+
+Scan the pairing QR image or the terminal code in Settings -&gt; Sync Provider -&gt; Direct Connection.
+============================================================</pre>
+                </div>
+              </div>
+              <div class="editorial-utility" style="margin: var(--space-16) 0 var(--space-8);">START DIRECT HTTP DAEMON (LINUX, WINDOWS, WSL, MACOS):</div>
+              <div class="terminal-block">
+                <div class="terminal-content">
+<pre><span class="cli-prompt">$ </span>python3 ~/.hermes/skills/hermes-companion/scripts/companion.py --serve --port 8787</pre>
                 </div>
               </div>
             </div>

@@ -150,7 +150,7 @@ The in-app Archive (accessible from the Today tab) indexes every recorded fix an
 Confirm the Mac can see a fix:
 
 ```bash
-python3 skills/hermes-companion/scripts/companion.py
+python3 ~/.hermes/skills/hermes-companion/scripts/companion.py
 ```
 
 `source:` should be a file under `~/Library/Mobile Documents/iCloud~com~hermes~HermesCompanion/Documents/`.
@@ -180,7 +180,7 @@ Hermes Companion supports two synchronization modes with different environment r
 Run the built-in diagnostic tool to test your environment and inspect container state:
 
 ```bash
-python3 skills/hermes-companion/scripts/companion.py --doctor
+python3 ~/.hermes/skills/hermes-companion/scripts/companion.py --doctor
 ```
 
 The doctor command adapts automatically to your environment:
@@ -199,17 +199,20 @@ If your Hermes host runs on Linux, Windows, or inside Docker/WSL2 where Apple iC
 1. **Start the host daemon**:
    ```bash
    # Run the direct connection HTTP daemon (defaults to port 8787):
-   python3 skills/hermes-companion/scripts/companion.py --serve --port 8787
+   python3 ~/.hermes/skills/hermes-companion/scripts/companion.py --serve --port 8787
    ```
 2. **Pair with your iPhone**:
    ```bash
-   # Output endpoint URL, Bearer auth token, and ASCII QR code:
-   python3 skills/hermes-companion/scripts/companion.py --pair
+   # Output endpoint URL, Bearer auth token, terminal QR code, and export QR image:
+   python3 ~/.hermes/skills/hermes-companion/scripts/companion.py --pair --qr-file /tmp/hermes-companion-pair.png
+
+   # Behind an HTTPS reverse proxy (e.g. https://<public-host>):
+   python3 ~/.hermes/skills/hermes-companion/scripts/companion.py --pair --endpoint https://<public-host> --qr-file /tmp/hermes-companion-pair.png
    ```
 3. **Configure the iPhone App**:
    - Open **Settings** in the Hermes Companion app.
    - Switch **Sync Provider** from *Apple iCloud* to *Direct Connection*.
-   - Tap **Scan Pairing QR Code** and point your camera at the terminal to automatically set the Host URL and secure Keychain Bearer Token.
+   - Tap **Scan Pairing QR Code** and scan the QR code from your screen (or chat) to automatically configure the Host URL and secure Keychain Bearer Token.
    - Tap **Test Connection** to verify reachability and latency.
 
 Telemetry (`latest_location.json`, `location_history.json`, `latest_health.json`, `places.json`) and Hermes Post letters will now be pushed directly to `~/.hermes/hermes-companion/data/` on your host machine. If your host is temporarily offline or unreachable, the iOS app stages payloads in its local offline queue and flushes them automatically upon reconnection.
@@ -219,9 +222,9 @@ Telemetry (`latest_location.json`, `location_history.json`, `latest_health.json`
 Letters written in the app's Post tab land in `Documents/threads/<thread_id>/` as an immutable `meta.json` plus numbered letter files. The Mac answers them on its own: the LaunchAgent `ai.hermes.companion-inbox` keeps `companion.py --daemon` resident and sweeps the container every 5 seconds.
 
 ```bash
-python3 skills/hermes-companion/scripts/companion.py --install-service
-python3 skills/hermes-companion/scripts/companion.py --service-status
-python3 skills/hermes-companion/scripts/companion.py --dispatch-pending   # one sweep, foreground
+python3 ~/.hermes/skills/hermes-companion/scripts/companion.py --install-service
+python3 ~/.hermes/skills/hermes-companion/scripts/companion.py --service-status
+python3 ~/.hermes/skills/hermes-companion/scripts/companion.py --dispatch-pending   # one sweep, foreground
 ```
 
 The agent is resident rather than a one-shot timer on purpose: a job that exits in milliseconds is throttled by `launchd`, which is what made answers arrive minutes late. If the agent cannot answer a letter, the thread is marked `failed` with `last_error` and `failed_at`, and the app shows that reason with a Retry that puts the letter back in the queue. Logs are timestamped in `~/.hermes/logs/companion-inbox.error.log`.
