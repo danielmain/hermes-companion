@@ -491,10 +491,10 @@
         <div class="terminal-block" style="margin-top: var(--space-16);">
           <div class="terminal-header">
             <span class="terminal-title">RUN PRE-FLIGHT DOCTOR // VERIFY ICLOUD &amp; CLI</span>
-            <button type="button" class="terminal-copy-btn" data-copy-target="code-doctor" data-copy-cmd="python3 ${HERMES_SKILL_DIR:-$HOME/.hermes/skills/hermes-companion}/scripts/companion.py --doctor">[ COPY ]</button>
+            <button type="button" class="terminal-copy-btn" data-copy-target="code-doctor" data-copy-cmd="python3 ~/.hermes/skills/hermes-companion/scripts/companion.py --doctor">[ COPY ]</button>
           </div>
           <div class="terminal-content">
-            <pre id="code-doctor"><span class="cli-prompt">$ </span>python3 ${HERMES_SKILL_DIR:-$HOME/.hermes/skills/hermes-companion}/scripts/companion.py --doctor
+            <pre id="code-doctor"><span class="cli-prompt">$ </span>python3 ~/.hermes/skills/hermes-companion/scripts/companion.py --doctor
 
 <span class="cli-comment"># Result:</span>
 [PASS]  Operating System       macOS (native host)
@@ -509,10 +509,10 @@ Diagnostic summary: All critical checks passed.</pre>
         <div class="terminal-block" style="margin-top: var(--space-16);">
           <div class="terminal-header">
             <span class="terminal-title">QUERY YOUR AGENT PHYSICAL CONTEXT</span>
-            <button type="button" class="terminal-copy-btn" data-copy-target="code-run" data-copy-cmd="python3 ${HERMES_SKILL_DIR:-$HOME/.hermes/skills/hermes-companion}/scripts/companion.py --context">[ COPY ]</button>
+            <button type="button" class="terminal-copy-btn" data-copy-target="code-run" data-copy-cmd="python3 ~/.hermes/skills/hermes-companion/scripts/companion.py --context">[ COPY ]</button>
           </div>
           <div class="terminal-content">
-            <pre id="code-run"><span class="cli-prompt">$ </span>python3 ${HERMES_SKILL_DIR:-$HOME/.hermes/skills/hermes-companion}/scripts/companion.py --context
+            <pre id="code-run"><span class="cli-prompt">$ </span>python3 ~/.hermes/skills/hermes-companion/scripts/companion.py --context
 
 <span class="cli-comment"># Result:</span>
 place: Home
@@ -525,14 +525,14 @@ last_workout: Running</pre>
         <div class="terminal-block" style="margin-top: var(--space-16);">
           <div class="terminal-header">
             <span class="terminal-title">HERMES POST // LETTERS &amp; BACKGROUND DAEMON</span>
-            <button type="button" class="terminal-copy-btn" data-copy-target="code-post" data-copy-cmd="python3 ${HERMES_SKILL_DIR:-$HOME/.hermes/skills/hermes-companion}/scripts/companion.py --install-service">[ COPY ]</button>
+            <button type="button" class="terminal-copy-btn" data-copy-target="code-post" data-copy-cmd="python3 ~/.hermes/skills/hermes-companion/scripts/companion.py --install-service">[ COPY ]</button>
           </div>
           <div class="terminal-content">
             <pre id="code-post"><span class="cli-comment"># Install resident LaunchAgent to auto-reply to pending letters:</span>
-<span class="cli-prompt">$ </span>python3 ${HERMES_SKILL_DIR:-$HOME/.hermes/skills/hermes-companion}/scripts/companion.py --install-service
+<span class="cli-prompt">$ </span>python3 ~/.hermes/skills/hermes-companion/scripts/companion.py --install-service
 
 <span class="cli-comment"># Query pending letters and inbox threads:</span>
-<span class="cli-prompt">$ </span>python3 ${HERMES_SKILL_DIR:-$HOME/.hermes/skills/hermes-companion}/scripts/companion.py --inbox --pending
+<span class="cli-prompt">$ </span>python3 ~/.hermes/skills/hermes-companion/scripts/companion.py --inbox --pending
 
 <span class="cli-comment"># Result:</span>
 [INBOX] 1 pending letter awaiting reply:

@@ -35,13 +35,13 @@ from datetime import datetime, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 from urllib.parse import parse_qs, urlparse
 
 try:
-    from server.qr import QRCode, generate_qr_ascii
+    from server.qr import QRCode, generate_qr_ascii, write_qr_file
 except ImportError:
-    from qr import QRCode, generate_qr_ascii  # type: ignore[no-redef]
+    from qr import QRCode, generate_qr_ascii, write_qr_file  # type: ignore[no-redef]
 
 DEFAULT_PORT: int = 8787
 DEFAULT_HOST: str = "0.0.0.0"
@@ -608,6 +608,7 @@ def run_pairing_assistant(
     token: Optional[str] = None,
     host_override: Optional[str] = None,
     endpoint: Optional[str] = None,
+    qr_file: Optional[Union[str, Path]] = None,
 ) -> Dict[str, str]:
     """Output pairing payload and ASCII QR code for terminal scanning."""
     auth_token = get_or_create_token(token)
@@ -619,6 +620,11 @@ def run_pairing_assistant(
     }
     payload_json = json.dumps(pairing_payload, separators=(",", ":"))
 
+    resolved_qr_file: Optional[Path] = None
+    if qr_file:
+        resolved_qr_file = write_qr_file(payload_json, qr_file)
+        pairing_payload["qr_file"] = str(resolved_qr_file)
+
     print()
     print("=" * 60)
     print("Hermes Companion — iOS Direct Connection Pairing Assistant")
@@ -627,6 +633,9 @@ def run_pairing_assistant(
     print("Scan this QR code from the Hermes Companion iOS app:")
     print("Settings -> Sync Provider -> Direct Connection -> Scan Pairing QR Code")
     print()
+    if resolved_qr_file:
+        print(f"Pairing file: {resolved_qr_file}")
+        print()
 
     rendered_qr: Optional[str] = None
 
@@ -699,6 +708,8 @@ for y in stride(from: 0, to: height, by: 2) {
     print("Direct Connection Configuration Parameters:")
     print(f"  • Endpoint URL: {resolved_endpoint}")
     print(f"  • Bearer Token: {auth_token}")
+    if resolved_qr_file:
+        print(f"  • Pairing File: {resolved_qr_file}")
     print(f"  • Raw JSON:     {payload_json}")
     print("-" * 60)
     print()
@@ -709,6 +720,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Hermes Companion Direct Connection HTTP Daemon")
     parser.add_argument("--serve", action="store_true", help="Start the HTTP server")
     parser.add_argument("--pair", action="store_true", help="Display pairing QR code and token")
+    parser.add_argument("--qr-file", type=Path, help="Write pairing QR code to image file (.png or .svg)")
     parser.add_argument("--endpoint", help="Public pairing endpoint URL (e.g. https://host); overrides --host/--port")
     parser.add_argument("--host", default=DEFAULT_HOST, help=f"Host address to bind (default {DEFAULT_HOST})")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT, help=f"Port to listen on (default {DEFAULT_PORT})")
@@ -717,9 +729,22 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     args = parser.parse_args(argv)
 
-    if args.pair or (len(sys.argv) > 1 and sys.argv[1] == "pair"):
-        run_pairing_assistant(port=args.port, token=args.token, endpoint=getattr(args, "endpoint", None))
-        return 0
+    is_pair = getattr(args, "pair", False) or (len(sys.argv) > 1 and sys.argv[1] == "pair")
+    if getattr(args, "qr_file", None) and not is_pair:
+        parser.error("--qr-file is only valid with --pair")
+
+    if is_pair:
+        try:
+            run_pairing_assistant(
+                port=args.port,
+                token=args.token,
+                endpoint=getattr(args, "endpoint", None),
+                qr_file=getattr(args, "qr_file", None),
+            )
+            return 0
+        except ValueError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 1
 
     # Default action or --serve
     run_server(host=args.host, port=args.port, token=args.token, storage_dir=args.storage_dir)

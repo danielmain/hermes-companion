@@ -1176,6 +1176,93 @@ def test_qr_encoder_and_decoder_regression() -> None:
         check("qrencode QR decodes to bearer token", decoded_qr_json.get("token", "").startswith("hermes_sec_"))
 
 
+def test_qr_file_generation_and_validation() -> None:
+    import io
+    import json
+    import os
+    import shutil
+    import struct
+    import tempfile
+    from contextlib import redirect_stderr, redirect_stdout
+    from unittest.mock import patch
+    import qr
+    from companion_server import get_or_create_token
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+
+        # 1. Mode 0600 and PNG signature & expected dimensions via CLI --pair --qr-file
+        png_path = tmp_path / "pair.png"
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            code = companion.main(["--pair", "--endpoint", "https://example.test", "--qr-file", str(png_path)])
+        png_abs = os.path.abspath(str(png_path))
+        check("--qr-file with .png exits 0", code == 0)
+        cli_out = buf.getvalue()
+        check("cli output contains Pairing file line", f"Pairing file: {png_abs}" in cli_out)
+        check("cli output still contains terminal QR", "Direct Connection Configuration Parameters:" in cli_out)
+        check("--qr-file creates a 0600 file", (os.stat(png_path).st_mode & 0o777) == 0o600)
+
+        png_bytes = png_path.read_bytes()
+        check("PNG has a valid signature", png_bytes.startswith(b"\x89PNG\r\n\x1a\n"))
+        width, height = struct.unpack(">II", png_bytes[16:24])
+        token = get_or_create_token()
+        expected_payload = json.dumps({"endpoint": "https://example.test", "token": token}, separators=(",", ":"))
+        expected_qr = qr.QRCode(expected_payload)
+        expected_dim = (expected_qr.size + 8) * 3
+        check("PNG has expected dimensions", width == expected_dim and height == expected_dim)
+
+        # 2. Pure-Python stdlib PNG writer fallback (when qrencode is absent)
+        py_png_path = tmp_path / "pair_pure.png"
+        with patch("shutil.which", return_value=None):
+            buf_py = io.StringIO()
+            with redirect_stdout(buf_py):
+                code_py = companion.main(["--pair", "--endpoint", "https://example.test", "--qr-file", str(py_png_path)])
+            check("pure-Python --qr-file .png exits 0", code_py == 0)
+            check("pure-Python PNG file exists", py_png_path.is_file())
+            check("pure-Python PNG is mode 0600", (os.stat(py_png_path).st_mode & 0o777) == 0o600)
+            py_bytes = py_png_path.read_bytes()
+            check("pure-Python PNG has valid signature", py_bytes.startswith(b"\x89PNG\r\n\x1a\n"))
+            py_w, py_h = struct.unpack(">II", py_bytes[16:24])
+            check("pure-Python PNG has expected dimensions", py_w == expected_dim and py_h == expected_dim)
+
+        # 3. SVG generation, 0600 permissions, parse back to same matrix, and decode_qr
+        svg_path = tmp_path / "pair.svg"
+        buf_svg = io.StringIO()
+        with redirect_stdout(buf_svg):
+            code_svg = companion.main(["--pair", "--endpoint", "https://example.test", "--qr-file", str(svg_path)])
+        check("--qr-file with .svg exits 0", code_svg == 0)
+        check("SVG file is mode 0600", (os.stat(svg_path).st_mode & 0o777) == 0o600)
+        svg_content = svg_path.read_text(encoding="utf-8")
+        parsed_matrix = qr.parse_qr_svg(svg_content)
+        check("SVG parses back to the same matrix", parsed_matrix == expected_qr.modules)
+        decoded_svg = qr.decode_qr(parsed_matrix)
+        check("SVG decodes with existing decode_qr", decoded_svg == expected_payload)
+
+        # 4. Bad extension fails clearly
+        bad_path = tmp_path / "pair.txt"
+        err_buf = io.StringIO()
+        with redirect_stderr(err_buf):
+            code_bad = companion.main(["--pair", "--qr-file", str(bad_path)])
+        check("bad extension fails clearly with non-zero exit", code_bad != 0)
+        check("bad extension error message mentions extension", "Invalid QR file extension" in err_buf.getvalue() or "must be .png or .svg" in err_buf.getvalue())
+
+        try:
+            qr.write_qr_file("test", tmp_path / "bad.xyz")
+            raised_bad = False
+        except ValueError:
+            raised_bad = True
+        check("write_qr_file raises ValueError on bad extension", raised_bad)
+
+        # 5. --qr-file without --pair fails clearly
+        try:
+            companion.main(["--qr-file", str(png_path)])
+            no_pair_failed = False
+        except SystemExit as exc:
+            no_pair_failed = (exc.code != 0)
+        check("--qr-file without --pair fails clearly", no_pair_failed)
+
+
 def main() -> int:
     test_still_home_after_hours()
     test_walking_at_home()
@@ -1213,6 +1300,7 @@ def main() -> int:
     test_environment_diagnostics_and_doctor()
     test_direct_connection_pairing_endpoint_resolution()
     test_qr_encoder_and_decoder_regression()
+    test_qr_file_generation_and_validation()
     print("ok")
     return 0
 

@@ -247,7 +247,7 @@
                 This indicates that macOS has not yet materialized the iCloud container file locally, or permissions need verification. To resolve:
               </p>
               <ol style="margin-left: 20px; margin-top: 8px; display: flex; flex-direction: column; gap: 8px;">
-                <li>Run <code>python3 ${HERMES_SKILL_DIR:-$HOME/.hermes/skills/hermes-companion}/scripts/companion.py --doctor</code> (or <code>python3 skills/hermes-companion/scripts/companion.py --doctor</code> from repo root) on your Mac to immediately inspect host OS, iCloud directory presence, and permissions.</li>
+                <li>Run <code>python3 ~/.hermes/skills/hermes-companion/scripts/companion.py --doctor</code> (or <code>python3 skills/hermes-companion/scripts/companion.py --doctor</code> from repo root) on your Mac to immediately inspect host OS, iCloud directory presence, and permissions.</li>
                 <li>Ensure you are running on native macOS (not inside a Docker container, WSL, or remote Linux host).</li>
                 <li>Open the Hermes Companion app on your iPhone. The app automatically seeds the container on first launch so Apple's CloudDocs creates the Mac directory.</li>
                 <li>Allow iCloud Drive 30–60 seconds to perform its initial container synchronization handshake with macOS.</li>
@@ -351,10 +351,10 @@ hermes config set skills.config.hermes-companion.places_file "$HOME/places.json"
                 </div>
                 <div class="terminal-content">
                   <pre id="code-inbox-service"><span class="cli-comment"># Install and start the resident background daemon:</span>
-python3 ${HERMES_SKILL_DIR:-$HOME/.hermes/skills/hermes-companion}/scripts/companion.py --install-service
+python3 ~/.hermes/skills/hermes-companion/scripts/companion.py --install-service
 
 <span class="cli-comment"># Check background daemon launchd status:</span>
-python3 ${HERMES_SKILL_DIR:-$HOME/.hermes/skills/hermes-companion}/scripts/companion.py --service-status</pre>
+python3 ~/.hermes/skills/hermes-companion/scripts/companion.py --service-status</pre>
                 </div>
               </div>
             </div>
@@ -372,7 +372,7 @@ python3 ${HERMES_SKILL_DIR:-$HOME/.hermes/skills/hermes-companion}/scripts/compa
               </p>
               <ul style="margin-left: 20px; margin-top: 8px; display: flex; flex-direction: column; gap: 8px;">
                 <li><strong>In-App:</strong> Tap the <strong>Places</strong> tab on iPhone. Tap <em>+ Add Place</em>, enter a label (e.g. "Fitness First Cannstatt"), assign a category (<code>gym</code>, <code>work</code>, <code>home</code>), and tap <em>Use Current Fix</em> or enter coordinates. Adjust the geofence perimeter slider (50m to 500m).</li>
-                <li><strong>Via CLI:</strong> Run <code>python3 ${HERMES_SKILL_DIR:-$HOME/.hermes/skills/hermes-companion}/scripts/companion.py --add --name "Gym" --category gym --lat 48.80196 --lon 9.22026 --radius 150</code>.</li>
+                <li><strong>Via CLI:</strong> Run <code>python3 ~/.hermes/skills/hermes-companion/scripts/companion.py --add --name "Gym" --category gym --lat 48.80196 --lon 9.22026 --radius 150</code>.</li>
                 <li>Places sync automatically into your private iCloud container (<code>Documents/places.json</code>) and merge seamlessly between devices.</li>
               </ul>
             </div>
@@ -451,7 +451,7 @@ python3 ${HERMES_SKILL_DIR:-$HOME/.hermes/skills/hermes-companion}/scripts/compa
               <div class="editorial-utility" style="margin-bottom: var(--space-8);">AUTOMATED ENVIRONMENT DIAGNOSTICS:</div>
               <div class="terminal-block">
                 <div class="terminal-content">
-<pre><span class="cli-prompt">$ </span>python3 ${HERMES_SKILL_DIR:-$HOME/.hermes/skills/hermes-companion}/scripts/companion.py --doctor</pre>
+<pre><span class="cli-prompt">$ </span>python3 ~/.hermes/skills/hermes-companion/scripts/companion.py --doctor</pre>
                 </div>
               </div>
               <div class="editorial-utility" style="margin: var(--space-16) 0 var(--space-8);">EXPECTED HEALTHY REPORT:</div>
@@ -477,7 +477,7 @@ Diagnostic summary: All critical checks passed.</pre>
               <div class="editorial-utility" style="margin-bottom: var(--space-8);">COMMAND TO RUN ON MAC WORKSTATION:</div>
               <div class="terminal-block">
                 <div class="terminal-content">
-<pre><span class="cli-prompt">$ </span>python3 ${HERMES_SKILL_DIR:-$HOME/.hermes/skills/hermes-companion}/scripts/companion.py</pre>
+<pre><span class="cli-prompt">$ </span>python3 ~/.hermes/skills/hermes-companion/scripts/companion.py</pre>
                 </div>
               </div>
               <div class="editorial-utility" style="margin: var(--space-16) 0 var(--space-8);">EXPECTED HEALTHY OUTPUT:</div>
@@ -499,7 +499,7 @@ status: still_at_place</pre>
               <div class="editorial-utility" style="margin-bottom: var(--space-8);">COMMAND FOR COMBINED PHYSICAL CONTEXT:</div>
               <div class="terminal-block">
                 <div class="terminal-content">
-<pre><span class="cli-prompt">$ </span>python3 ${HERMES_SKILL_DIR:-$HOME/.hermes/skills/hermes-companion}/scripts/companion.py --context</pre>
+<pre><span class="cli-prompt">$ </span>python3 ~/.hermes/skills/hermes-companion/scripts/companion.py --context</pre>
                 </div>
               </div>
               <div class="editorial-utility" style="margin: var(--space-16) 0 var(--space-8);">EXPECTED HEALTHY OUTPUT:</div>
@@ -521,7 +521,7 @@ last_workout_minutes: 45</pre>
               <div class="editorial-utility" style="margin-bottom: var(--space-8);">COMMAND FOR SLEEP &amp; HEALTH ANALYSIS:</div>
               <div class="terminal-block">
                 <div class="terminal-content">
-<pre><span class="cli-prompt">$ </span>python3 ${HERMES_SKILL_DIR:-$HOME/.hermes/skills/hermes-companion}/scripts/companion.py --health</pre>
+<pre><span class="cli-prompt">$ </span>python3 ~/.hermes/skills/hermes-companion/scripts/companion.py --health</pre>
                 </div>
               </div>
               <div class="editorial-utility" style="margin: var(--space-16) 0 var(--space-8);">EXPECTED HEALTHY OUTPUT:</div>
@@ -566,7 +566,7 @@ workout_type: running</pre>
               <div class="editorial-utility" style="margin-bottom: var(--space-8);">QUERY INBOX THREADS &amp; LETTERS:</div>
               <div class="terminal-block">
                 <div class="terminal-content">
-<pre><span class="cli-prompt">$ </span>python3 ${HERMES_SKILL_DIR:-$HOME/.hermes/skills/hermes-companion}/scripts/companion.py --inbox</pre>
+<pre><span class="cli-prompt">$ </span>python3 ~/.hermes/skills/hermes-companion/scripts/companion.py --inbox</pre>
                 </div>
               </div>
               <div class="editorial-utility" style="margin: var(--space-16) 0 var(--space-8);">EXPECTED POSTAL CHANNEL OUTPUT:</div>

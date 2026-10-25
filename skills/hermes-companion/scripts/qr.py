@@ -6,8 +6,15 @@ and formats them for terminal ASCII/ANSI display.
 
 from __future__ import annotations
 
+import os
 import re
-from typing import Final, List, Optional, Sequence, Tuple
+import shutil
+import struct
+import subprocess
+import xml.etree.ElementTree as ET
+import zlib
+from pathlib import Path
+from typing import Final, List, Optional, Sequence, Tuple, Union
 
 
 # Galois Field GF(256) tables with primitive polynomial 0x11D (285)
@@ -401,11 +408,144 @@ class QRCode:
 
         return "\n".join(lines)
 
+    def to_png(self, scale: int = 3, margin: int = 4) -> bytes:
+        """Render QR code as a PNG binary image using stdlib zlib and struct."""
+        full_size = self.size + margin * 2
+        width = full_size * scale
+        height = full_size * scale
+
+        raw_scanlines: List[bytes] = []
+        for r in range(full_size):
+            row_pixels = bytearray()
+            for c in range(full_size):
+                if margin <= r < margin + self.size and margin <= c < margin + self.size:
+                    is_dark = bool(self.modules[r - margin][c - margin])
+                else:
+                    is_dark = False
+                pixel = 0 if is_dark else 255
+                row_pixels.extend([pixel] * scale)
+            scanline = b"\x00" + bytes(row_pixels)
+            for _ in range(scale):
+                raw_scanlines.append(scanline)
+
+        raw_data = b"".join(raw_scanlines)
+        compressed = zlib.compress(raw_data)
+
+        # IHDR: width (4), height (4), bit_depth=8 (1), color_type=0 (grayscale) (1), comp=0 (1), filter=0 (1), interlace=0 (1)
+        ihdr_data = struct.pack(">IIBBBBB", width, height, 8, 0, 0, 0, 0)
+        ihdr_crc = struct.pack(">I", zlib.crc32(b"IHDR" + ihdr_data) & 0xFFFFFFFF)
+        ihdr_chunk = struct.pack(">I", 13) + b"IHDR" + ihdr_data + ihdr_crc
+
+        idat_crc = struct.pack(">I", zlib.crc32(b"IDAT" + compressed) & 0xFFFFFFFF)
+        idat_chunk = struct.pack(">I", len(compressed)) + b"IDAT" + compressed + idat_crc
+
+        iend_crc = struct.pack(">I", zlib.crc32(b"IEND") & 0xFFFFFFFF)
+        iend_chunk = struct.pack(">I", 0) + b"IEND" + iend_crc
+
+        return b"\x89PNG\r\n\x1a\n" + ihdr_chunk + idat_chunk + iend_chunk
+
+    def to_svg(self, margin: int = 4) -> str:
+        """Render QR code as dependency-free SVG with quiet zone."""
+        full_size = self.size + margin * 2
+        lines = [
+            '<?xml version="1.0" encoding="UTF-8"?>',
+            f'<svg xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 {full_size} {full_size}" stroke="none">',
+            '  <rect width="100%" height="100%" fill="#ffffff"/>',
+        ]
+        for r in range(self.size):
+            for c in range(self.size):
+                if self.modules[r][c]:
+                    lines.append(f'  <rect x="{c + margin}" y="{r + margin}" width="1" height="1" fill="#000000"/>')
+        lines.append("</svg>\n")
+        return "\n".join(lines)
+
 
 def generate_qr_ascii(data: str) -> str:
     """Convenience function to generate terminal ASCII QR code."""
     qr = QRCode(data)
     return qr.to_ascii()
+
+
+def generate_qr_png(data: str, scale: int = 3, margin: int = 4) -> bytes:
+    """Convenience function to generate PNG binary image for data."""
+    qr = QRCode(data)
+    return qr.to_png(scale=scale, margin=margin)
+
+
+def generate_qr_svg(data: str, margin: int = 4) -> str:
+    """Convenience function to generate SVG string for data."""
+    qr = QRCode(data)
+    return qr.to_svg(margin=margin)
+
+
+def parse_qr_svg(svg_content: str) -> List[List[bool]]:
+    """Parse an SVG QR code back into a boolean matrix suitable for decode_qr."""
+    root = ET.fromstring(svg_content)
+    viewbox = root.attrib.get("viewBox", "").split()
+    if len(viewbox) >= 4:
+        total_dim = int(float(viewbox[2]))
+    else:
+        width = int(float(root.attrib.get("width", 0)))
+        total_dim = width
+
+    rect_coords: List[Tuple[int, int]] = []
+    for elem in root.iter():
+        if elem.tag.endswith("rect") and "x" in elem.attrib and "y" in elem.attrib:
+            rect_coords.append((int(float(elem.attrib["x"])), int(float(elem.attrib["y"]))))
+
+    if not rect_coords:
+        raise ValueError("No QR code modules found in SVG")
+
+    min_x = min(x for x, y in rect_coords)
+    min_y = min(y for x, y in rect_coords)
+    margin = min(min_x, min_y)
+    size = total_dim - margin * 2
+
+    matrix = [[False] * size for _ in range(size)]
+    for x, y in rect_coords:
+        r = y - margin
+        c = x - margin
+        if 0 <= r < size and 0 <= c < size:
+            matrix[r][c] = True
+
+    return matrix
+
+
+def write_qr_file(payload: str, path: Union[str, Path]) -> Path:
+    """Write QR code to target path (.png or .svg) with mode 0600."""
+    abs_str = os.path.abspath(os.path.expanduser(str(path)))
+    target_path = Path(abs_str)
+    ext = target_path.suffix.lower()
+    if ext not in (".png", ".svg"):
+        raise ValueError(f"Invalid QR file extension '{ext}': must be .png or .svg")
+
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if ext == ".png":
+        written = False
+        if shutil.which("qrencode"):
+            try:
+                subprocess.run(
+                    ["qrencode", "-o", str(target_path), "-l", "L", "-m", "4", payload],
+                    check=True,
+                    capture_output=True,
+                )
+                written = True
+            except Exception:
+                pass
+        if not written:
+            qr = QRCode(payload)
+            target_path.write_bytes(qr.to_png())
+    elif ext == ".svg":
+        qr = QRCode(payload)
+        target_path.write_text(qr.to_svg(), encoding="utf-8")
+
+    try:
+        os.chmod(target_path, 0o600)
+    except Exception:
+        pass
+
+    return target_path
 
 
 def decode_qr(modules: Sequence[Sequence[bool]]) -> str:
