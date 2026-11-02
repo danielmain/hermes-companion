@@ -7,7 +7,7 @@ struct SettingsView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: EditorialSpacing.section) {
                     EditorialPageHeader(
-                        index: "HERMES / CONFIGURATION 03",
+                        index: "SYSTEM / CONFIGURATION 03",
                         title: "System\nParameters",
                         subtitle: "Adjust the field unit, private archive, and background observation policy."
                     )
@@ -178,7 +178,7 @@ private struct CloudSettingsSection: View {
                     .font(.editorialUtilitySmall)
                     .foregroundStyle(EditorialColor.secondaryInk)
 
-                SecureField("hermes_sec_...", text: $bearerTokenText)
+                SecureField("sec_token_...", text: $bearerTokenText)
                     .font(.body)
                     .foregroundStyle(EditorialColor.ink)
                     .padding(EditorialSpacing.compact)
@@ -397,7 +397,7 @@ private struct AboutSettingsSection: View {
             EditorialRule()
             SettingsValueRow(label: "ARCHITECTURE", value: "CoreLocation / CloudKit / HealthKit", systemImage: "cpu")
             EditorialRule()
-            Text("Your data is stored on this device and synced only to your private iCloud account. Your Mac must run macOS signed into the same Apple ID (Linux and Docker containers are not supported). Hermes does not collect analytics or send logs to us.")
+            Text("Your data is stored on this device and synced only to your private iCloud account. Your Mac must run macOS signed into the same Apple ID (Linux and Docker containers are not supported). Agent Companion does not collect analytics or send logs to us.")
                 .font(.body)
                 .foregroundStyle(EditorialColor.secondaryInk)
         }

@@ -41,7 +41,7 @@ private struct DashboardHeroHeader: View {
                 }
                 .accessibilityHidden(true)
 
-            Text("HERMES / TODAY")
+            Text("COMPANION / TODAY")
                 .font(.editorialUtility)
                 .tracking(1.2)
                 .foregroundStyle(EditorialColor.secondaryInk)

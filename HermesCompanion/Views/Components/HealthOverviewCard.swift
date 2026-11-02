@@ -143,7 +143,7 @@ private struct AuthorizedHealthContent: View {
 
             if let insight = snapshot?.conversationalContext.suggestedOpeners.first {
                 VStack(alignment: .leading, spacing: EditorialSpacing.small) {
-                    Text("HERMES / CONTEXT NOTE")
+                    Text("AGENT / CONTEXT NOTE")
                         .font(.editorialUtilitySmall)
                     Text("“\(insight)”")
                         .font(.body)

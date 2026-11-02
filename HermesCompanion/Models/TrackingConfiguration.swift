@@ -31,9 +31,9 @@ public enum SyncDestination: String, Codable, CaseIterable, Identifiable {
     public var subtitle: String {
         switch self {
         case .cloudKit:
-            return "Zero servers, zero open ports. Syncs securely via Apple iCloud across NAT directly to macOS Hermes."
+            return "Zero servers, zero open ports. Syncs securely via Apple iCloud across NAT directly to your personal desktop agent."
         case .direct:
-            return "Direct HTTP(S) REST communication with a Hermes agent host (Linux, Windows, or macOS)."
+            return "Direct HTTP(S) REST communication with your personal agent host (Linux, Windows, or macOS)."
         }
     }
 

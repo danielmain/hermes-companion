@@ -7,9 +7,9 @@ struct EditorialOnboardingView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: EditorialSpacing.section) {
                 EditorialPageHeader(
-                    index: "HERMES / ORIENTATION",
+                    index: "AGENT / ORIENTATION",
                     title: "A private\nfield archive",
-                    subtitle: "Hermes Companion observes selected signals on this iPhone and files them for your personal Hermes system."
+                    subtitle: "Agent Companion observes selected signals on this iPhone and files them for your personal AI companion."
                 )
 
                 Image("HermesLoading")
@@ -52,7 +52,7 @@ struct EditorialOnboardingView: View {
                 VStack(alignment: .leading, spacing: EditorialSpacing.medium) {
                     Text("YOUR CONSENT REMAINS THE CONTROL SURFACE")
                         .font(.editorialUtility)
-                    Text("Hermes does not collect analytics or send logs to us. Your data is stored on this iPhone and synced only to your private iCloud account. Your Mac must be running macOS signed into the same Apple ID. You can change Location and Health access at any time in iOS Settings.")
+                    Text("Agent Companion does not collect analytics or send logs to us. Your data is stored on this iPhone and synced only to your private iCloud account. Your Mac must be running macOS signed into the same Apple ID. You can change Location and Health access at any time in iOS Settings.")
                         .font(.body)
                         .foregroundStyle(EditorialColor.secondaryInk)
 

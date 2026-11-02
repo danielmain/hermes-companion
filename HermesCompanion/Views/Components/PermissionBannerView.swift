@@ -46,11 +46,11 @@ struct PermissionBannerView: View {
     private var bannerMessage: String {
         switch locationManager.authorizationStatus {
         case .notDetermined:
-            return "Grant location permission so Hermes can establish readings and respond to movement."
+            return "Grant location permission so the app can establish readings and respond to movement."
         case .authorizedWhenInUse:
             return "While Using limits closed-state readings. Choose Always in Settings for unattended telemetry."
         default:
-            return "Hermes cannot operate without location access. Review this app’s permissions in Settings."
+            return "The app cannot operate without location access. Review permissions in Settings."
         }
     }
 

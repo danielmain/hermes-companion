@@ -179,7 +179,7 @@ private struct HistoryHeader: View {
     var body: some View {
         VStack(alignment: .leading, spacing: EditorialSpacing.large) {
             EditorialPageHeader(
-                index: "HERMES / ARCHIVE 02",
+                index: "AGENT / ARCHIVE 02",
                 title: "Recorded\nSignals",
                 subtitle: "A chronological register of field positions and system events."
             )

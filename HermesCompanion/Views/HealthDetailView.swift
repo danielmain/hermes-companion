@@ -8,7 +8,7 @@ struct HealthDetailView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: EditorialSpacing.section) {
                     EditorialPageHeader(
-                        index: "HERMES / HEALTH 02",
+                        index: "AGENT / HEALTH 02",
                         title: "Health\nArchive",
                         subtitle: "Your latest Apple Health snapshot, kept private and shared through your personal iCloud archive."
                     )

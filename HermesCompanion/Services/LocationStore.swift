@@ -229,9 +229,9 @@ public final class LocationStore: ObservableObject {
         let points = records.reversed()
         var xml = """
         <?xml version="1.0" encoding="UTF-8"?>
-        <gpx version="1.1" creator="Hermes Companion iOS" xmlns="http://www.topografix.com/GPX/1/1">
+        <gpx version="1.1" creator="Agent Companion iOS" xmlns="http://www.topografix.com/GPX/1/1">
           <trk>
-            <name>Hermes Companion Track</name>
+            <name>Agent Companion Track</name>
             <trkseg>
 
         """

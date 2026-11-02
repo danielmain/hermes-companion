@@ -29,7 +29,7 @@ public struct PlacesView: View {
     // MARK: - Header
     private var headerSection: some View {
         VStack(alignment: .leading, spacing: EditorialSpacing.compact) {
-            Text("HERMES / PLACES 03")
+            Text("AGENT / PLACES 03")
                 .font(.editorialUtility)
                 .tracking(1.2)
                 .foregroundStyle(EditorialColor.secondaryInk)
@@ -42,7 +42,7 @@ public struct PlacesView: View {
 
             EditorialRule(strong: true)
 
-            Text("Named locations and geofence perimeters recognized by your Hermes agent.")
+            Text("Named locations and geofence perimeters recognized by your personal agent.")
                 .font(.editorialBody)
                 .foregroundStyle(EditorialColor.secondaryInk)
         }
@@ -89,7 +89,7 @@ public struct PlacesView: View {
             Text("NO REGISTERED PLACES")
                 .font(.editorialUtility)
                 .foregroundStyle(EditorialColor.secondaryInk)
-            Text("You haven't added any custom places yet. Tap 'Register Place' above or tell your Hermes agent to remember your current spot.")
+            Text("You haven't added any custom places yet. Tap 'Register Place' above or tell your agent to remember your current spot.")
                 .font(.editorialBody)
                 .foregroundStyle(EditorialColor.secondaryInk)
         }
@@ -251,7 +251,7 @@ struct AddPlaceSheetView: View {
 
     private var sheetHeader: some View {
         VStack(alignment: .leading, spacing: EditorialSpacing.xSmall) {
-            Text("HERMES / NEW PERIMETER")
+            Text("AGENT / NEW PERIMETER")
                 .font(.editorialUtility)
                 .tracking(1.2)
                 .foregroundStyle(EditorialColor.secondaryInk)

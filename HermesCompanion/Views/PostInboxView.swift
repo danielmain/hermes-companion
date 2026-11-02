@@ -53,9 +53,9 @@ public struct PostInboxView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: EditorialSpacing.large) {
                     EditorialPageHeader(
-                        index: "HERMES / POST 04",
-                        title: "Hermes\nPost",
-                        subtitle: "Private, asynchronous postal channels and letters synchronized with your Hermes agent via iCloud."
+                        index: "AGENT / POST 04",
+                        title: "Agent\nPost",
+                        subtitle: "Private, asynchronous postal channels and letters synchronized with your personal agent via iCloud."
                     )
 
                     ICloudAccountBannerView()
@@ -120,7 +120,7 @@ public struct PostInboxView: View {
                     store.deleteAllThreads()
                 }
             } message: {
-                Text("All your messages will be deleted, but can still be found in your Hermes application on your Mac.")
+                Text("All your messages will be deleted, but can still be found in your companion archive on your Mac.")
             }
             .refreshable {
                 store.loadThreads(force: true)
@@ -222,7 +222,7 @@ public struct PostInboxView: View {
         EditorialEmptyState(
             index: "POSTBOX EMPTY",
             title: "No Letters",
-            message: "Drop an asynchronous letter or memo to your Hermes agent. Your agent will review and reply into your inbox via iCloud.",
+            message: "Drop an asynchronous letter or memo to your personal agent. Your agent will review and reply into your inbox via iCloud.",
             systemImage: "envelope"
         )
     }
@@ -720,7 +720,7 @@ private struct EditorialMemoCard: View {
             // Postal dossier header
             HStack(spacing: EditorialSpacing.small) {
                 EditorialStatusToken(
-                    text: isUser ? "#\(sequenceIndex) · YOU" : "#\(sequenceIndex) · HERMES",
+                    text: isUser ? "#\(sequenceIndex) · YOU" : "#\(sequenceIndex) · AGENT",
                     isInverted: !isUser,
                     systemImage: isUser ? "person.fill" : "sparkles"
                 )
@@ -812,7 +812,7 @@ private struct EditorialInTransitBubble: View {
             EditorialRule()
 
             VStack(alignment: .leading, spacing: EditorialSpacing.xSmall) {
-                Text("In transit via iCloud. Your Hermes agent will pick it up and reply shortly (typically 5–30 min).")
+                Text("In transit via iCloud. Your agent will pick it up and reply shortly (typically 5–30 min).")
                     .font(.system(.body, design: .serif))
                     .italic()
                     .foregroundStyle(EditorialColor.secondaryInk)
@@ -905,8 +905,8 @@ public struct PostalDisclaimerSheetView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: EditorialSpacing.large) {
                     EditorialPageHeader(
-                        index: "HERMES / DISPATCH 01",
-                        title: "Hermes\nPostbox",
+                        index: "POST / DISPATCH 01",
+                        title: "Postal\nDispatch",
                         subtitle: "Asynchronous epistolar relay protocol via iCloud Drive."
                     )
 
@@ -914,7 +914,7 @@ public struct PostalDisclaimerSheetView: View {
                         infoCard(
                             badge: "ASYNC PROTOCOL",
                             title: "Postal Letters, Not Live Chat",
-                            description: "Hermes Post operates on a physical postal letter model: you drop a letter, it travels through iCloud synchronization envelopes, and your agent composes a reply once delivered. It is not real-time instant messaging.",
+                            description: "Agent Post operates on a physical postal letter model: you drop a letter, it travels through iCloud synchronization envelopes, and your agent composes a reply once delivered. It is not real-time instant messaging.",
                             icon: "envelope.badge.shield.half.filled"
                         )
 
@@ -1007,7 +1007,7 @@ public struct NewDispatchSheetView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: EditorialSpacing.large) {
                     EditorialPageHeader(
-                        index: "HERMES POST",
+                        index: "AGENT POST",
                         title: "Compose\nLetter",
                         subtitle: "Drop an asynchronous letter or inquiry into your agent's inbox."
                     )
@@ -1120,7 +1120,7 @@ public struct NewDispatchSheetView: View {
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("Enter the name of your Hermes profile. It will be added to your profile list.")
+                Text("Enter the name of your agent profile. It will be added to your profile list.")
             }
         }
     }

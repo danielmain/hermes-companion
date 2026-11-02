@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Support & Diagnostics — Hermes Companion iOS & Hermes Skill</title>
-  <meta name="description" content="Technical support, configuration checklists, troubleshooting trees, and diagnostics for Hermes Companion iOS app and Hermes skill.">
+  <title>Support & Diagnostics — Agent Companion iOS & Companion Skill</title>
+  <meta name="description" content="Technical support, configuration checklists, troubleshooting trees, and diagnostics for Agent Companion iOS app and companion skill.">
   <link rel="stylesheet" href="style.css">
   <link rel="icon" type="image/png" href="assets/icon-source.png">
 
@@ -13,22 +13,22 @@
   <!-- Open Graph / Rich Social Link Preview -->
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://hermescompanion.funktional.dev/support.html">
-  <meta property="og:site_name" content="Hermes Companion">
-  <meta property="og:title" content="Support & Diagnostics — Hermes Companion iOS & Hermes Skill">
-  <meta property="og:description" content="Technical support, configuration checklists, troubleshooting trees, and diagnostics for Hermes Companion iOS app and Hermes skill.">
+  <meta property="og:site_name" content="Agent Companion">
+  <meta property="og:title" content="Support & Diagnostics — Agent Companion iOS & Companion Skill">
+  <meta property="og:description" content="Technical support, configuration checklists, troubleshooting trees, and diagnostics for Agent Companion iOS app and companion skill.">
   <meta property="og:image" content="https://hermescompanion.funktional.dev/assets/lilith-black.png">
   <meta property="og:image:width" content="1024">
   <meta property="og:image:height" content="572">
   <meta property="og:image:type" content="image/png">
-  <meta property="og:image:alt" content="Hermes Companion Support Artwork">
+  <meta property="og:image:alt" content="Agent Companion Support Artwork">
 
   <!-- Twitter Card -->
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:url" content="https://hermescompanion.funktional.dev/support.html">
-  <meta name="twitter:title" content="Support & Diagnostics — Hermes Companion iOS & Hermes Skill">
-  <meta name="twitter:description" content="Technical support, configuration checklists, troubleshooting trees, and diagnostics for Hermes Companion iOS app and Hermes skill.">
+  <meta name="twitter:title" content="Support & Diagnostics — Agent Companion iOS & Companion Skill">
+  <meta name="twitter:description" content="Technical support, configuration checklists, troubleshooting trees, and diagnostics for Agent Companion iOS app and companion skill.">
   <meta name="twitter:image" content="https://hermescompanion.funktional.dev/assets/lilith-black.png">
-  <meta name="twitter:image:alt" content="Hermes Companion Support Artwork">
+  <meta name="twitter:image:alt" content="Agent Companion Support Artwork">
 </head>
 <body>
 
@@ -44,10 +44,10 @@
       <nav class="topbar-nav" aria-label="Support Navigation">
         <a href="index.html" class="brand-mark">
           <div class="brand-icon-box">
-            <img src="assets/icon-source.png" alt="Hermes Symbol">
+            <img src="assets/icon-source.png" alt="Agent Companion Symbol">
           </div>
           <div>
-            <div class="brand-title">HERMES COMPANION</div>
+            <div class="brand-title">AGENT COMPANION</div>
           </div>
           <span class="brand-tag">SUPPORT DESK</span>
         </a>
@@ -82,7 +82,7 @@
             </h1>
 
             <p class="editorial-lead">
-              Resolution procedures, configuration verification, and troubleshooting trees for Hermes Companion iOS and the Hermes skill on macOS, Linux, and Windows.
+              Resolution procedures, configuration verification, and troubleshooting trees for Agent Companion iOS and the companion skill on macOS, Linux, and Windows.
             </p>
 
             <div class="hero-actions">
@@ -111,7 +111,7 @@
                 Archival Pipeline Readout
               </div>
               <p style="font-size: 0.875rem; color: var(--secondary-ink); line-height: 1.6; margin-bottom: var(--space-16);">
-                Hermes Companion supports dual synchronization modes: Apple iCloud Drive (zero relay servers) and Direct Connection (self-hosted HTTP daemon with pre-shared Bearer token authentication). There are zero third-party clouds or relays to experience outages.
+                Agent Companion supports dual synchronization modes: Apple iCloud Drive (zero relay servers) and Direct Connection (self-hosted HTTP daemon with pre-shared Bearer token authentication). There are zero third-party clouds or relays to experience outages.
               </p>
               <div class="editorial-rule"></div>
               <div style="display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-12); font-family: var(--font-mono); font-size: 0.6875rem;">
@@ -192,7 +192,7 @@
               </div>
               <div class="editorial-card-title">macOS for iCloud / Any OS for Direct Sync</div>
               <div class="editorial-card-body">
-                When using Apple iCloud, the host must be native macOS where CloudDocs mirrors files to <code>~/Library/Mobile Documents</code>. When using Direct Connection, Hermes runs on any OS (Linux, Windows, WSL, Docker, macOS) via the built-in HTTP daemon (<code>companion.py --serve</code>).
+                When using Apple iCloud, the host must be native macOS where CloudDocs mirrors files to <code>~/Library/Mobile Documents</code>. When using Direct Connection, Agent Companion host runs on any OS (Linux, Windows, WSL, Docker, macOS) via the built-in HTTP daemon (<code>companion.py --serve</code>).
               </div>
             </div>
           </div>
@@ -202,7 +202,7 @@
             <div class="iphone-device">
               <div class="iphone-island"></div>
               <div class="iphone-screen">
-                <img src="assets/screenshots/settings.png" alt="iPhone Screen: Hermes Companion Settings Screen">
+                <img src="assets/screenshots/settings.png" alt="iPhone Screen: Agent Companion Settings Screen">
                 <div class="iphone-home-bar"></div>
               </div>
             </div>
@@ -249,7 +249,7 @@
               <ol style="margin-left: 20px; margin-top: 8px; display: flex; flex-direction: column; gap: 8px;">
                 <li>Run <code>python3 ~/.hermes/skills/hermes-companion/scripts/companion.py --doctor</code> (or <code>python3 skills/hermes-companion/scripts/companion.py --doctor</code> from repo root) on your Mac to immediately inspect host OS, iCloud directory presence, and permissions.</li>
                 <li>Ensure you are running on native macOS (not inside a Docker container, WSL, or remote Linux host).</li>
-                <li>Open the Hermes Companion app on your iPhone. The app automatically seeds the container on first launch so Apple's CloudDocs creates the Mac directory.</li>
+                <li>Open the Agent Companion app on your iPhone. The app automatically seeds the container on first launch so Apple's CloudDocs creates the Mac directory.</li>
                 <li>Allow iCloud Drive 30–60 seconds to perform its initial container synchronization handshake with macOS.</li>
               </ol>
             </div>
@@ -263,13 +263,13 @@
             </button>
             <div class="faq-content">
               <p>
-                <strong>No, this is by intentional design.</strong> Hermes Companion uses a write-on-change architecture:
+                <strong>No, this is by intentional design.</strong> Agent Companion uses a write-on-change architecture:
               </p>
               <p style="margin-top: 8px;">
                 Indoor GPS jitter (10–50 meters) is deliberately refused to prevent battery drain and artificial movement noise. Stationary readings are only recorded if displacement exceeds 150m or speed exceeds 1 m/s.
               </p>
               <p style="margin-top: 8px;">
-                When you stay at the office or at home for 4 hours, the timestamp stays anchored at your arrival time. The Hermes agent calculates <code>fix_age_minutes: 240</code> and correctly concludes: <em>"You are still at the office."</em>
+                When you stay at the office or at home for 4 hours, the timestamp stays anchored at your arrival time. The personal agent calculates <code>fix_age_minutes: 240</code> and correctly concludes: <em>"You are still at the office."</em>
               </p>
             </div>
           </div>
@@ -282,7 +282,7 @@
             </button>
             <div class="faq-content">
               <p>
-                Open your iPhone's native <strong>Settings app</strong> → scroll down to <strong>Privacy &amp; Security</strong> → tap <strong>Location Services</strong> → tap <strong>Hermes Companion</strong> → select <strong>Always</strong>.
+                Open your iPhone's native <strong>Settings app</strong> → scroll down to <strong>Privacy &amp; Security</strong> → tap <strong>Location Services</strong> → tap <strong>Agent Companion</strong> → select <strong>Always</strong>.
               </p>
               <p style="margin-top: 8px;">
                 Also ensure <strong>Precise Location</strong> is toggled <strong>ON</strong> and <strong>Background App Refresh</strong> is enabled in <em>Settings → General → Background App Refresh</em>.
@@ -301,7 +301,7 @@
                 HealthKit delivers sleep records when you wake up and when your Apple Watch completes sleep stage classification. Note:
               </p>
               <ul style="margin-left: 20px; margin-top: 8px; display: flex; flex-direction: column; gap: 8px;">
-                <li>Verify Apple Health permissions in iPhone <em>Settings → Health → Data Access &amp; Devices → Hermes Companion</em>.</li>
+                <li>Verify Apple Health permissions in iPhone <em>Settings → Health → Data Access &amp; Devices → Agent Companion</em>.</li>
                 <li>Make sure Sleep Analysis and Workouts are toggled on.</li>
                 <li>Health snapshots are written when Apple Health emits new samples or on background refresh, not on every GPS tick.</li>
               </ul>
@@ -316,7 +316,7 @@
             </button>
             <div class="faq-content">
               <p>
-                If you keep your container or places configuration in custom directories, configure Hermes via CLI:
+                If you keep your container or places configuration in custom directories, configure the companion via CLI:
               </p>
               <div class="terminal-block" style="margin-top: 12px;">
                 <div class="terminal-header">
@@ -334,15 +334,15 @@ hermes config set skills.config.hermes-companion.places_file "$HOME/places.json"
           <!-- Item 6 -->
           <div class="faq-item">
             <button type="button" class="faq-trigger">
-              <span>6. Hermes Post: How does two-way letter correspondence and background auto-reply work?</span>
+              <span>6. Agent Post: How does two-way letter correspondence and background auto-reply work?</span>
               <span class="faq-symbol">+</span>
             </button>
             <div class="faq-content">
               <p>
-                Hermes Companion supports asynchronous, thread-safe letter exchange directly through iCloud Drive under <code>threads/</code>. You can compose letters in the iOS app under <strong>Hermes Post</strong>, and your agent reads and replies to them.
+                Agent Companion supports asynchronous, thread-safe letter exchange directly through iCloud Drive under <code>threads/</code>. You can compose letters in the iOS app under <strong>Agent Post</strong>, and your agent reads and replies to them.
               </p>
               <p style="margin-top: 8px;">
-                To have Hermes automatically monitor for incoming letters and compose replies in the background, install the native macOS LaunchAgent:
+                To have your agent automatically monitor for incoming letters and compose replies in the background, install the native macOS LaunchAgent:
               </p>
               <div class="terminal-block" style="margin-top: 12px;">
                 <div class="terminal-header">
@@ -402,13 +402,13 @@ python3 ~/.hermes/skills/hermes-companion/scripts/companion.py --service-status<
             </button>
             <div class="faq-content">
               <p>
-                <strong>No. This is the primary architectural differentiator of Hermes Companion compared to other apps.</strong>
+                <strong>No. This is the primary architectural differentiator of Agent Companion compared to other apps.</strong>
               </p>
               <p style="margin-top: 8px;">
                 Other companion or self-hosted agent tools require persistent VPN profiles on iOS (Tailscale, WireGuard), open router ports, or third-party reverse tunnels (Cloudflare, ngrok). Those tunnels prevent the iPhone from deep sleeping, drain battery rapidly in your pocket, drop sockets when switching between Wi-Fi and 5G cellular, and create firewall headaches.
               </p>
               <p style="margin-top: 8px;">
-                With <strong>Apple iCloud mode</strong>, Hermes Companion requires <strong>zero tunnels, zero VPNs, and zero open ports</strong>. The iOS app writes files to its local flash sandbox, and Apple's native CloudDocs system synchronizes them to your Mac via your personal Apple ID. With <strong>Direct Connection mode</strong>, the phone talks directly to your host over local LAN or standard HTTPS reverse proxy with zero persistent tunnels required.
+                With <strong>Apple iCloud mode</strong>, Agent Companion requires <strong>zero tunnels, zero VPNs, and zero open ports</strong>. The iOS app writes files to its local flash sandbox, and Apple's native CloudDocs system synchronizes them to your Mac via your personal Apple ID. With <strong>Direct Connection mode</strong>, the phone talks directly to your host over local LAN or standard HTTPS reverse proxy with zero persistent tunnels required.
               </p>
             </div>
           </div>
@@ -421,12 +421,12 @@ python3 ~/.hermes/skills/hermes-companion/scripts/companion.py --service-status<
             </button>
             <div class="faq-content">
               <p>
-                Direct Connection allows you to run Hermes on Linux, Windows, WSL, Docker, or macOS without relying on Apple iCloud:
+                Direct Connection allows you to run the host daemon on Linux, Windows, WSL, Docker, or macOS without relying on Apple iCloud:
               </p>
               <ol style="margin-left: 20px; margin-top: 8px; display: flex; flex-direction: column; gap: 8px;">
                 <li><strong>Zero-Friction Chat Pairing:</strong> Simply tell your agent in chat (Telegram, Discord, Web): <em>"Connect my iPhone"</em> (or <em>"pair the companion app"</em>). The agent generates a pairing QR code in one turn and replies with the image.</li>
                 <li><strong>Terminal Pairing Command:</strong> Run <code>python3 ~/.hermes/skills/hermes-companion/scripts/companion.py --pair --qr-file /tmp/hermes-companion-pair.png</code> (add <code>--endpoint https://&lt;public-host&gt;</code> if using a reverse proxy).</li>
-                <li><strong>Scan in App:</strong> In Hermes Companion, navigate to <em>Settings &rarr; Sync Provider &rarr; Direct Connection &rarr; Scan Pairing QR Code</em> and point your camera at the screen. The host URL and secure Keychain Bearer token configure automatically.</li>
+                <li><strong>Scan in App:</strong> In Agent Companion, navigate to <em>Settings &rarr; Sync Provider &rarr; Direct Connection &rarr; Scan Pairing QR Code</em> and point your camera at the screen. The host URL and secure Keychain Bearer token configure automatically.</li>
                 <li><strong>Start Host Daemon:</strong> Run <code>python3 ~/.hermes/skills/hermes-companion/scripts/companion.py --serve --port 8787</code> on your host machine. Telemetry and Post letters sync to <code>~/.hermes/hermes-companion/data/</code>.</li>
               </ol>
             </div>
@@ -461,7 +461,7 @@ python3 ~/.hermes/skills/hermes-companion/scripts/companion.py --service-status<
             <button type="button" class="diag-tab" data-diag-target="diag-2">2. EXECUTE SKILL</button>
             <button type="button" class="diag-tab" data-diag-target="diag-3">3. HEALTH SNAPSHOT</button>
             <button type="button" class="diag-tab" data-diag-target="diag-4">4. RAW JSON INSPECTION</button>
-            <button type="button" class="diag-tab" data-diag-target="diag-5">5. HERMES POST INBOX</button>
+            <button type="button" class="diag-tab" data-diag-target="diag-5">5. AGENT POST INBOX</button>
             <button type="button" class="diag-tab" data-diag-target="diag-6">6. DIRECT PAIRING &amp; DAEMON</button>
           </div>
 
@@ -477,7 +477,7 @@ python3 ~/.hermes/skills/hermes-companion/scripts/companion.py --service-status<
               <div class="editorial-utility" style="margin: var(--space-16) 0 var(--space-8);">EXPECTED HEALTHY REPORT:</div>
               <div class="terminal-block">
                 <div class="terminal-content" style="color: var(--ink);">
-<pre>Hermes Companion Pre-Flight Diagnostics:
+<pre>Agent Companion Pre-Flight Diagnostics:
 ============================================================
 [PASS]  Operating System       macOS (native host)
 [PASS]  iCloud Drive           Active at ~/Library/Mobile Documents
@@ -620,7 +620,7 @@ Memos:   3 (last updated: 5m ago)</pre>
               <div class="editorial-utility" style="margin: var(--space-16) 0 var(--space-8);">EXPECTED PAIRING ASSISTANT OUTPUT:</div>
               <div class="terminal-block">
                 <div class="terminal-content" style="color: var(--ink);">
-<pre>Hermes Companion Direct Connection Pairing:
+<pre>Agent Companion Direct Connection Pairing:
 ============================================================
 Server URL:   http://192.168.1.150:8787
 Auth Token:   hc_live_b74e19830f2c4a9386d9e03c1584df21
@@ -667,7 +667,7 @@ Scan the pairing QR image or the terminal code in Settings -&gt; Sync Provider -
               </div>
               <div class="editorial-card-title">GitHub Issue Tracker</div>
               <p class="editorial-body" style="margin-bottom: var(--space-16);">
-                For bugs, feature enhancements, or contributing to the Swift codebase and Hermes skill, GitHub Issues is our primary tracking system.
+                For bugs, feature enhancements, or contributing to the Swift codebase and companion skill, GitHub Issues is our primary tracking system.
               </p>
               <div style="margin-top: auto;">
                 <a href="https://github.com/danielmain/hermes-companion/issues" target="_blank" rel="noopener" class="btn btn-primary">
@@ -710,7 +710,7 @@ Scan the pairing QR image or the terminal code in Settings -&gt; Sync Provider -
       <div class="footer-grid">
         <div>
           <div style="font-family: var(--font-display); font-size: 1.5rem; margin-bottom: var(--space-8);">
-            HERMES COMPANION
+            AGENT COMPANION
           </div>
           <p style="font-size: 0.875rem; color: var(--secondary-ink); max-width: 42ch;">
             Official Technical Support Portal. Open architecture, zero relay servers, local-first telemetry computing.
@@ -739,7 +739,7 @@ Scan the pairing QR image or the terminal code in Settings -&gt; Sync Provider -
       </div>
 
       <div class="footer-stamp">
-        <div>HERMES COMPANION ARCHIVAL SYSTEM • ALL RIGHTS RESERVED</div>
+        <div>AGENT COMPANION ARCHIVAL SYSTEM • ALL RIGHTS RESERVED</div>
         <div>OFFICIAL APP STORE SUPPORT DESK REF. HC-SUP-2026</div>
       </div>
     </div>

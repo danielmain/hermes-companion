@@ -41,7 +41,7 @@ public enum DispatchSender: String, Codable, Sendable, CaseIterable, Equatable {
     public var displayName: String {
         switch self {
         case .user: return "You"
-        case .agent: return "Hermes Agent"
+        case .agent: return "Agent"
         }
     }
 }

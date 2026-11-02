@@ -44,7 +44,7 @@ struct EditorialLoadingView: View {
             }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Hermes Companion is initializing the local telemetry archive")
+        .accessibilityLabel("Agent Companion is initializing the local telemetry archive")
     }
 }
 
@@ -53,13 +53,13 @@ private struct LoadingMasthead: View {
         VStack(alignment: .leading, spacing: EditorialSpacing.small) {
             ViewThatFits(in: .horizontal) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text("HERMES / FIELD UNIT")
+                    Text("AGENT / FIELD UNIT")
                     Spacer()
                     Text("IOS—01")
                 }
 
                 VStack(alignment: .leading, spacing: EditorialSpacing.xSmall) {
-                    Text("HERMES / FIELD UNIT")
+                    Text("AGENT / FIELD UNIT")
                     Text("IOS—01")
                 }
             }
@@ -69,7 +69,7 @@ private struct LoadingMasthead: View {
 
             EditorialRule(strong: true)
 
-            Text("Hermes")
+            Text("Agent\nCompanion")
                 .font(.editorialDisplay)
                 .fontWeight(.regular)
                 .foregroundStyle(EditorialColor.ink)

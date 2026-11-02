@@ -54,11 +54,11 @@ struct ICloudAccountBannerView: View {
     private var bannerMessage: String {
         switch cloudKitSyncManager.accountStatus {
         case .noAccount:
-            "Sign in with your Apple Account in iOS Settings so Hermes can sync telemetry and letters to your Mac via iCloud."
+            "Sign in with your Apple Account in iOS Settings so your companion can sync telemetry and letters to your Mac via iCloud."
         case .restricted:
             "Screen Time or device-management policy is preventing access to private iCloud synchronization."
         default:
-            "iCloud Drive access is required to sync telemetry and correspondence with your Hermes agent on macOS."
+            "iCloud Drive access is required to sync telemetry and correspondence with your personal agent on macOS."
         }
     }
 }

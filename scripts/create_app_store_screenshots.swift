@@ -17,14 +17,14 @@ let specs = [
     ScreenshotSpec(
         source: "\(workspace)/assets/screenshots/original/Screenshot 2026-10-12 at 10.48.52.png",
         destination: "\(outputDirectory)/01-daily-context.png",
-        kicker: "HERMES / DAILY CONTEXT",
+        kicker: "AGENT / DAILY CONTEXT",
         title: "Your day, in context.",
         subtitle: "Health, activity, and location at a glance."
     ),
     ScreenshotSpec(
         source: "\(workspace)/assets/screenshots/original/Screenshot 2026-10-12 at 10.49.14.png",
-        destination: "\(outputDirectory)/02-hermes-post.png",
-        kicker: "HERMES / POST INBOX",
+        destination: "\(outputDirectory)/02-agent-post.png",
+        kicker: "POST / INBOX",
         title: "A private postbox for your agent.",
         subtitle: "Letters and briefings synchronized via your iCloud."
     ),
@@ -38,7 +38,7 @@ let specs = [
     ScreenshotSpec(
         source: "\(workspace)/assets/screenshots/original/Screenshot 2026-10-12 at 10.50.03.png",
         destination: "\(outputDirectory)/04-known-places.png",
-        kicker: "HERMES / KNOWN PLACES",
+        kicker: "PLACES / KNOWN PLACES",
         title: "Places that matter to you.",
         subtitle: "Named locations and geofence perimeters for your agent."
     )

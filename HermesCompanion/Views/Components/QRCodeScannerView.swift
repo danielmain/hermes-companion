@@ -53,7 +53,7 @@ public struct QRCodeScannerView: View {
                     // Viewfinder overlay
                     VStack {
                         VStack(spacing: EditorialSpacing.compact) {
-                            Text("HERMES / DIRECT PAIRING")
+                            Text("AGENT / DIRECT PAIRING")
                                 .font(.editorialUtilitySmall)
                                 .foregroundStyle(EditorialColor.paper)
                                 .padding(.horizontal, EditorialSpacing.compact)
